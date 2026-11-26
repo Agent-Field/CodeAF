@@ -104,7 +104,7 @@ func runAppCommand(args []string) error {
 		fmt.Fprintln(os.Stdout, "codeaf app connect google <gmail|calendar|drive> [--write] [--no-browser]")
 		fmt.Fprintln(os.Stdout, "codeaf app model-policy FILE.json")
 		fmt.Fprintln(os.Stdout, "codeaf app pack <app> [file] | install <file> | fork <app> | update <app> <file> | lineage <app>")
-		fmt.Fprintln(os.Stdout, "codeaf app <apply|resolve-package> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <browse|start-package|apply|resolve-package> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app mcp --app <app> --agent <agent>")
 		return nil
 	case verb == "kit" && len(args) == 1:

@@ -121,6 +121,56 @@ func (s *Jobs) Fork(ctx context.Context, app string) (Proposal, error) {
 	return s.stagePackage(ctx, "", archive, &store.ForkOrigin{App: app, Version: live.Meta.Version, Source: sourceOf(live.Meta)})
 }
 
+// ForkPackage records the packaged definition as the fork's parent without following its updates.
+func (s *Jobs) ForkPackage(ctx context.Context, archive apppackage.Archive) (Proposal, error) {
+	source := archive.Manifest.Source
+	return s.stagePackage(ctx, "", archive, &store.ForkOrigin{Source: &source})
+}
+
+// StartPackage seeds an ordinary Builder job, so subsequent requests can edit its files.
+func (s *Jobs) StartPackage(ctx context.Context, archive apppackage.Archive) (id string, err error) {
+	s.packageMu.Lock()
+	defer s.packageMu.Unlock()
+	catalog, err := s.catalog("")
+	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	j, err := s.create("")
+	s.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(filepath.Join(s.root, j.Draft))
+		}
+	}()
+	files, _, err := archive.Bind(catalog.Types, j.Draft, "")
+	if err != nil {
+		return "", err
+	}
+	report, err := s.checkPackagedFiles(ctx, "", files)
+	if err != nil {
+		return "", err
+	}
+	j.Working = snapshot{Files: files, Passed: true, CheckComplete: true, Look: report.Look}
+	j.Dirty, j.Editable = true, true
+	j.State.State = Ready
+	j.LastRequest = "Start from " + archive.Manifest.Name
+	j.acceptKeptUses()
+	j.describe(catalog)
+	if err := j.checkpoint(j.LastRequest); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.save(j, Event{Stage: Ready, Line: j.LastRequest}); err != nil {
+		return "", err
+	}
+	return j.Draft, nil
+}
+
 func (s *Jobs) Update(ctx context.Context, app string, archive apppackage.Archive) (Proposal, error) {
 	if !cell.ValidID(app) {
 		return Proposal{}, store.ErrBadInput

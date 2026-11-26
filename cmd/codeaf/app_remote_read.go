@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"path/filepath"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -18,10 +17,12 @@ func (*appBackend) ChatReadsFollow() bool { return true }
 // remoteEntries is a read-only projection of a shared head. It deliberately
 // uses no local call log or turn marks: those belong to the copy left here.
 func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page []appwire.Entry, more bool, head string, err error) {
-	var location *appwire.Location
-	var id string
-	var at time.Time
-	b.locked(func() { location, id, at = a.view.Location, a.view.ID, a.view.UpdatedAt })
+	var agent appwire.Agent
+	b.locked(func() { agent = a.view })
+	// A move notice can update ownership before the agent has the directory's
+	// cell and head. Use the same location as the agent event the reader saw.
+	b.dressChatLocation(&agent)
+	location := agent.Location
 	if location == nil || location.Here || location.Cell == "" {
 		return
 	}
@@ -52,7 +53,7 @@ func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page 
 	err = s.ReadChat(ctx, location.Cell, view, func(c cell.Cell) error {
 		return appRecords.WithRecord(filepath.Join(c.Root, cell.TranscriptPath), func(record session.Record) error {
 			var readErr error
-			page, more, readErr = appEntryPage(id, record, at, nil, before, limit, nil)
+			page, more, readErr = appEntryPage(agent.ID, record, agent.UpdatedAt, nil, before, limit, nil)
 			return readErr
 		})
 	})

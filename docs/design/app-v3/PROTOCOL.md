@@ -3256,15 +3256,18 @@ for these items.
 
 ### Kit app packages
 
-Package paths are absolute paths on the engine's machine. The owner can use
-a file from the Kit or export a kept app as a template.
+Package selectors take an absolute engine-side `path`, a `builtin` filename from the bundled Kit, or a signed first-party template ID in `package`. A bundled example name begins with `examples/`. Supply exactly one selector. `expected_hash` pins the selected release and returns `conflict` if the contents changed.
 
 | method | params | result |
 |---|---|---|
-| `apps.pack` | `{app,path,publisher?,version?,sample?}` | `{path,manifest}`. A format 1 archive contains the definition files, entity shapes, action and automation inventory, requested permissions, budget, and SHA-256 content hash. Publisher defaults to `local`, version to the live version followed by `.0.0`. An existing file at the export path is preserved. |
-| `apps.install` | `{path?,package?}` | Choose one absolute path or bundled package ID. Returns a `package_install` proposal with common-type bindings and permissions. Apply publishes the copy. |
-| `apps.fork` | `{app}` | A proposal with `source:"package_fork"`. Apply gives the independent definition a new app ID and records `forked_from`. |
-| `apps.update` | `{app,path?,package?}` | Choose one absolute path or bundled package ID. The `package_update` proposal requires the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
+| `apps.pack` | `{app,path?,publisher?,version?,sample?}` | `{path,manifest}`. A format 1 archive contains the definition files, entity shapes, action and automation inventory, requested permissions, budget, and SHA-256 content hash. Publisher defaults to `local` and version to the live version followed by `.0.0`. An omitted path saves the release to the current Kit. An existing file at an explicit export path is preserved. |
+| `apps.browse` | `{app?}` | `{packages}` with the latest release per source ID and publisher. Each entry carries the source identity and hash, its selector, display metadata, and optional `installed_app`. With an app ID, only newer releases of its accepted source appear. |
+| `apps.preview_package` | `{path?,builtin?,package?,expected_hash?}` | `{app,screens,scope,sample:true}`. Creates a transient isolated scope from the archive's own examples. The scope can be read by Look and the interactive sample preview. |
+| `apps.close_package_preview` | `{draft}` | `{}`. Releases the given package preview scope. |
+| `apps.start_package` | `{path?,builtin?,package?,expected_hash?}` | `{draft}`. Opens a Builder draft seeded from the selected release without publishing. |
+| `apps.install` | `{path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_install"`, the common-type bindings, and the requested permissions. Apply publishes the copy. |
+| `apps.fork` | `{app?,path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_fork"`. Supply a saved app ID or a package selector. Apply gives the independent definition a new app ID and records `forked_from`. |
+| `apps.update` | `{app,path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_update"`. The release must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
 | `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
 | `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
 
