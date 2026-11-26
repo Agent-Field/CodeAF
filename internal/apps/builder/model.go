@@ -36,23 +36,15 @@ const (
 const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
 at a time in the scoped executor. Finish when the requested edits are saved.
 
-The request includes the current manifest, plan, file names and Check findings.
-Use that context and existing_shapes directly. If a shape is missing, use context {"type":"contact"} and a file
-with context {"file":"screens/deals.json"}. Fetch several files or types
-with context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}.
-Reuse replies for unchanged files.
-Fetch needed kit descriptors together with parts {"select":["add-view/board","RecordList"]}.
-Use the supplied parts and the examples below first. If needed, use reference {"schema":"app-2.json"}
-for types and settings, process-2.json for lifecycle, and run-2.json or
-{"example":"crm","file":"runs/follow-up.yaml"} for automations.
+Use the supplied manifest, plan, file names, types, parts and Check findings.
+Read additional files and types together with context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}.
+Batch missing kit descriptors with parts {"select":["add-view/board","RecordList"]}.
+Read reference {"schema":"app-2.json"} for app settings, process-2.json for lifecycle or run-2.json for automations.
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
-writes the outline and starts the manifest. Each plan line has id and line.
-Use data for type ids, screens for screen ids, and automation for each
-planned run id. In data, use "create":true for types people add. Put manual
-actions in "actions" by command or run id. Declare extension work with
-"extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}]. Keep these declarations when
-revising the plan. Reuse the plan ids in the compiled definitions.
+writes the outline. Use the actual type, screen and automation ids in the plan.
+Mark creatable types with "create":true and list manual actions by command or run id.
+Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}].
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
@@ -66,19 +58,14 @@ configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
-compiles a collection. For ordinary collections use as "table" or "list"
-and fields, for example companies and contacts in a CRM. The recipe id is
-the screen id. If asked, use add-form or add-detail for a separate screen.
-Use add-chart with group and aggregate
-(e.g. "sum:amount") for grouped totals. For composed screens, use markup
-{"screen":"deals","title":"Deals","markup":"<...>"} with the kit parts as
-elements and label, id, prop-name, bind-name and on-event attributes.
+compiles a collection. Use as "table" or "list" for ordinary collections.
+Use add-chart with group and aggregate (e.g. "sum:amount") for grouped totals.
+For a composed screen, write markup {"screen":"deals","title":"Deals","markup":"<...>"}
+with kit elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
-Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
-For a run started from one record, declare a ref parameter with its type and
-omit its default. The record command passes the id. A scheduled search uses a
-separate run with a refs parameter, a query default and a loop over the results.
+Use action-verb ids. Record commands pass a ref parameter by id, with no default.
+Use refs with a query default for scheduled loops. Read ids with $params.post.id.
 Agent steps return text at $steps.<id>.output. For lists and approvals, copy
 reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
@@ -106,9 +93,9 @@ For a shared type this app's Actions create or edit, use this shape:
 add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
 Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
-Fill the visible fields in your examples so Check can measure bound columns.
-Keep screen and node ids. Claim marked nodes and preserve the rest of that
-screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
+Fill visible sample fields. Claim marked nodes and preserve existing ids.
+Your data already imports CSV into editable record types. For CSV import,
+match field ids to the headers and use the built-in import, with no run.`
 
 func systemPrompt() string {
 	return skill + "\n\n" + instructions
@@ -389,7 +376,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	}
 	var catalog string
 	if in.Stage != Planning {
-		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "Form", "RecordPage", "Button", "Sheet"})
+		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "add-chart", "Form", "RecordPage", "Button", "Sheet"})
 		if err != nil {
 			return nil, "", BuildCalls{}, err
 		}
