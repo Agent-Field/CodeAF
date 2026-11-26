@@ -64,6 +64,7 @@
         },
         "agent": { "type": "string" },
         "prompt": { "type": "string" },
+        "tools": { "type": "array", "uniqueItems": true, "items": { "enum": ["render"] } },
         "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)+$" },
         "as": { "type": "string" },
         "args": { "type": "object" },

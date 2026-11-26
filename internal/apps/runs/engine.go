@@ -413,7 +413,7 @@ func (c *checkpoint) bindAgentSubject() {
 	switch {
 	case step.AI != nil && step.AI.Propose != "":
 		c.bindSubject(c.Params[strings.TrimPrefix(step.AI.Propose, "$params.")])
-	case def.Run == "_agent_ask" || strings.HasPrefix(def.Run, "_agent_duty_"):
+	case AgentConversation(def.Run):
 		c.Screen, _ = c.Params["screen"].(string)
 		c.bindSubject(map[string]any{"id": c.Params["record"], "type": c.Params["type"]})
 	default:

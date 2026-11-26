@@ -35,19 +35,27 @@ steps:
 		name, output, state string
 	}{
 		{"valid", `{"reply":"Yes, you can import CSV."}`, runs.Done},
+		{"ordinary analysis", `{"reply":"Analysis: review the contract"}`, runs.Done},
 		{"invalid", `{"reply":42}`, runs.Incomplete},
 		{"extra", `{"reply":"Yes."} Thanks!`, runs.Incomplete},
+		{"simulated call", `{"reply":"start_run({})\nI started the follow-up run."}`, runs.Incomplete},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
 			e := newEngine(t, definition, runs.Config{Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
-				if call.Prompt != "Draft a reply to Can I import records?" || call.Remaining != 0.01 {
+				calls++
+				if calls == 1 && (call.Prompt != "Draft a reply to Can I import records?" || call.Remaining != 0.01) {
 					t.Fatalf("call = %+v", call)
 				}
 				return runs.Reply{Output: tc.output, Cost: 0.002}, nil
 			}})
 			r := start(t, e)
 			tick(t, e)
-			if got := state(t, e, r.ID); got.State != tc.state || got.Cost != 0.002 {
+			wantCalls := 1
+			if tc.state == runs.Incomplete {
+				wantCalls = 2
+			}
+			if got := state(t, e, r.ID); got.State != tc.state || calls != wantCalls || got.Cost != 0.002*float64(wantCalls) {
 				t.Fatalf("run = %+v", got)
 			}
 		})

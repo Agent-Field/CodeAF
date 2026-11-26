@@ -5587,6 +5587,11 @@
             },
             "prompt": {
               "type": "string"
+            },
+            "tools": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["render"] }
             }
           },
           "required": [
@@ -5600,7 +5605,8 @@
           }
         ],
         "modifiers": [
-          "prompt"
+          "prompt",
+          "tools"
         ],
         "auxiliary": false
       },

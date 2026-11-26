@@ -8,8 +8,8 @@ Bind a button or a run step to `render: {output: invoice-pdf, record: $row.id}` 
 
 ## Let an app run's agent generate a document
 
-A kit 2 app with outputs can give its run's agent a record ID or ask it to
-render a declared query. The agent calls `codeaf app render` with
+In a kit 2 app with outputs, add `tools: [render]` to the run's `agent` step
+when it should render a supplied record or a declared query. The agent calls `codeaf app render` with
 `{"output":"invoice-pdf","record":"RECORD_ID"}`. Its run supplies the app and
 actor. Grant the agent `render/invoice-pdf` before it can call that Action. The saved receipt identifies the run and credits its agent. Send the
 same arguments again in that step to retrieve the saved receipt.

@@ -62,7 +62,7 @@ func runClaudeAppAI(ctx context.Context, call runs.AgentCall) (runs.Reply, error
 		"--output-format", "json", "--max-turns", "1", "--max-budget-usd", strconv.FormatFloat(call.Remaining, 'f', -1, 64),
 		"--system-prompt", appAISystem(call.AI))
 	cmd.Dir = dir
-	cmd.Stdin = strings.NewReader(call.Prompt)
+	cmd.Stdin = strings.NewReader(call.ModelPrompt())
 	raw, err := cmd.Output()
 	var answer struct {
 		Cost    float64 `json:"total_cost_usd"`

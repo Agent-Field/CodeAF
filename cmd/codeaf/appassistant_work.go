@@ -14,8 +14,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-const appAgentAskRun = "_agent_ask"
-const appAgentDutyPrefix = "_agent_duty_"
+const appAgentAskRun = runs.AgentAskRun
+const appAgentDutyPrefix = runs.AgentDutyPrefix
 
 type savedAppDuty struct {
 	appwire.AppAgentDuty
