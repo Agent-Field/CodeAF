@@ -396,7 +396,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
 | `data.unsubscribe` | `{sub}` | `Empty` |
 | `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
-| `data.view.query` | `{app?,draft?,screen,view,args?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. The data policy and field masks apply to the returned rows. |
+| `data.view.query` | `{app,draft?,screen,view,args?,query?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. Optional lens tokens add filters or change the order before the view's window limit. Grouped row views include their grouping fields. Data policy and field masks apply to all returned fields. |
 | `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
 | `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
 | `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
@@ -3221,6 +3221,7 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.list` | `{}` | `{apps:[{id,name,icon,version,updated_at,status}]}`. Status is `active`, `archived`, or `broken`. Deleted apps are omitted. |
 | `apps.get` | `{app}` | `{meta,app,plan,screens:[ids],runs:[ids],agent_md}` for the same checked version. Falls back to the newest valid saved version when needed. |
 | `apps.screen` | `{app,screen}` | `{screen}` containing the screen JSON from the live checked version. |
+| `apps.content.read` | `{app,draft?,ref}` | `{text}` for a saved `docs/*.md` or `plan/*.json` file in the checked app or its draft. |
 | `apps.versions` | `{app}` | `{versions:[{n,at,request,summary}]}`, newest first. |
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
@@ -3257,6 +3258,16 @@ a file from the Kit or export a kept app as a template.
 | `apps.update` | `{app,path}` | A proposal with `source:"package_update"`. The file must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
 | `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
 | `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
+
+Format 1 packages can carry the field declarations of a shared type. An
+install binds compatible common keys to the receiving profile's records
+and adds missing declarations. When a shared type is missing, Apply
+creates it. Its local declaration keeps an optional `portable_reuse`
+flag so a subsequent export can offer the same binding. Older archives
+can supply those fields from the package manifest. If two different
+private types use the same alias, Apply stores the new type separately
+and preserves the app's alias and its references. The local
+`package_private` flag records that choice and is omitted on export.
 
 Package proposals are emitted on `apps.change_proposed` and persist in
 `apps.build_state.proposal` and `apps.list.builds[].proposal`. The

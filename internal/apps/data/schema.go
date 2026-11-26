@@ -50,21 +50,22 @@ type Field struct {
 // rules, lifecycle) it has now. Hidden is a type no app declares any more;
 // its records are kept and the Data place still shows them.
 type Type struct {
-	policy       *appschema.RecordPolicy
-	rowRule      *rowPolicy
-	fieldRules   map[string]string
-	Common       CommonTypeKey
-	rules        writeRules
-	ID           string
-	Name         string
-	CreatedByApp string
-	DefinedBy    string
-	Title        string
-	Label        string
-	CreatedAt    string
-	Hidden       bool
-	UsedBy       []string
-	Fields       map[string]*Field
+	packagePrivate bool
+	policy         *appschema.RecordPolicy
+	rowRule        *rowPolicy
+	fieldRules     map[string]string
+	Common         CommonTypeKey
+	rules          writeRules
+	ID             string
+	Name           string
+	CreatedByApp   string
+	DefinedBy      string
+	Title          string
+	Label          string
+	CreatedAt      string
+	Hidden         bool
+	UsedBy         []string
+	Fields         map[string]*Field
 	// Order is every field, visible and hidden, in the order the apps
 	// declared them: the defining app's first.
 	Order     []string
@@ -297,7 +298,7 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 			def.Rules = ruleDeclarations{}
 		}
 		t := &Type{
-			policy: def.Policy, ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
+			packagePrivate: def.PackagePrivate, policy: def.Policy, ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
 			rules: writeRules{declarations: def.Rules}, Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
@@ -545,6 +546,16 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 		return nil, err
 	}
 	typeIDs := map[string]string{}
+	storageNames := make(map[string]string, len(resolved))
+	for alias, binding := range resolved {
+		if existing := current.byID[binding.TypeID]; existing != nil {
+			storageNames[alias] = existing.Name
+		} else if def.Records[alias].PackagePrivate {
+			storageNames[alias] = appschema.PrivateRecordName(app, alias)
+		} else {
+			storageNames[alias] = alias
+		}
+	}
 	for _, name := range def.typeOrder {
 		t := def.Records[name]
 		existing := current.byID[resolved[name].TypeID]
@@ -587,7 +598,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 		if id == "" {
 			id = w.s.ids.next(w.now)
 			if _, err := tx.Exec(`INSERT INTO types(id, name, created_by_app, def_app, def_json, created_at) VALUES(?, ?, ?, ?, '{}', ?)`,
-				id, name, app, app, at); err != nil {
+				id, storageNames[name], app, app, at); err != nil {
 				return nil, err
 			}
 		}
@@ -632,7 +643,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			if _, err := tx.Exec(`
 				INSERT INTO type_fields(field_id, app, def_json, pos, hidden) VALUES(?, ?, ?, ?, 0)
 				ON CONFLICT(field_id, app) DO UPDATE SET def_json = excluded.def_json, pos = excluded.pos, hidden = 0`,
-				fieldID, app, canonicalJSON(boundField(t.Fields[fname], resolved, current)), pos); err != nil {
+				fieldID, app, canonicalJSON(boundField(t.Fields[fname], storageNames)), pos); err != nil {
 				return nil, err
 			}
 		}
@@ -1012,7 +1023,10 @@ func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 		if !slices.Contains(t.declarers(), owner) {
 			owner = ""
 		}
-		out[name] = appschema.ExistingType{ID: t.ID, Owner: owner, Common: string(t.Common), Fields: fields}
+		hasRules := t.policy != nil || t.Lifecycle != nil || t.Ledger || len(t.Constants) != 0 ||
+			len(t.Freeze) != 0 || len(t.checklists) != 0 || len(t.rules.declarations.Routing) != 0 ||
+			len(t.rules.declarations.Bookings) != 0 || len(t.rules.approvals) != 0
+		out[name] = appschema.ExistingType{ID: t.ID, Owner: owner, Common: string(t.Common), Fields: fields, HasRules: hasRules}
 	}
 	return out
 }

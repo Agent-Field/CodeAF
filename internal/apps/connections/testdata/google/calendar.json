@@ -1,0 +1,16 @@
+{
+  "kind": "calendar#events",
+  "timeZone": "America/Toronto",
+  "nextSyncToken": "calendar-1",
+  "items": [{
+    "id": "e1",
+    "etag": "\"1\"",
+    "status": "confirmed",
+    "summary": "Thursday launch planning",
+    "description": "Review the agenda with Ari.",
+    "start": {"dateTime": "2026-11-26T11:30:00-05:00", "timeZone": "America/Toronto"},
+    "end": {"dateTime": "2026-11-26T12:00:00-05:00", "timeZone": "America/Toronto"},
+    "attendees": [{"email": "ari@example.com"}, {"email": "jo@example.com"}],
+    "hangoutLink": "https://meet.google.com/example"
+  }]
+}

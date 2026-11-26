@@ -448,6 +448,12 @@
         "uses": {
           "type": "boolean"
         },
+        "portable_reuse": {
+          "type": "boolean"
+        },
+        "package_private": {
+          "type": "boolean"
+        },
         "policy": {
           "type": "object",
           "additionalProperties": false,

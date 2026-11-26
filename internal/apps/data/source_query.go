@@ -15,6 +15,8 @@ type QuerySource struct {
 	ObservedAt      time.Time     `json:"observed_at,omitempty,omitzero"`
 	MappingEpoch    int64         `json:"mapping_epoch,omitempty"`
 	ResidencyEpoch  int64         `json:"residency_epoch,omitempty"`
+	Partial         bool          `json:"partial,omitempty"`
+	Window          int           `json:"window,omitempty"`
 	FreshForSeconds int           `json:"fresh_for_seconds,omitempty"`
 	Contributors    []QuerySource `json:"contributors,omitempty"`
 }
