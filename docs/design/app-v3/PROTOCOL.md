@@ -3178,6 +3178,17 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
 | `apps.common_types` | `{}` | `{version,types}`. Each portable key maps to the type's label, terms, and typed fields with their roles and reference targets. |
 | `apps.bind_common_type` | `{common,type}` | `{common,type,type_id}`. The existing type is selected by name or ID. Binding keeps the existing type and record IDs. |
+| `apps.match_scan` | `{type,id,fields?}` | `{}`. Compare a published Person or Organization record with other records and queue reviews. |
+| `apps.match_candidates` | `{}` | `{candidates}`. Each review lists both record IDs and revisions, the type and the match signals, score and rule version. |
+| `apps.match_accept` | `{id,survivor?}` | `{merge:{id,canonical,alias,revision}}`. Choose the survivor and complete the review. |
+| `apps.match_reject` | `{id}` | `{}`. Complete the review and remember the choice to keep the records separate. |
+| `apps.match_merge` | `{canonical,alias,canonical_revision,alias_revision}` | `{merge:{id,canonical,alias,revision}}`. Explicitly join two published records and keep both IDs. |
+| `apps.match_unmerge` | `{id,revision}` | `{}`. Restore an active merge by its receipt or history batch ID and the survivor's current revision. |
+
+Identity reviews appear in the owner's My Work with an `identity_match`
+object containing the same evidence as `apps.match_candidates`.
+`work_items.complete` takes `values:{decision:"merge"|"keep separate",survivor?}`
+for these items.
 
 ### App building and Desk Look
 

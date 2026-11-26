@@ -203,27 +203,29 @@ func (s *Store) Epochs(sc Scope, typ string) (TypeEpochs, error) {
 
 // AdvanceEpochs commits a mapping or residency generation with its reset.
 func (s *Store) AdvanceEpochs(typeID string, expected, next TypeEpochs) error {
+	return s.write(func(w *writeTx) error { return w.advanceEpochs(typeID, expected, next) })
+}
+
+func (w *writeTx) advanceEpochs(typeID string, expected, next TypeEpochs) error {
 	if next == expected || next.Mapping < expected.Mapping || next.Residency < expected.Residency {
 		return errorf(CodeInvalid, "mapping and residency epochs must advance")
 	}
-	return s.write(func(w *writeTx) error {
-		if w.schema.byID[typeID] == nil {
-			return errorf(CodeNotFound, "there is no such record type")
-		}
-		current, err := readEpochs(w.tx, typeID)
-		if err != nil {
-			return err
-		}
-		if current != expected {
-			return errorf(CodeStale, "the type's epochs have changed")
-		}
-		if _, err := w.tx.Exec(`INSERT INTO type_epochs VALUES(?, ?, ?)
+	if w.schema.byID[typeID] == nil {
+		return errorf(CodeNotFound, "there is no such record type")
+	}
+	current, err := readEpochs(w.tx, typeID)
+	if err != nil {
+		return err
+	}
+	if current != expected {
+		return errorf(CodeStale, "the type's epochs have changed")
+	}
+	if _, err := w.tx.Exec(`INSERT INTO type_epochs VALUES(?, ?, ?)
 			ON CONFLICT(type_id) DO UPDATE SET mapping = excluded.mapping, residency = excluded.residency`,
-			typeID, next.Mapping, next.Residency); err != nil {
-			return err
-		}
-		return w.invalidate(EventMappingChanged, typeID, "")
-	})
+		typeID, next.Mapping, next.Residency); err != nil {
+		return err
+	}
+	return w.invalidate(EventMappingChanged, typeID, "")
 }
 
 // ExternalKey carries an opaque, typed source key in its connection, object
@@ -251,46 +253,8 @@ func (s *Store) LinkIdentity(common CommonTypeKey, key ExternalKey, entityID str
 	}
 	var id string
 	err := s.write(func(w *writeTx) error {
-		if w.s.draft != "" {
-			return errorf(CodeNotAllowed, "source identities belong to the published store")
-		}
-		var typeID string
-		err := w.tx.QueryRow(`SELECT type_id FROM common_types WHERE key = ?`, common).Scan(&typeID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return errorf(CodeNotFound, "the common type has no binding")
-		}
-		if err != nil {
-			return err
-		}
-		existing, existingType, err := findIdentity(w.tx, key)
-		if err != nil {
-			return err
-		}
-		if existing != "" {
-			if existingType != typeID || entityID != "" && existing != entityID {
-				return errorf(CodeInvalid, "the source key is already linked")
-			}
-			id = existing
-			return nil
-		}
-		id = entityID
-		if id == "" {
-			id = w.s.ids.next(w.now)
-		} else {
-			var have string
-			err := w.tx.QueryRow(`SELECT type_id FROM canonical_entities WHERE id = ?
-				UNION ALL SELECT type_id FROM records WHERE id = ? LIMIT 1`, id, id).Scan(&have)
-			if errors.Is(err, sql.ErrNoRows) || err == nil && have != typeID {
-				return errorf(CodeInvalid, "the canonical entity does not belong to the common type")
-			}
-			if err != nil {
-				return err
-			}
-		}
-		if _, err := w.tx.Exec(`INSERT OR IGNORE INTO canonical_entities VALUES(?, ?)`, id, typeID); err != nil {
-			return err
-		}
-		_, err = w.tx.Exec(`INSERT INTO external_keys VALUES(?, ?, ?, ?, ?)`, append(key.args(), id)...)
+		var err error
+		id, err = w.linkIdentity(common, key, entityID)
 		return err
 	})
 	if err != nil {
@@ -299,12 +263,69 @@ func (s *Store) LinkIdentity(common CommonTypeKey, key ExternalKey, entityID str
 	return id, nil
 }
 
-func findIdentity(q querier, key ExternalKey) (id, typeID string, err error) {
+func (w *writeTx) linkIdentity(common CommonTypeKey, key ExternalKey, entityID string) (string, error) {
+	if w.s.draft != "" {
+		return "", errorf(CodeNotAllowed, "source identities belong to the published store")
+	}
+	var typeID string
+	err := w.tx.QueryRow(`SELECT type_id FROM common_types WHERE key = ?`, common).Scan(&typeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errorf(CodeNotFound, "the common type has no binding")
+	}
+	if err != nil {
+		return "", err
+	}
+	existing, existingType, err := findIdentity(w.tx, key)
+	if err != nil {
+		return "", err
+	}
+	if entityID != "" {
+		entityID, err = identityRoot(w.tx, entityID)
+		if err != nil {
+			return "", err
+		}
+	}
+	if existing != "" {
+		if existingType != typeID || entityID != "" && existing != entityID {
+			return "", errorf(CodeInvalid, "the source key is already linked")
+		}
+		return existing, nil
+	}
+	id := entityID
+	if id == "" {
+		id = w.s.ids.next(w.now)
+	} else {
+		var have string
+		err := w.tx.QueryRow(`SELECT type_id FROM canonical_entities WHERE id = ?
+				UNION ALL SELECT type_id FROM records WHERE id = ? LIMIT 1`, id, id).Scan(&have)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && have != typeID {
+			return "", errorf(CodeInvalid, "the canonical entity does not belong to the common type")
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	if _, err := w.tx.Exec(`INSERT OR IGNORE INTO canonical_entities VALUES(?, ?)`, id, typeID); err != nil {
+		return "", err
+	}
+	_, err = w.tx.Exec(`INSERT INTO external_keys VALUES(?, ?, ?, ?, ?)`, append(key.args(), id)...)
+	return id, err
+}
+
+func findIdentityOrigin(q querier, key ExternalKey) (id, typeID string, err error) {
 	err = q.QueryRow(`SELECT e.id, e.type_id FROM external_keys k
 		JOIN canonical_entities e ON e.id = k.entity_id
 		WHERE k.binding = ? AND k.object = ? AND k.key = ? AND k.generation = ?`, key.args()...).Scan(&id, &typeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
+	}
+	return
+}
+
+func findIdentity(q querier, key ExternalKey) (id, typeID string, err error) {
+	id, typeID, err = findIdentityOrigin(q, key)
+	if err == nil && id != "" {
+		id, err = identityRoot(q, id)
 	}
 	return
 }
@@ -332,17 +353,7 @@ func (s *Store) LookupBoundIdentity(binding TypeBinding, key ExternalKey) (strin
 
 // ExternalKeys returns the crosswalk's reverse lookup for trusted source adapters.
 func (s *Store) ExternalKeys(entityID string) ([]ExternalKey, error) {
-	out := []ExternalKey{}
-	err := eachRow(s.rdb, `SELECT binding, object, key, generation FROM external_keys
-		WHERE entity_id = ? ORDER BY binding, object, key, generation`, []any{entityID}, func(scan func(...any) error) error {
-		var key ExternalKey
-		if err := scan(&key.Binding, &key.Object, &key.Key, &key.Generation); err != nil {
-			return err
-		}
-		out = append(out, key)
-		return nil
-	})
-	return out, err
+	return s.groupExternalKeys(entityID)
 }
 
 // resolveBindings checks all aliases before registration touches any declarations.
