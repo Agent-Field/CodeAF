@@ -177,6 +177,7 @@ func TestOrdinaryCreationUsesTheRecordFormAndPreservesRequestedRuns(t *testing.T
 "actions":[{"id":"add-contact","line":"Add a shared contact"}]}`
 	files := map[string]string{
 		schema.PlanFile:            outline,
+		schema.AppFile:             `{"records":{"contact":{"uses":true,"fields":{}}},"capabilities":{"records":{"contact":"rw"}}}`,
 		"runs/add-contact.yaml":    "run: add-contact",
 		"runs/create-contact.yaml": "run: create-contact",
 	}
@@ -189,5 +190,33 @@ func TestOrdinaryCreationUsesTheRecordFormAndPreservesRequestedRuns(t *testing.T
 		len(plan.Automation) != 1 || plan.Automation[0].ID != "create-contact" ||
 		files["runs/add-contact.yaml"] != "" || files["runs/create-contact.yaml"] == "" {
 		t.Fatalf("compiled plan = %+v, %v", plan, err)
+	}
+}
+
+func TestRecordFormSelectionKeepsReadOnlyAndApprovalRuns(t *testing.T) {
+	for _, tc := range []struct{ ask, access string }{
+		{"Add a shared contact", "r"},
+		{"Add a shared contact. Approve before saving.", "rw"},
+	} {
+		t.Run(tc.ask, func(t *testing.T) {
+			files := map[string]string{
+				schema.PlanFile: `{"ask":"Add shared contacts","data":[{"id":"contact","line":"Contacts","uses":true}],
+"automation":[{"id":"add-contact","line":"Add a shared contact"}]}`,
+				schema.AppFile:          `{"records":{"contact":{"uses":true,"fields":{}}},"capabilities":{"records":{"contact":"` + tc.access + `"}}}`,
+				"runs/add-contact.yaml": "run: add-contact\nsteps:\n  - id: save\n    records.create: {type: contact, set: {name: Example}}\n",
+			}
+			work := plannedWork(tc.ask, schema.Plan{})
+			if err := work.apply(files); err != nil {
+				t.Fatal(err)
+			}
+			plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+			run, err := schema.ParseRun([]byte(files["runs/add-contact.yaml"]))
+			if err != nil || run.Run != "add-contact" || len(plan.Automation) != 1 || plan.Data[0].Create {
+				t.Fatalf("expected the original run to survive: %+v, %v", plan, err)
+			}
+			if tc.access == "rw" && (run.Steps[0].Gate == nil || run.Steps[0].Gate.Approval != "proof") {
+				t.Fatalf("expected a gate before saving: %+v", run)
+			}
+		})
 	}
 }

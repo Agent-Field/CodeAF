@@ -16,10 +16,12 @@ type planCapability struct {
 	names string
 }
 
+var localWriteApproval = regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:sav\w*|writ\w*|updat\w*)\b`)
+
 var planCapabilities = []planCapability{
 	{schema.BuiltinCSV, regexp.MustCompile(`(?i)\b(?:import|upload)(?:s|ed|ing)?\b[^.!?;]{0,45}\bcsv\b|\bcsv[ -]+import\b`), `(?:csv[ -]+imports?|import(?:ing)?[ -]+csv)`},
 	{schema.BuiltinLifecycle, regexp.MustCompile(`(?i)\b(?:lifecycle(?:[ -]+transitions?)?|(?:state|stage)[ -]+transitions?)\b`), `(?:(?:record[ -]+)?lifecycle|state[ -]+transitions?)`},
-	{schema.BuiltinApproval, regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:sav\w*|writ\w*|updat\w*)\b`), `(?:local[ -]+)?approval`},
+	{schema.BuiltinApproval, localWriteApproval, `(?:local[ -]+)?approval`},
 }
 
 var lifecycleMove = regexp.MustCompile(`(?i)\b(?:move|mark|transition|change|advance)\b[^.!?;]{0,60}\b(?:to|into)\b`)
@@ -159,14 +161,27 @@ var guardedCreation = regexp.MustCompile(`(?i)\b(?:approv\w*|confirm\w*|verify|v
 // A plain create action belongs to the record form. Keep explicitly
 // requested runs and work that has its own effect or approval.
 func (w buildPlan) selectRecordForms(plan *schema.Plan, files map[string]string) {
+	if localWriteApproval.MatchString(w.ask) {
+		return
+	}
+	app, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil {
+		return
+	}
 	selectForm := func(line schema.PlanLine) bool {
 		if hasPlanLine(w.runs, line.ID) || !ordinaryCreation.MatchString(line.Line) ||
 			independentWork.MatchString(line.Line) || guardedCreation.MatchString(line.Line) {
 			return false
 		}
+		if slices.ContainsFunc(w.builtins, func(b schema.PlanBuiltin) bool { return b.Run == line.ID }) ||
+			slices.ContainsFunc(app.Triggers, func(t schema.Trigger) bool { return t.Run == line.ID }) ||
+			slices.ContainsFunc(app.Commands, func(c schema.Command) bool { return c.Run == line.ID }) {
+			return false
+		}
 		for i := range plan.Data {
 			record := &plan.Data[i]
-			if line.ID == "add-"+record.ID || line.ID == "create-"+record.ID {
+			if app.Capabilities.Records[record.ID] == "rw" &&
+				(line.ID == "add-"+record.ID || line.ID == "create-"+record.ID) {
 				record.Create = true
 				removeRunFiles(files, line.ID)
 				return true
