@@ -23,25 +23,15 @@ type Completer interface {
 	CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error)
 }
 
-const instructions = `You make personal apps in codeaf. Use codeaf app COMMAND {JSON}
-through the available command executor. It executes a single app command
-directly. Run one command at a time so each sees the changes before it.
-The engine supplies your scope from this session. Report brief progress
-during long tool sequences.
+const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
+at a time in the scoped executor. Report progress during long tool sequences.
 
-Start with codeaf app context. It gives your phase, manifest, plan, other
-definition names and the last Check findings. Inspect an existing type with
-context {"type":"contact"} only if its shape is absent from the manifest.
-Read an individual definition with context {"file":"screens/deals.json"}
-only when needed to change it. Keep using the result until that file changes.
-The manifest and plan in context contain their full text when present.
-Use the earlier reply for files listed as unchanged.
-If you need kit descriptors, fetch them together with
-parts {"select":["add-view/board","RecordList"]}.
-Use the examples below directly for ordinary plans, types, and views.
-Consult reference for a schema or synthetic worked-example file only when needed.
-Use {"schema":"app-2.json"} for types and settings, {"schema":"process-2.json"}
-for lifecycle rules, and {"schema":"run-2.json"} or
+Start with codeaf app context for the manifest, plan, file names and Check
+findings. Get an external shape with context {"type":"contact"} and a file
+with context {"file":"screens/deals.json"}. Reuse replies for unchanged files.
+Fetch needed kit descriptors together with parts {"select":["add-view/board","RecordList"]}.
+Use the examples below first. If needed, use reference {"schema":"app-2.json"}
+for types and settings, process-2.json for lifecycle, and run-2.json or
 {"example":"crm","file":"runs/follow-up.yaml"} for automations.
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
@@ -79,8 +69,8 @@ set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids such as launch-research or draft-thread. Use params for
 inputs, agent and prompt for model steps, and records.create for saved results.
-Set agent to the app agent's exact configured name. Never set a
-lifecycle-owned field with records.create or records.update. Use a send gate on the outbound tool step with the exact text in its args.
+Use the configured agent name and omit lifecycle-owned fields from record
+writes. Put a send gate on the outbound tool step with the exact text in its args.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Set the app's schedule and commands through configure. Use set-agent for
 instructions and configure agent to point at agent.md.
@@ -110,9 +100,8 @@ In sample rows, use only the existing type's fields returned by context.
 If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
 Keep existing screen and node ids. For marked edits, use claim with screen
-and node and preserve the rest of that screen. The Data place imports CSV.
-Provide fields that map to the CSV headers. Finish with what the person can
-try. The person chooses when to Apply.`
+and node and preserve the rest of that screen. Map CSV headers to fields. Say
+what to try. The person chooses when to Apply.`
 
 func systemPrompt() string {
 	return skill + "\n\n" + instructions
