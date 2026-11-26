@@ -131,7 +131,7 @@ Consult kit-steps before authoring a calculation. Import by ID and version
 with use-kit-step, then grant and call it like any other custom tool.`
 
 func systemPrompt() string {
-	return skill + "\n\n" + instructions
+	return skill + "\n\n" + instructions + "\n\n" + archetypeInstructions
 }
 
 var definitionPath = regexp.MustCompile(`^(app\.json|plan\.json|sample\.json|agent\.md|screens/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.ya?ml|custom/[a-z][a-z0-9_-]{0,47}\.(json|tsx|step))$`)

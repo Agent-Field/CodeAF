@@ -37,6 +37,7 @@ type Recipe struct {
 	Timer      *ProcessTimer
 	WorkItem   *WorkItem
 	Template   *Template
+	Slots      *ScreenSlots
 }
 
 // RecipeResult contains the bytes for a proposed app.json and/or screen. The
@@ -57,6 +58,8 @@ func CompileRecipe(def Definition, existing TypeSet, r Recipe) (RecipeResult, er
 	}
 	var screen *Screen
 	switch r.Kind {
+	case "add-screen":
+		screen, err = c.compileArchetype(r)
 	case "add-view", "add-detail", "add-chart", "add-queue":
 		screen, err = c.compileViewRecipe(r)
 	case "add-form":

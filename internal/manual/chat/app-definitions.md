@@ -338,3 +338,15 @@ A plan timeline on a checked screen reads the app's saved plan. A definition
 document can display its saved copy until it has a record to edit.
 `apps.content.read` serves the saved document or plan from the selected app
 or preview.
+
+## Use a screen archetype for a queue, brief, board or dashboard
+
+The Builder can use `codeaf app recipe` with
+`{"kind":"add-screen","as":"queue-detail","id":"needs-review","title":"Needs review","record":"case"}`.
+The compiler builds the screen from its job and the record fields. Choose
+`queue-detail`, `brief`, `board-detail`, `dashboard`, `record`,
+`inbox-thread`, `agenda`, or `canvas-visual`.
+
+Use `codeaf app parts --for add-screen/queue-detail` to see the corresponding
+gallery screen. Pass `slots` with the job-specific inputs, such as `state`
+for the board or `metrics` and `visual` for a dashboard.
