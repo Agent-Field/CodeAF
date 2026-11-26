@@ -47,8 +47,13 @@ its harness. Deterministic records, Actions and runs work without a model.
 An outbound connector step waits at a send approval. The pending effect
 shows the operation, destination, payload and app version. A standalone
 `gate: {approval: send}` can also show exact text from the run in its
-`args`. An approval applies to that displayed effect only. A stopped or
-uncertain delivery stays incomplete. A connection must be available to
+`args`. Read an earlier `agent` step's text at `$steps.<id>.output`. For
+structured results, declare an `ai` output schema and example, then reference
+a declared field such as `$steps.draft.output.replies` in the gate's args or
+a loop. In approval arguments and loop inputs, Check points to the binding
+when it reads a missing step or tries to read a field from plain agent text.
+An approval applies to that displayed effect only. A stopped or uncertain
+delivery stays incomplete. A connection must be available to
 deliver an approved connector step.
 
 ## Connect my agent via MCP
