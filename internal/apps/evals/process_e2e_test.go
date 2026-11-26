@@ -218,7 +218,7 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 	if err := onPlan(BuildState{Plan: body}); err != nil {
 		return BuildState{}, err
 	}
-	// Every acceptance must correspond to an offer the plan actually made.
+	// Check the proposal without sending a separate reuse acceptance.
 	for _, typ := range reuse {
 		found := false
 		for _, offer := range plan.Offers {
@@ -229,12 +229,6 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 		}
 		if !found {
 			return BuildState{}, fmt.Errorf("plan did not offer existing %s records", typ)
-		}
-	}
-	for _, typ := range reuse {
-		request := "Use my existing " + typ + " records. " + prompt
-		if _, err := p.cli(ctx, "plan", map[string]string{"draft": plan.Draft, "request": request}); err != nil {
-			return BuildState{}, err
 		}
 	}
 	params := map[string]string{"draft": plan.Draft}

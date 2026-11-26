@@ -50,6 +50,11 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return err == nil
 		}
 		t := j.Queue[0]
+		// Keep a Desk choice pending if its renderer disconnects during this turn.
+		if !t.DeskReuse && s.opts.CanLook != nil && s.opts.CanLook() {
+			t.DeskReuse = true
+			j.Queue[0].DeskReuse = true
+		}
 		checking := t.Round > 0 && t.Report == nil
 		event := startEvent(t, checking)
 		j.State.State = event.Stage
@@ -59,6 +64,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return false
 		}
 
+		headless := !t.DeskReuse
 		catalog, err := s.catalog(j.App)
 		var report schema.Report
 		var files map[string]string
@@ -66,7 +72,9 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
-			report = j.checkReuse(catalog)
+			if !headless {
+				report = j.checkReuse(catalog)
+			}
 			if report.OK() {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
@@ -75,12 +83,12 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 				}
 			}
 		} else if err == nil {
-			files, reply, err = s.ask(ctx, j, t, catalog)
+			files, reply, err = s.ask(ctx, j, t, catalog, headless)
 		}
 		if ctx.Err() != nil {
 			return true
 		}
-		if err = s.commitTurn(id, t, checking, catalog, report, files, reply, err); err != nil {
+		if err = s.commitTurn(id, t, checking, headless, catalog, report, files, reply, err); err != nil {
 			return errors.Is(err, context.Canceled)
 		}
 	}
@@ -136,7 +144,7 @@ func safeTypes(types schema.TypeSet, counts map[string]int) []modelType {
 	return out
 }
 
-func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[string]string, string, error) {
+func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headless bool) (map[string]string, string, error) {
 	model, err := s.opts.Model()
 	if err != nil {
 		return nil, "", err
@@ -159,9 +167,17 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 	if request == "" {
 		request = j.LastRequest
 	}
+	using := slices.Clone(j.Accepted)
+	if headless {
+		for _, offer := range j.Offers {
+			if offer.App != "" && catalog.reuseSource(offer.Type) == offer.App && !slices.Contains(using, offer.Type) {
+				using = append(using, offer.Type)
+			}
+		}
+	}
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
-		Using: j.Accepted, Definition: j.Working.Files, Report: t.Report,
+		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -232,7 +248,7 @@ func (s *Jobs) showWork(ctx context.Context, base *job, t turn, files map[string
 	return s.save(current, Event{})
 }
 
-func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, report schema.Report, files map[string]string, reply string, err error) error {
+func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Catalog, report schema.Report, files map[string]string, reply string, err error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, loadErr := s.load(id)
@@ -246,7 +262,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 	j.Screens = screens(j.Working.Files)
 	if errors.Is(err, errModelCallLimit) {
 		j.Working = snapshot{Files: files}
-		j.describe(catalog)
+		j.describeDraft(catalog, headless, t.Stage == Planning)
 		j.State.State = Failed
 		j.Problem = "I ran out of model calls. Your changes are saved. Build again to continue."
 		if t.Stage == Planning {
@@ -285,6 +301,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 		ok := report.OK()
 		event := Event{Stage: Checking, Round: t.Round, OK: &ok, Report: &report}
 		if ok {
+			j.describeDraft(catalog, headless, t.Stage == Planning)
 			j.Working.Passed = true
 			j.Working.CheckComplete = true
 			j.Working.Look = report.Look
@@ -335,7 +352,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 
 	j.Working = snapshot{Files: files}
 	j.Presence = nil
-	j.describe(catalog)
+	j.describeDraft(catalog, headless, t.Stage == Planning)
 	if reply == "" {
 		reply = "I updated your app."
 	}
