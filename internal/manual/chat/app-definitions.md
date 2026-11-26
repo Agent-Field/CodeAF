@@ -338,3 +338,10 @@ A plan timeline on a checked screen reads the app's saved plan. A definition
 document can display its saved copy until it has a record to edit.
 `apps.content.read` serves the saved document or plan from the selected app
 or preview.
+
+## Dashboard targets and limits
+
+A metric in a dashboard can show a target or limit beside the current value.
+Use a number in the same units as the value. A percentage uses fractions in
+the data, so an 85% target is 0.85. A metric above its limit says so. A zero
+or unavailable metric keeps its figure and comparison quiet.
