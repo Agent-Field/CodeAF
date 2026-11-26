@@ -171,6 +171,9 @@ func TestL4Fix2FirstStartCanJoin(t *testing.T) {
 		}},
 		{"unknown file", func(t *testing.T, h string) { startupFile(t, h, "my-work", "keep") }},
 		{"unknown catalog filename", func(t *testing.T, h string) { startupFile(t, h, "model-catalog-my-notes.json", "keep my work") }},
+		{"app run receipt", func(t *testing.T, h string) {
+			startupSQL(t, h, "graph.db", `INSERT INTO app_run_receipts(seq, trigger_id) VALUES(1, 'crm/won')`)
+		}},
 		{"unknown graph table", func(t *testing.T, h string) { startupSQL(t, h, "graph.db", `CREATE TABLE future_work (data TEXT)`) }},
 		{"unknown knowledge state", func(t *testing.T, h string) {
 			startupSQL(t, h, "knowledge/knowledge.sqlite", `INSERT INTO state VALUES('future-work','{}')`)
