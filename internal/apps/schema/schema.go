@@ -101,6 +101,11 @@ type Part struct {
 	Selection       bool              `json:"selection,omitempty"`
 	BindingRequired bool              `json:"binding_required,omitempty"`
 	Source          string            `json:"source,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	Sizes           []int             `json:"sizes,omitempty"`
+	Themes          []string          `json:"themes,omitempty"`
+	Inputs          []string          `json:"inputs,omitempty"`
+	Origin          *PartOrigin       `json:"origin,omitempty"`
 
 	Tier        string          `json:"tier,omitempty"`
 	Name        string          `json:"name"`

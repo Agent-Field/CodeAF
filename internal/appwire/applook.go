@@ -32,7 +32,7 @@ type AppLookRequest struct {
 }
 
 type AppLookPage struct {
-	PNGPath  string   `json:"png_path"`
+	PNGPath  string   `json:"png_path,omitempty"`
 	Problems []string `json:"problems"`
 }
 

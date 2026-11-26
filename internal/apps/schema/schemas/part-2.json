@@ -30,32 +30,78 @@
     },
     "bindings": {
       "type": "array",
-      "items": {
-        "enum": [
-          "records",
-          "params"
-        ]
-      }
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["records", "record"] }
     },
     "events": {
       "type": "array",
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_-]{0,47}$"
-      }
+      },
+      "uniqueItems": true,
+      "maxItems": 12
     },
     "binding_required": {
-      "type": "boolean"
+      "const": true
     },
     "capabilities": {
-      "enum": [
-        "r",
-        "rw"
-      ]
+      "const": "r"
     },
     "source": {
       "type": "string",
       "pattern": "^custom/[a-z][a-z0-9_-]{0,47}\\.tsx$"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "sizes": {
+      "const": [
+        800,
+        1120
+      ]
+    },
+    "themes": {
+      "const": [
+        "dark",
+        "black",
+        "light"
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 24,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+      }
+    },
+    "origin": {
+      "type": "object",
+      "required": [
+        "app",
+        "version",
+        "digest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{26}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
     }
   },
   "required": [
@@ -68,6 +114,12 @@
     "interactive",
     "bindings",
     "events",
-    "source"
+    "source",
+    "reason",
+    "sizes",
+    "themes",
+    "inputs",
+    "binding_required",
+    "capabilities"
   ]
 }

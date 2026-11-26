@@ -16,6 +16,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
+	github.com/eliben/watgo v0.9.0
 	github.com/flynn/noise v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-sql-driver/mysql v1.10.2
@@ -30,6 +31,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/segmentio/encoding v0.5.4
+	github.com/tetratelabs/wazero v1.12.0
 	github.com/yuin/goldmark v1.8.5
 	go.etcd.io/raft/v3 v3.7.0
 	golang.org/x/crypto v0.54.0

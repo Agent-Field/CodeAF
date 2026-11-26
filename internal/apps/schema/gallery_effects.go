@@ -1,9 +1,12 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 )
 
 func (c *checker) checkGalleryTrigger(i int, at string) {
@@ -275,6 +278,26 @@ func approvalKind(op OperationManifest) string {
 }
 
 func (c *checker) checkOperation(file, at, tool string, args map[string]any, gate string, screen bool) {
+	if id, ok := extensions.ToolID(tool); ok {
+		raw := c.def.Files["custom/"+id+".step"]
+		if len(raw) == 0 || screen || !contains(c.app.Capabilities.Tools, tool) {
+			c.add(file, at, CodeToolNotAllowed, "Declare and grant %q as an automation tool.", tool)
+			return
+		}
+		var step extensions.Step
+		if json.Unmarshal(raw, &step) == nil {
+			if len(step.Inputs) != len(args) {
+				c.add(file, at, CodeStepKind, "Supply exactly the custom step's declared inputs.")
+				return
+			}
+			for _, input := range step.Inputs {
+				if _, exists := args[input.Name]; !exists {
+					c.add(file, at, CodeStepKind, "Give the custom step %q.", input.Name)
+				}
+			}
+		}
+		return
+	}
 	con, verb, _ := strings.Cut(tool, ".")
 	op, exists := c.kit.Registries.Tools[con].Operations[verb]
 	need := c.app.Capabilities.Connectors[con]

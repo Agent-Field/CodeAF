@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -50,7 +51,38 @@ func (b *appBackend) RunAppContent(ctx context.Context, p appwire.AppContentScop
 		actions = slices.DeleteFunc(actions, func(a appAssistantAction) bool {
 			return a.Run != nil && !appAIRunAvailable(harnesses, a.Run.Steps)
 		})
-		return json.Marshal(map[string]any{"views": views, "actions": actions})
+		result := map[string]any{"views": views, "actions": actions}
+		tools := map[string]any{}
+		for _, name := range app.Capabilities.Tools {
+			if id, ok := extensions.ToolID(name); ok && b.appAgentAllowed(p.App, p.Principal, "actions", name) {
+				var defn extensions.Step
+				if raw, ok := def.CustomStep(id); ok && json.Unmarshal(raw, &defn) == nil {
+					tools[name] = map[string]any{"summary": defn.Summary, "inputs": defn.Inputs, "output": defn.Output}
+				}
+			}
+		}
+		if len(tools) != 0 {
+			result["custom_tools"] = tools
+		}
+		return json.Marshal(result)
+	case appwire.AppContentTool:
+		id, valid := extensions.ToolID(command.Tool.Tool)
+		if !valid || !slices.Contains(app.Capabilities.Tools, command.Tool.Tool) || !b.appAgentAllowed(p.App, p.Principal, "actions", command.Tool.Tool) {
+			return nil, appwire.Errorf(appwire.CodeForbidden, "That custom tool is unavailable to this app agent.")
+		}
+		raw, ok := def.CustomStep(id)
+		if !ok {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "The custom tool is missing from this app.")
+		}
+		step, err := extensions.Parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		out, err := step.Run(ctx, command.Tool.Args)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"output": out})
 	case appwire.AppContentQuery:
 		declared, ok := views[command.Query.View]
 		if !ok {
@@ -169,9 +201,6 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 	limit := 0
 	if view.Window != nil {
 		limit = view.Window.Limit
-		if len(view.Window.OrderBy) == 1 {
-			ir.Sort = view.Window.OrderBy[0]
-		}
 	}
 	result, source, err := b.appQueryRows(s, appwire.DataScope{App: sc.App}, sc, &ir, request.Cursor, limit)
 	if err != nil {

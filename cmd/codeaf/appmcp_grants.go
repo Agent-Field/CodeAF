@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
@@ -39,6 +42,10 @@ func (b *appBackend) appAgentGrantProjection(app string, def store.Definition, o
 	for _, agent := range agents {
 		identities = append(identities, appAgentIdentity{ID: agent.ID, Name: agent.Name, Harness: agent.Harness})
 	}
+	manifest, err := schema.ParseApp(def.App)
+	if err != nil {
+		return nil, err
+	}
 	marksAvailable := appMCPMarksAvailable()
 	result := make([]appAgentGrantRow, 0, len(identities))
 	for _, identity := range identities {
@@ -53,6 +60,14 @@ func (b *appBackend) appAgentGrantProjection(app string, def store.Definition, o
 			row.Actions = append(row.Actions, permission("actions", action.ID, action.Label))
 		}
 		if identity.ID == own.ID {
+			for _, name := range manifest.Capabilities.Tools {
+				if id, ok := extensions.ToolID(name); ok {
+					var step extensions.Step
+					if raw, ok := def.CustomStep(id); ok && json.Unmarshal(raw, &step) == nil {
+						row.Actions = append(row.Actions, permission("actions", name, step.Summary))
+					}
+				}
+			}
 			row.Actions = append(row.Actions, permission("actions", "propose_change", "Propose changes"))
 		} else {
 			for _, screen := range def.Screens {

@@ -461,3 +461,65 @@ func TestGalleryContentSurvivesKeepAndRevert(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomPartKitCopiesTheVersionAndLineage(t *testing.T) {
+	s, home := testStore(t)
+	files := map[string]string{
+		"app.json":  strings.Replace(appJSON, `"kit":0`, `"kit":2`, 1),
+		"plan.json": planJSON,
+		"agent.md":  "Manage contacts.",
+		"screens/main.json": `{"screen":"main","title":"Contacts","views":{"contacts":{"type":"contact","select":["name"]}},
+			"body":{"id":"proof","label":"Proof","part":"custom/proof","bind":{"records":"contact","view":"contacts"}}}`,
+	}
+	add := func(bundle map[string]string) store.Meta {
+		t.Helper()
+		draft, err := s.NewDraft("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range files {
+			write(t, draft.Dir(), name, content)
+		}
+		for name, content := range bundle {
+			write(t, draft.Dir(), name, content)
+		}
+		m, err := s.Promote(draft, "Keep the proof")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	first := add(map[string]string{
+		"custom/proof.json": `{"name":"custom/proof","source":"custom/proof.tsx","version":1,"summary":"Label proof","reason":"The built-in catalog cannot draw flat positions.",
+			"example":{},"props":{"type":"object"},"children":"none","interactive":false,"events":[],"bindings":["records"],"binding_required":true,
+			"capabilities":"r","inputs":["name"],"sizes":[800,1120],"themes":["dark","black","light"]}`,
+		"custom/proof.tsx": `<part><dot-cells field="name"/></part>`,
+	})
+	promoted, err := s.PromotePart(first.ID, "proof")
+	if err != nil || promoted.Origin == nil || promoted.Origin.App != first.ID || promoted.Origin.Version != first.Version || promoted.Version != 1 {
+		t.Fatalf("promotion = %+v, %v", promoted.Origin, err)
+	}
+	s = store.NewAt(home, nil)
+	listed, err := s.KitParts()
+	if err != nil || len(listed) != 1 || *listed[0].Origin != *promoted.Origin {
+		t.Fatalf("Kit entries = %d, %v", len(listed), err)
+	}
+	bundle, err := s.CopyKitPart("proof", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := add(bundle)
+	if second.ID == first.ID {
+		t.Fatal("the Kit part was not used in a separate app")
+	}
+	d, err := s.Get(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen, _ := d.Screen("main")
+	programs, err := d.ScreenParts(screen)
+	pinned := programs["custom/proof"].Manifest.Origin
+	if err != nil || pinned == nil || *pinned != *promoted.Origin {
+		t.Fatalf("reused lineage = %+v, %v", pinned, err)
+	}
+}
