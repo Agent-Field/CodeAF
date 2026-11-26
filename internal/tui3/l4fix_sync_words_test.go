@@ -32,8 +32,8 @@ func TestL4FixSyncOutageWords(t *testing.T) {
 		err  error
 		want string
 	}{
-		{directory.ErrUnreachable, "the sync service is not answering"},
-		{context.DeadlineExceeded, "the sync service did not answer in time"},
+		{directory.ErrUnreachable, "the relay is not answering"},
+		{context.DeadlineExceeded, "the relay did not answer in time"},
 	} {
 		got := (machineReading{err: tc.err}).unavailableWord()
 		if got != tc.want {
@@ -48,8 +48,8 @@ func TestL4FixSyncOutageWords(t *testing.T) {
 	if strings.Count(notes, "this chat keeps working here") != 1 || strings.Contains(notes, "other machines") {
 		t.Fatal(notes)
 	}
-	if !strings.Contains(continueUnreachable, "because the sync service is not answering; your words are still in the box") {
-		t.Fatal(continueUnreachable)
+	if !strings.Contains(moveUnreachable, "because the relay is not answering; your words are still in the box") {
+		t.Fatal(moveUnreachable)
 	}
 }
 
@@ -71,7 +71,7 @@ func TestL4FixResumeCardExplainsOutage(t *testing.T) {
 	// Fresh evidence restores the offer, rather than preserving an obsolete failure.
 	feed.state = dirwatch.State{Up: true}
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := leftOffFrame(a); !strings.Contains(got, "Continue desk-b's latest chat here?") {
+	if got := leftOffFrame(a); !strings.Contains(got, "Move desk-b's latest chat here?") {
 		t.Fatal(got)
 	}
 }

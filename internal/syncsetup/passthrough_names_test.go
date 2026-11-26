@@ -337,12 +337,12 @@ func TestPassThroughNoteToAChatElsewhereIsNotLeftOnTheRelayWhileStorageIsOff(t *
 	r := newLiveRig(t)
 	liveChat(t, r)
 	if r.b.Notes() {
-		t.Fatal("Notes() says messages to another computer are on offer while sync storage is off")
+		t.Fatal("Notes() says messages to another computer are on offer while relay storage is off")
 	}
 
 	id, refused := r.b.SendNote(context.Background(), r.cell.ID, "PLAINTEXT-NOTE-MARKER-4c1e hello from B")
 	if !errors.Is(refused, syncwords.ErrNotesWaitForStorage) || id != "" {
-		t.Fatalf("SendNote = %q, %v; want the sentence that messages wait for sync storage", id, refused)
+		t.Fatalf("SendNote = %q, %v; want the sentence that messages wait for relay storage", id, refused)
 	}
 	if bad := r.wire.noteWrites(); len(bad) > 0 {
 		t.Fatalf("the relay was sent a message outbox: %v", bad)
@@ -352,7 +352,7 @@ func TestPassThroughNoteToAChatElsewhereIsNotLeftOnTheRelayWhileStorageIsOff(t *
 	if n := len(l.Devices[r.b.Device.ID()].Outbox); n != 0 {
 		t.Fatalf("the relay holds %d sealed messages from B", n)
 	}
-	if !strings.Contains(refused.Error(), "sync storage") {
+	if !strings.Contains(refused.Error(), "relay storage") {
 		t.Fatalf("the refusal %q does not say what the message is waiting for", refused)
 	}
 }

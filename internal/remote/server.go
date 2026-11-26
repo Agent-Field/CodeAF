@@ -62,12 +62,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -381,7 +383,37 @@ const frameCap = 64 << 20
 // of the session file, everything that landed is in it, and the surface reads
 // it anyway. The ring exists for the one thing the journal cannot answer — a
 // turn that is still being written — and for nothing else.
-const ringEvents = 4096
+const (
+	ringEvents = 4096
+	// ringBytes caps the total payload bytes one running stream's replay ring
+	// retains beside ringEvents. The newest event is always kept even when it
+	// exceeds this bound on its own, so first and last remain exact.
+	ringBytes = 1 << 20
+
+	// messageRepeatCap bounds the per-Session table of recent remote sends
+	// keyed by (Remote.Device, SubmitArgs.ClientID).
+	messageRepeatCap = 256
+	// messageRepeatTailScan bounds how many entries at the tail of the
+	// persisted transcript are checked for a PersonMark.ClientID before a new
+	// remote send is delivered.
+	messageRepeatTailScan = 200
+)
+
+var (
+	ringEventLimit = ringEvents
+	ringByteLimit  = ringBytes
+)
+
+type messageRepeatKey struct {
+	device   string
+	clientID string
+}
+
+type messageRepeatEntry struct {
+	done    chan struct{}
+	payload json.RawMessage
+	ok      bool
+}
 
 // Serve runs one engine on one pipe until the pipe dies or the protocol does.
 // It returns nil for an ordinary hang-up and an error for everything the
@@ -532,6 +564,11 @@ type Session struct {
 	// are driver.go's, and that file is the whole of the rule.
 	driver   *server
 	arrivals uint64
+	// kept is the keyboard a remote viewer held when its link ended, held for
+	// that same viewer for [keyboardKeepFor] (driver.go's keptKeyboard). It is
+	// what lets a road swap, which closes the old link BEFORE the new one
+	// arrives, hand the keyboard back to the viewer that had it.
+	kept *keptKeyboard
 	// factsRev counts the fact sets this session has stated. It is minted under
 	// mu beside the reading it labels, which is what makes it an ORDER and not
 	// a timestamp: two facts can move in the same instant and the two pushes
@@ -557,6 +594,10 @@ type Session struct {
 	// unattended door takes can say which window it believed had gone. It is a
 	// label, never an identity, and empty when nobody was ever here.
 	lastWatch string
+
+	repeatMu    sync.Mutex
+	repeats     map[messageRepeatKey]*messageRepeatEntry
+	repeatOrder []messageRepeatKey
 }
 
 // watchGrace is how long a window goes on counting as somebody watching after
@@ -595,6 +636,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		tasklanes:  map[*server]*taskFeed{},
 		lanes:      map[laneName]map[*server]*laneFeed{},
 		newsfeeds:  map[*server]*newsFeed{},
+		repeats:    map[messageRepeatKey]*messageRepeatEntry{},
 		empty:      time.Now(),
 	}
 	// The conversation watches its own turns from the moment it exists, so a
@@ -1074,14 +1116,30 @@ type ring struct {
 	// zero means "nothing of this stream has been seen" (wire.go's Frame.Seq).
 	first  uint64
 	last   uint64
+	bytes  int
 	events []json.RawMessage
 }
 
 func (r *ring) add(payload json.RawMessage) uint64 {
 	r.last++
 	r.events = append(r.events, payload)
-	if len(r.events) > ringEvents {
-		r.events = r.events[len(r.events)-ringEvents:]
+	r.bytes += len(payload)
+	maxEvents := ringEventLimit
+	if maxEvents < 1 {
+		maxEvents = 1
+	}
+	maxBytes := ringByteLimit
+	evicted := 0
+	for len(r.events)-evicted > 1 && (len(r.events)-evicted > maxEvents || (maxBytes > 0 && r.bytes > maxBytes)) {
+		r.bytes -= len(r.events[evicted])
+		r.events[evicted] = nil
+		evicted++
+	}
+	if evicted > 0 {
+		r.events = r.events[evicted:]
+		if cap(r.events) > 2*maxEvents && cap(r.events) >= 64 {
+			r.events = append([]json.RawMessage(nil), r.events...)
+		}
 		r.first = r.last - uint64(len(r.events)) + 1
 	}
 	return r.last
@@ -1157,7 +1215,15 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// THE ARRIVAL IS NUMBERED BEFORE THE WELCOME IS BUILT, because the welcome
 	// says which questions THIS surface is owed and the number is how a card
 	// names the surfaces that have already drawn it (held.go).
-	s.name = machineLabel(hello.Surface)
+	if hello.Remote != nil && s.remote == nil {
+		copied := *hello.Remote
+		s.remote = &copied
+	}
+	surface := hello.Surface
+	if s.remote != nil {
+		surface = s.remote.Label
+	}
+	s.name = machineLabel(surface)
 	s.clientID = strings.TrimSpace(hello.ClientID)
 	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
 	// watching, and a pipe that tears on the way in — or a getter that
@@ -1169,22 +1235,24 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	}
 	sess.arrivals++
 	s.arrived = sess.arrivals
+	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
+	// new one (driver.go states the whole rule, [Hello.Back] states why the
+	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
+	// flag is recorded so no later hand-on can give it the keyboard either. For a
+	// remote viewer the host decides from the door's stamp rather than trusting
+	// the viewer's own Watch flag.
+	s.watching = hello.Watch || (s.remote != nil && !s.remote.Drive)
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
 	// The initial capability reads the arrival directly, preserving the machine's
 	// existing point at which a watcher becomes registered.
-	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
+	welcome.TaskComputers = !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
 	sess.releaseOnIdle = false
-	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
-	// new one (driver.go states the whole rule, [Hello.Back] states why the
-	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
-	// flag is recorded so no later hand-on can give it the keyboard either.
-	s.watching = hello.Watch
 	if hello.Join {
 		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
 		// against the one open under this same lock a few lines above. The engine's
@@ -1196,9 +1264,18 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// window may replace that stale driver, because Attached counts every live
 	// surface and cannot distinguish the returning window from another one.
 	// Replacing the driver pointer makes the old pipe a non-driver immediately;
-	// its later detach therefore cannot take the keyboard away again.
-	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.clientID == s.clientID
-	if !s.watching && (!hello.Back || sess.driver == nil || sameReturningWindow) {
+	// its later detach therefore cannot take the keyboard away again. A remote
+	// viewer never takes the keyboard on arrival; it takes only via MethodTake,
+	// EXCEPT THAT A REMOTE VIEWER WHICH IS THE ONE THAT HOLDS IT, OR HELD IT A
+	// MOMENT AGO, keeps it (driver.go's [Session.remoteKeepsKeyboardLocked]).
+	// A redial, and a swap of the road under a view, are the same viewer coming
+	// back, and a viewer that lost the keyboard on every one of them could never
+	// type through a road change.
+	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.remote == nil && s.remote == nil && sess.driver.clientID == s.clientID
+	switch {
+	case !s.watching && s.remote == nil && (!hello.Back || sess.driver == nil || sameReturningWindow):
+		sess.takeLocked(s)
+	case !s.watching && s.remote != nil && sess.remoteKeepsKeyboardLocked(s):
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -1249,6 +1326,7 @@ func (sess *Session) detach(s *server, deliberate bool) {
 	// (driver.go's handOnLocked).
 	moved := false
 	if sess.driver == s {
+		sess.keepKeyboardLocked(s, deliberate)
 		sess.handOnLocked()
 		moved = true
 	}
@@ -1430,6 +1508,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		MessageRepeat:              s.remote != nil,
 		QueuedMarks:                queuedMarksKnown(sess.agent),
 		AppTaskReceipt:             appTaskReceiptKnown(sess.agent),
 		// Whether this engine can hold a folder at all, asked of the agent it has
@@ -1491,7 +1570,16 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		SideAsk:       sideAskKnown(sess.agent),
 		SideAskStream: sideAskStreamKnown(sess.agent),
 		Setup:         setupKnown(sess.agent),
+		Remote:        remoteCopy(s.remote),
 	}
+}
+
+func remoteCopy(r *RemoteViewer) *RemoteViewer {
+	if r == nil {
+		return nil
+	}
+	copied := *r
+	return &copied
 }
 
 // factsLocked is the fact set as it stands, numbered.
@@ -1634,7 +1722,16 @@ func (sess *Session) replayLocked(cursors []StreamCursor) []Frame {
 
 	var frames []Frame
 	for _, id := range ids {
-		from, events := sess.rings[id].after(seen[id])
+		r := sess.rings[id]
+		seq := seen[id]
+		if seq+1 < r.first {
+			frames = append(frames, Frame{
+				Kind:    "gap",
+				ID:      id,
+				Payload: mustJSON(Gap{Stream: id, Have: seq, First: r.first}),
+			})
+		}
+		from, events := r.after(seq)
 		for offset, payload := range events {
 			frames = append(frames, Frame{
 				Kind:    "event",
@@ -1876,10 +1973,17 @@ type server struct {
 	// is not a slow surface, it is a surface that can never parse this stream
 	// again, so every writer on this process goes through here.
 	write sync.Mutex
+	in    io.Reader
 	out   io.Writer
 	// dead records that the far end stopped listening. A write error is not
 	// worth reporting twice and there is nowhere left to report it to.
 	dead bool
+	// lagging records that a remote guest overran GuestWriteDeadline and was
+	// dropped so it could not stall the holder or other windows.
+	lagging atomic.Bool
+	// droppedOversize counts outbound non-result, non-event frames dropped
+	// because their uncompressed line exceeded DefaultMaxLine on a guest link.
+	droppedOversize atomic.Uint64
 	// encoding is selected from the hello before the welcome is sent. Empty is
 	// the old wire, which keeps a new engine compatible with an older surface.
 	encoding            string
@@ -1916,6 +2020,9 @@ type server struct {
 	// because a welcome proves whose conversation this was at the instant of
 	// arriving and another window can replace it a second later.
 	joined string
+	// remote is a copy of the viewer stamp from [Hello.Remote], or nil for a
+	// local or full-machine connection.
+	remote *RemoteViewer
 
 	// pending is the stream a call has just opened and dispatch has not yet let
 	// speak. It is one slot rather than a queue, and it needs no lock, because
@@ -1968,6 +2075,7 @@ type server struct {
 }
 
 func (s *server) serve(in io.Reader) (err error) {
+	s.in = in
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			// A panic in a handler must not end the process in silence: the
@@ -2062,6 +2170,12 @@ func (s *server) serve(in io.Reader) (err error) {
 			return nil
 		}
 	}
+	// A GUEST THAT WAS DROPPED FOR LAGGING ENDS HERE LIKE ANY HANG-UP, not as the
+	// protocol breaking: closing its connection is what made the read fail. A
+	// local surface keeps reporting the read error it always did.
+	if s.remote != nil && s.hungUp() {
+		return nil
+	}
 	if err := scan.Err(); err != nil {
 		// A line too long or a read that failed is the protocol breaking, not a
 		// person leaving.
@@ -2151,6 +2265,13 @@ func (s *server) handshake(line []byte) error {
 	}
 	if hello.Version != Version {
 		return s.refuse(wireMismatchSentence(MachineName(), Version, hello.Version, buildinfo.String()))
+	}
+	if hello.Remote != nil {
+		if !hello.Join || hello.New {
+			return s.refuse("remote control opens a chat that is already running; it never starts one")
+		}
+		copied := *hello.Remote
+		s.remote = &copied
 	}
 
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
@@ -2380,7 +2501,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// model, resolving a card, reviving a node, opening another session and
 	// closing this one all change the conversation without a word being said, and
 	// every one of them was open to a reader before this ([Hello.Watch]).
-	if s.watching && !watcherMay(call.Method) {
+	if s.remote != nil {
+		if !GuestMay(call.Method, s.remote.Drive) {
+			return nil, errors.New(GuestRefusal(HostName(), call.Method, s.remote.Drive))
+		}
+	} else if s.watching && !watcherMay(call.Method) {
 		return nil, fmt.Errorf("%s (%s)", watchingWord, call.Method)
 	}
 	// THE DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
@@ -2636,7 +2761,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if !ok {
 			return nil, errors.New("engine: this session cannot answer questions from here")
 		}
-		return nil, door.ResolveQuestion(args.Answer)
+		args.Answer.Remote = s.remote != nil
+		if err := door.ResolveQuestion(args.Answer); err != nil {
+			if errors.Is(err, session.ErrRemoteIrreversible) {
+				return nil, errors.New(chatlist.LiveNeedsItsOwnOK(HostName()))
+			}
+			if errors.Is(err, session.ErrRemoteWidening) {
+				return nil, errors.New(chatlist.LiveNotAllowedHere(HostName()))
+			}
+			return nil, err
+		}
+		return nil, nil
 	case MethodQuestionHold:
 		args, err := arg[QuestionHoldArgs](call)
 		if err != nil {
@@ -2942,41 +3077,48 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
-		// only its words would silently lose what the person attached or read.
-		var events <-chan session.Event
-		door, marked := agent.(interface {
-			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
+			// only its words would silently lose what the person attached or read.
+			var events <-chan session.Event
+			door, marked := agent.(interface {
+				SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+			})
+			hasMark := args.marked()
+			if s.remote != nil && !marked {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			if args.composed() || args.WantReceipt {
+				// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
+				// receipt rides the answer that names the stream.
+				composer, ok := agent.(composedDoor)
+				if !ok {
+					return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
+				}
+				receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
+				if err != nil {
+					return nil, err
+				}
+				if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
+					return nil, err
+				}
+				return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
+			}
+			if hasMark && !marked {
+				return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
+			}
+			// A creation context alone is no mark a door must keep, but a door that
+			// can take it is handed it; one that cannot runs the words, and the team
+			// stays unknown there.
+			if hasMark || (marked && (args.Creation != nil || args.ClientID != "")) {
+				events, err = door.SubmitMessage(context.Background(), args.submission())
+			} else {
+				events, err = agent.Submit(context.Background(), args.Text)
+			}
+			return s.stream(MethodSubmit, args.Text, events, err)
 		})
-		hasMark := args.marked()
-		if args.composed() || args.WantReceipt {
-			// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
-			// receipt rides the answer that names the stream.
-			composer, ok := agent.(composedDoor)
-			if !ok {
-				return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
-			}
-			receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
-			if err != nil {
-				return nil, err
-			}
-			if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
-				return nil, err
-			}
-			return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
-		}
-		if hasMark && !marked {
-			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
-		}
-		// A creation context alone is no mark a door must keep, but a door that
-		// can take it is handed it; one that cannot runs the words, and the team
-		// stays unknown there.
-		if hasMark || (marked && args.Creation != nil) {
-			events, err = door.SubmitMessage(context.Background(), args.submission())
-		} else {
-			events, err = agent.Submit(context.Background(), args.Text)
-		}
-		return s.stream(MethodSubmit, args.Text, events, err)
 
 	case MethodQuestionReplace:
 		args, err := arg[QuestionArgs](call)
@@ -2996,28 +3138,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
-		// is queued; its stream is registered for the take-back below exactly as
-		// a plain one's is.
-		var events <-chan session.Event
-		if args.composed() {
-			return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
-		}
-		door, ok := followUpMarksDoor(agent)
-		switch {
-		case args.marked() && !ok:
-			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
-		case ok:
-			// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
-			// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
-			// plain FollowUp is also an engine door and counts nobody. A creation
-			// context rides to it too; a door that cannot keep one queues the
-			// words and the team stays unknown.
-			events, err = door(args.submission())
-		default:
-			events, err = agent.FollowUp(args.Text)
-		}
-		return s.stream(MethodFollowUp, args.Text, events, err)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
+			// is queued; its stream is registered for the take-back below exactly as
+			// a plain one's is.
+			var events <-chan session.Event
+			if args.composed() {
+				return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+			}
+			door, ok := followUpMarksDoor(agent)
+			hasMark := args.marked()
+			if s.remote != nil && !ok {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			switch {
+			case hasMark && !ok:
+				return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
+			case ok:
+				// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
+				// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
+				// plain FollowUp is also an engine door and counts nobody. A creation
+				// context rides to it too; a door that cannot keep one queues the
+				// words and the team stays unknown.
+				events, err = door(args.submission())
+			default:
+				events, err = agent.FollowUp(args.Text)
+			}
+			return s.stream(MethodFollowUp, args.Text, events, err)
+		})
 
 	case MethodUnqueueFollowUp:
 		args, err := arg[UnqueueArgs](call)
@@ -3052,28 +3202,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
-		// reaches the turn.
-		var events <-chan session.Event
-		if args.composed() {
-			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
-		}
-		door, ok := steerMarksDoor(agent)
-		switch {
-		case args.marked() && !ok:
-			return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
-		case args.marked():
-			events, err = door(args.submission())
-		case ok:
-			// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
-			// agent's mark door is its person door ([session.Agent.SteerMessage]):
-			// plain Steer is also the engine's and runners' door and counts
-			// nobody. The words go alone, as they did by Steer.
-			events, err = door(session.Submission{Text: args.Text})
-		default:
-			events, err = agent.Steer(args.Text)
-		}
-		return s.stream(MethodSteer, args.Text, events, err)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
+			// reaches the turn.
+			var events <-chan session.Event
+			if args.composed() {
+				return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+			}
+			door, ok := steerMarksDoor(agent)
+			hasMark := args.marked()
+			if s.remote != nil && !ok {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			switch {
+			case hasMark && !ok:
+				return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+			case args.marked() && ok:
+				events, err = door(args.submission())
+			case ok:
+				// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
+				// agent's mark door is its person door ([session.Agent.SteerMessage]):
+				// plain Steer is also the engine's and runners' door and counts
+				// nobody. The words go alone, as they did by Steer.
+				events, err = door(session.Submission{Text: args.Text})
+			default:
+				events, err = agent.Steer(args.Text)
+			}
+			return s.stream(MethodSteer, args.Text, events, err)
+		})
 
 	case MethodSubmitImage:
 		args, err := arg[SubmitImageArgs](call)
@@ -3384,6 +3542,28 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		if s.remote != nil {
+			// A GUEST NEVER TAKES THE PLAIN ROAD. An engine that cannot say whether an
+			// ask is one only this computer may settle is an engine a guest may not
+			// answer for, so a missing door refuses rather than falling through to
+			// [session.Agent.ResolveConsent], which settles whatever it is handed.
+			door, ok := agent.(interface {
+				ResolveConsentFrom(uint64, bool, bool) error
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot answer questions from here")
+			}
+			if err := door.ResolveConsentFrom(args.ID, args.Allow, true); err != nil {
+				if errors.Is(err, session.ErrRemoteIrreversible) {
+					return nil, errors.New(chatlist.LiveNeedsItsOwnOK(HostName()))
+				}
+				if errors.Is(err, session.ErrRemoteWidening) {
+					return nil, errors.New(chatlist.LiveNotAllowedHere(HostName()))
+				}
+				return nil, err
+			}
+			return nil, nil
+		}
 		agent.ResolveConsent(args.ID, args.Allow)
 		return nil, nil
 
@@ -3457,6 +3637,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodTranscript:
 		return json.Marshal(agent.Transcript())
+
+	case MethodTranscriptPage:
+		args, err := arg[TranscriptPageArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(transcriptPage(agent.Transcript(), args))
 
 	case MethodEarlier:
 		return json.Marshal(agent.EarlierHistory())
@@ -3828,6 +4015,136 @@ func arg[T any](call Frame) (T, error) {
 	return value, nil
 }
 
+// transcriptPage cuts one entry- and byte-bounded window ending at args.Before
+// from the full transcript list. It trims from the older end first so a page
+// always ends at the requested index and the older entries arrive on the next
+// backward call; when a single entry exceeds maxBytes on its own, that entry is
+// returned alone with its text shortened and marked rather than dropped.
+func transcriptPage(all []session.DisplayEntry, args TranscriptPageArgs) Page {
+	total := len(all)
+	before := args.Before
+	if before <= 0 || before > total {
+		before = total
+	}
+	limit := args.Limit
+	if limit <= 0 {
+		limit = defaultTranscriptPageLimit
+	} else if limit > maxTranscriptPageLimit {
+		limit = maxTranscriptPageLimit
+	}
+	maxBytes := args.MaxBytes
+	if maxBytes <= 0 || maxBytes > maxTranscriptPageBytes {
+		maxBytes = maxTranscriptPageBytes
+	}
+	if total == 0 || before <= 0 {
+		return Page{Total: total}
+	}
+
+	from := max(0, before-limit)
+	base := before - 1
+	used := 0
+	for i := before - 1; i >= from; i-- {
+		raw, err := json.Marshal(all[i])
+		if err != nil {
+			break
+		}
+		if i == before-1 {
+			if len(raw) > maxBytes {
+				shortened := shortenDisplayEntry(all[i], maxBytes)
+				return Page{
+					Entries: []session.DisplayEntry{shortened},
+					Base:    i,
+					Total:   total,
+					More:    i > 0,
+				}
+			}
+			used = len(raw)
+			base = i
+			continue
+		}
+		if used+1+len(raw) > maxBytes {
+			break
+		}
+		used += 1 + len(raw)
+		base = i
+	}
+
+	entries := make([]session.DisplayEntry, before-base)
+	copy(entries, all[base:before])
+	return Page{
+		Entries: entries,
+		Base:    base,
+		Total:   total,
+		More:    base > 0,
+	}
+}
+
+// shortenDisplayEntry truncates the largest text field of entry and appends
+// transcriptShortenedMarker so a single oversized entry still crosses within
+// maxBytes without mutating the caller's transcript slice.
+func shortenDisplayEntry(entry session.DisplayEntry, maxBytes int) session.DisplayEntry {
+	field := &entry.Text
+	if len(entry.Output) > len(*field) {
+		field = &entry.Output
+	}
+	if len(entry.Args) > len(*field) {
+		field = &entry.Args
+	}
+	if len(entry.Hint) > len(*field) {
+		field = &entry.Hint
+	}
+	orig := *field
+	*field = transcriptShortenedMarker
+	shell, err := json.Marshal(entry)
+	if err != nil {
+		*field = truncateUTF8(orig, max(0, maxBytes-len(transcriptShortenedMarker))) + transcriptShortenedMarker
+		return entry
+	}
+	budget := maxBytes - len(shell)
+	if budget <= 0 {
+		return entry
+	}
+	prefix := truncateUTF8(orig, budget)
+	*field = prefix + transcriptShortenedMarker
+	for len(prefix) > 0 {
+		raw, err := json.Marshal(entry)
+		if err != nil || len(raw) <= maxBytes {
+			break
+		}
+		excess := len(raw) - maxBytes
+		if excess >= len(prefix) {
+			prefix = ""
+		} else {
+			prefix = truncateUTF8(prefix, len(prefix)-excess)
+		}
+		*field = prefix + transcriptShortenedMarker
+	}
+	return entry
+}
+
+// truncateUTF8 cuts s to at most maxBytes without splitting a multi-byte UTF-8
+// rune at the end, so JSON serialisation never expands a torn rune into a
+// replacement escape sequence.
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	for i := len(s) - 1; i >= 0 && len(s)-i <= utf8.UTFMax; i-- {
+		if !utf8.RuneStart(s[i]) {
+			continue
+		}
+		if r, width := utf8.DecodeRuneInString(s[i:]); r == utf8.RuneError && width == 1 {
+			return s[:i]
+		}
+		return s
+	}
+	return s
+}
+
 // stream turns a submitted turn into a stream id. The id is answered
 // IMMEDIATELY, before a single event, because the surface has to be able to bind
 // events to the turn that caused them and because a result that waited for the
@@ -3950,6 +4267,15 @@ func (s *server) sendLocked(frame Frame) error {
 		}
 	}
 
+	if s.remote != nil {
+		var keep bool
+		var err error
+		frame, keep, err = s.capGuestFrame(frame)
+		if err != nil || !keep {
+			return err
+		}
+	}
+
 	if frame.Kind != "welcome" {
 		if err := compressFrame(&frame, s.encoding); err != nil {
 			return err
@@ -3963,6 +4289,9 @@ func (s *server) sendLocked(frame Frame) error {
 	if s.dead {
 		return io.ErrClosedPipe
 	}
+	if s.remote != nil {
+		return s.writeGuestLocked(line)
+	}
 	if _, err := s.out.Write(line); err != nil {
 		s.dead = true
 		s.dropClientTools()
@@ -3973,6 +4302,139 @@ func (s *server) sendLocked(frame Frame) error {
 		s.dropClientTools()
 	}
 	return err
+}
+
+const (
+	guestOversizeResultError = "too large for remote control; use the paged read"
+	guestOversizeEventText   = "an update was too large to show here"
+)
+
+// capGuestFrame enforces DefaultMaxLine on the uncompressed frame a remote
+// viewer would decode. Oversized results become a refusal result on the same
+// call ID, oversized events become a notice event on the same stream and
+// sequence number so replay cursors stay contiguous, and any other frame kind
+// is dropped and counted.
+func (s *server) capGuestFrame(frame Frame) (Frame, bool, error) {
+	size, err := plainFrameLineLen(frame)
+	if err != nil {
+		return Frame{}, false, err
+	}
+	if size <= DefaultMaxLine {
+		return frame, true, nil
+	}
+	switch frame.Kind {
+	case "result":
+		return Frame{
+			Kind:  "result",
+			ID:    frame.ID,
+			Error: guestOversizeResultError,
+		}, true, nil
+	case "event":
+		notice := WireEvent(session.Event{
+			Kind: session.EventNotice,
+			Text: guestOversizeEventText,
+		})
+		return Frame{
+			Kind:    "event",
+			ID:      frame.ID,
+			Seq:     frame.Seq,
+			Payload: mustJSON(notice),
+		}, true, nil
+	default:
+		s.droppedOversize.Add(1)
+		return Frame{}, false, nil
+	}
+}
+
+type writeDeadliner interface {
+	SetWriteDeadline(time.Time) error
+}
+
+// writeGuestLocked writes one frame line to a remote viewer connection under
+// GuestWriteDeadline. When the underlying writer supports SetWriteDeadline it
+// uses that deadline directly; otherwise a watchdog timer closes the connection
+// if the write blocks past the deadline. On an overrun the guest connection is
+// marked lagging, leaves the session like a normal hang-up, and is closed so a
+// stalled viewer cannot block the holder.
+func (s *server) writeGuestLocked(line []byte) error {
+	deadline := GuestWriteDeadline
+	if deadliner, ok := s.out.(writeDeadliner); ok && deadline > 0 {
+		if err := deadliner.SetWriteDeadline(time.Now().Add(deadline)); err != nil {
+			s.failGuestWrite(err, isWriteTimeout(err))
+			return err
+		}
+		_, err := s.out.Write(line)
+		if err == nil {
+			err = flushFrame(s.out)
+		}
+		_ = deadliner.SetWriteDeadline(time.Time{})
+		if err != nil {
+			s.failGuestWrite(err, isWriteTimeout(err))
+			return err
+		}
+		return nil
+	}
+
+	var timedOut atomic.Bool
+	var timer *time.Timer
+	if deadline > 0 {
+		timer = time.AfterFunc(deadline, func() {
+			timedOut.Store(true)
+			s.closeConn()
+		})
+	}
+	_, err := s.out.Write(line)
+	if err == nil {
+		err = flushFrame(s.out)
+	}
+	if timer != nil {
+		timer.Stop()
+	}
+	overran := timedOut.Load() || isWriteTimeout(err)
+	if overran && err == nil {
+		err = os.ErrDeadlineExceeded
+	}
+	if err != nil {
+		if overran {
+			err = os.ErrDeadlineExceeded
+		}
+		s.failGuestWrite(err, overran)
+		return err
+	}
+	return nil
+}
+
+func (s *server) failGuestWrite(_ error, overran bool) {
+	s.dead = true
+	s.dropClientTools()
+	if overran {
+		s.lagging.Store(true)
+		// THE CONNECTION IS CLOSED AND NOTHING ELSE IS DONE HERE. This runs with the
+		// write lock held, and leaving the room waits on goroutines that are blocked
+		// on that same lock, so leaving from here could wait on itself. Closing the
+		// connection ends the reader, and serve's own exit leaves the room on the
+		// ordinary hang-up road, once the lock is free.
+		s.closeConn()
+	}
+}
+
+func (s *server) closeConn() {
+	if closer, ok := s.out.(io.Closer); ok {
+		_ = closer.Close()
+	}
+	if s.in != nil && any(s.in) != any(s.out) {
+		if closer, ok := s.in.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
+}
+
+func isWriteTimeout(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var netErr interface{ Timeout() bool }
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 func (s *server) hungUp() bool {
@@ -4021,4 +4483,100 @@ func (sess *Session) takeCloseNotices() []string {
 	lines := sess.closeNotices
 	sess.closeNotices = nil
 	return lines
+}
+
+// deliverIdempotent ensures a remote viewer's send carrying a non-empty
+// ClientID is applied at most once per (Remote.Device, ClientID), answering
+// repeats from the per-Session table or the persisted transcript tail without
+// delivering a second message to the engine.
+func (s *server) deliverIdempotent(agent WrappedAgent, clientID string, deliver func() (json.RawMessage, error)) (json.RawMessage, error) {
+	if s.remote == nil || clientID == "" || s.session == nil {
+		return deliver()
+	}
+	sess := s.session
+	key := messageRepeatKey{device: s.remote.Device, clientID: clientID}
+	for {
+		sess.repeatMu.Lock()
+		if sess.repeats == nil {
+			sess.repeats = map[messageRepeatKey]*messageRepeatEntry{}
+		}
+		existing, found := sess.repeats[key]
+		if found {
+			sess.repeatMu.Unlock()
+			<-existing.done
+			if existing.ok {
+				return append(json.RawMessage(nil), existing.payload...), nil
+			}
+			continue
+		}
+		entry := &messageRepeatEntry{done: make(chan struct{})}
+		sess.repeats[key] = entry
+		sess.repeatMu.Unlock()
+
+		var (
+			out json.RawMessage
+			err error
+		)
+		if sess.transcriptHasClientID(agent, clientID) {
+			out, err = json.Marshal(StreamRef{})
+		} else {
+			out, err = deliver()
+		}
+
+		sess.repeatMu.Lock()
+		if err != nil {
+			if sess.repeats[key] == entry {
+				delete(sess.repeats, key)
+			}
+			close(entry.done)
+			sess.repeatMu.Unlock()
+			return nil, err
+		}
+		entry.payload = append(json.RawMessage(nil), out...)
+		entry.ok = true
+		sess.repeatOrder = append(sess.repeatOrder, key)
+		for len(sess.repeatOrder) > messageRepeatCap {
+			oldest := sess.repeatOrder[0]
+			sess.repeatOrder = sess.repeatOrder[1:]
+			delete(sess.repeats, oldest)
+		}
+		if cap(sess.repeatOrder) >= 2*messageRepeatCap {
+			sess.repeatOrder = append(make([]messageRepeatKey, 0, messageRepeatCap), sess.repeatOrder...)
+		}
+		close(entry.done)
+		sess.repeatMu.Unlock()
+		return out, nil
+	}
+}
+
+func (sess *Session) transcriptHasClientID(agent WrappedAgent, clientID string) bool {
+	if clientID == "" {
+		return false
+	}
+	if agent != nil {
+		entries := agent.Transcript()
+		if entriesHaveClientID(entries, clientID) {
+			return true
+		}
+		if len(entries) > 0 {
+			return false
+		}
+	}
+	if file := sess.File(); file != "" {
+		return entriesHaveClientID(session.ReadTranscript(file).Entries, clientID)
+	}
+	return false
+}
+
+func entriesHaveClientID(entries []session.DisplayEntry, clientID string) bool {
+	start := 0
+	if len(entries) > messageRepeatTailScan {
+		start = len(entries) - messageRepeatTailScan
+	}
+	for i := len(entries) - 1; i >= start; i-- {
+		if entries[i].Person != nil && entries[i].Person.ClientID == clientID {
+			return true
+		}
+	}
+	return false
 }

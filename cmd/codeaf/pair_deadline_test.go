@@ -57,7 +57,7 @@ func TestPairDoorExplainsARequestDeadline(t *testing.T) {
 				}
 			}
 			err := door.run(ctx, args)
-			want := "the sync service at " + server.URL + " did not answer in time — try again"
+			want := "the relay at " + server.URL + " did not answer in time — try again"
 			if err == nil || err.Error() != want {
 				t.Fatalf("pairing deadline=%v; want %q", err, want)
 			}

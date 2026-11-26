@@ -19,7 +19,7 @@ func FirstRunLineFor(relayURL string) string {
 	if u, err := url.Parse(shown); err == nil && u.Host != "" {
 		shown = u.Host + strings.TrimRight(u.Path, "/")
 	}
-	return "Your chats sync end-to-end encrypted through codeaf's fabric (" + shown + "), a sync service that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>."
+	return "Your chats sync end-to-end encrypted through codeaf's fabric (" + shown + "), a relay that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>."
 }
 
 // FirstRunLine is the first-run sentence for this binary's hosted sync service.

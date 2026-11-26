@@ -28,7 +28,7 @@ func TestTeamMemberUsesExistingContinueHereQuestion(t *testing.T) {
 	a.wall.teams = []team{{ID: "alpha", Name: "alpha", Members: []teamMember{member}}}
 	a.trafficGo(member.Key)
 	ask, ok := a.homeAsking()
-	if !ok || ask.question.Head != continueAsk || a.home.armed != machineArm(row.Cell) {
+	if !ok || ask.question.Head != moveAsk || a.home.armed != machineArm(row.Cell) {
 		t.Fatalf("member did not use existing continuation: %+v %v", ask, ok)
 	}
 }
@@ -98,7 +98,7 @@ func TestRemoteTeamMemberFetchesItsContinueRowWhenHomeHasNotReadItYet(t *testing
 	a.wall.teams = []team{{ID: "alpha", Name: "alpha", Members: []teamMember{member}}}
 	spend(t, a, a.trafficGo(member.Key))
 	ask, ok := a.homeAsking()
-	if !ok || ask.question.Head != continueAsk {
+	if !ok || ask.question.Head != moveAsk {
 		t.Fatal("uncached remote team member did not fetch its continuation row")
 	}
 }
@@ -153,7 +153,7 @@ func TestMemberGesturesShowContinuationAndBothAnswersFromTeamsAndTabs(t *testing
 						drain(t, a, a.tabGo(chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word}))
 					}
 					frame, _, _ := a.frame()
-					if !a.at(pageHome) || !strings.Contains(plain(frame), continueAsk) {
+					if !a.at(pageHome) || !strings.Contains(plain(frame), moveAsk) {
 						t.Fatalf("question not on screen:\n%s", plain(frame))
 					}
 					if a.home.armed != machineArm(src.row.Cell) {

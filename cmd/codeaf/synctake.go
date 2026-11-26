@@ -33,7 +33,7 @@ import (
 var surfaceNotices = tui3.NewNotices()
 
 // wireSync gives the surface everything that needs a relay: the chats on other
-// machines, `continue here`, and what a branch row can do. With sync off, or
+// machines, `move here`, and what a branch row can do. With sync off, or
 // when it cannot start, it adds nothing and the home screen must not fail to
 // start over a relay setting: every seam stays nil, and a nil seam is absent.
 func wireSync(o *tui3.Options) {
@@ -58,10 +58,12 @@ func wireSync(o *tui3.Options) {
 		o.NotShared = terminalNotShared
 	}
 	moving := terminalMoving
-	take := takeover{c: chatContinuerWith(s, surfaceNotices.Say, moving.report, true, continueSeams{arrived: terminalArrived(surfaceNotices)}), moving: moving}
+	take := takeover{c: chatContinuerWith(s, surfaceNotices.Say, moving.report, true, continueSeams{arrived: terminalArrived(surfaceNotices)}), moving: moving, home: s.Home}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
+	liveRoads = syncLiveRoads(s)
+	wireLive(o, s.Home)
 	if o.Branches.Open == nil {
 		o.Branches.Open = take.OpenBranch
 	}
@@ -291,6 +293,15 @@ func standingRefusal(err error) error {
 type takeover struct {
 	c      *syncsetup.Continuer
 	moving *takeProgress
+	// home is this computer's home, where the last-seen copies of chats that
+	// other computers run are kept. Empty (a test's literal) forgets nothing.
+	home string
+}
+
+// movedHere forgets the last-seen copy of a chat that now runs on this
+// computer. A copy of it kept for any other computer is only a stale picture.
+func (t takeover) movedHere(id string) {
+	forgetViewedChatEverywhere(t.home, id)
 }
 
 func (t takeover) IdleHandoffAllowed() bool {
@@ -380,6 +391,7 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
 	}
+	t.movedHere(id)
 	if got.AlreadyHere || got.LocalOnly {
 		t.moving.stop(id)
 	}
@@ -394,6 +406,7 @@ func (t takeover) OpenAvailable(ctx context.Context, id string, seen *directory.
 		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
 	}
+	t.movedHere(id)
 	if got.AlreadyHere || got.LocalOnly {
 		t.moving.stop(id)
 	}
@@ -408,6 +421,7 @@ func (t takeover) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string
 		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
 	}
+	t.movedHere(id)
 	if got.AlreadyHere || got.LocalOnly {
 		t.moving.stop(id)
 	}
@@ -422,6 +436,7 @@ func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, see
 		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
 	}
+	t.movedHere(id)
 	if got.AlreadyHere || got.LocalOnly {
 		t.moving.stop(id)
 	}

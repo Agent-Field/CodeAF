@@ -3,8 +3,8 @@
 import { ipOf } from '../wire.js';
 import { validName } from './names.js';
 import {
-  DIALS_PER_MINUTE, DIAL_PREFIX, ENGINE_PATH, HEADER_NAME, PROTOCOL, REGISTRATIONS_PER_MINUTE,
-  TOO_MANY_DIALS, TOO_MANY_REGISTRATIONS, plain,
+  DIALS_PER_MINUTE, DIAL_PREFIX, ENGINE_PATH, HEADER_NAME, PROTOCOL, RATE_PERIOD_SECONDS, REGISTRATIONS_PER_MINUTE,
+  TOO_MANY_DIALS, TOO_MANY_REGISTRATIONS, plain, secondsToNextMinute,
 } from './carrier.js';
 
 /** isMachineDoor is a path this module serves. */
@@ -16,21 +16,27 @@ export const isMachineDoor = (pathname) => pathname === ENGINE_PATH || pathname.
  */
 const fallbackBuckets = new Map();
 
-async function allowCaller(request, env, register) {
+/**
+ * waitFor is null when the caller is within its allowance, and otherwise how many seconds it should wait to be let in. The
+ * Cloudflare binding does not say where in its window a caller is, so a refusal it gives is told the whole period, which
+ * is never too short; the in-memory count knows its minute and says exactly how much of it is left.
+ */
+async function waitFor(request, env, register) {
   const ip = ipOf(request, env);
   const limiter = register ? env.MACHINE_REGISTER_LIMIT : env.MACHINE_DIAL_LIMIT;
   if (limiter && typeof limiter.limit === 'function') {
     const { success } = await limiter.limit({ key: ip });
-    return Boolean(success);
+    return success ? null : RATE_PERIOD_SECONDS;
   }
   const perMinute = register ? REGISTRATIONS_PER_MINUTE : DIALS_PER_MINUTE;
-  const minute = Math.floor(Date.now() / 60000);
+  const now = Date.now();
+  const minute = Math.floor(now / 60000);
   for (const [key, bucket] of fallbackBuckets) if (bucket.minute !== minute) fallbackBuckets.delete(key);
   const key = (register ? 'register ' : 'dial ') + ip;
   const bucket = fallbackBuckets.get(key) ?? { minute, count: 0 };
   bucket.count += 1;
   fallbackBuckets.set(key, bucket);
-  return bucket.count <= perMinute;
+  return bucket.count <= perMinute ? null : secondsToNextMinute(now);
 }
 
 /**
@@ -46,8 +52,9 @@ export async function serveMachineDoor(request, env) {
   }
   const { pathname } = new URL(request.url);
   const register = pathname === ENGINE_PATH;
-  if (!(await allowCaller(request, env, register))) {
-    return plain(429, register ? TOO_MANY_REGISTRATIONS : TOO_MANY_DIALS);
+  const wait = await waitFor(request, env, register);
+  if (wait !== null) {
+    return plain(429, register ? TOO_MANY_REGISTRATIONS : TOO_MANY_DIALS, { 'retry-after': String(wait) });
   }
   const name = register ? request.headers.get(HEADER_NAME) ?? '' : pathname.slice(DIAL_PREFIX.length);
   if (!validName(name)) return plain(400, 'that is not a machine name');

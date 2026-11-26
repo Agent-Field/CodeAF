@@ -105,7 +105,7 @@ Existing saved jobs keep their identity and work, without a migration.
 
 Every job from outside GitHub carries a trust, the same three a GitHub author has: `owner`, `collaborator` or `stranger`. It is set by whoever sends the work:
 
-- `"trust"` in the desktop's `factory.intake_add`. Left out, it is `owner`, because only the person at the factory's own machine files work there. Work relaying other people's words should be sent as `collaborator` or `stranger`.
+- `"trust"` in the desktop's `factory.intake_add`. Left out, it is `owner`, because only the person at the factory's own machine files work there. Work that passes on other people's words should be sent as `collaborator` or `stranger`.
 - AgentField work is held to the connection's trust ceiling, `collaborator` by default (see "AgentField and the factory", `factory-agentfield`).
 - Jira sets it itself: a reporter with a seat on the site, an automation, or a reporter this account cannot see is a `collaborator`; a service-desk customer who raised the ticket from a portal is a `stranger`.
 
@@ -494,7 +494,7 @@ The factory checks this itself, in Manual and in Auto. A press on a turn you did
 
 ## tell a job's main agent through the Factory manager — pass my words to a job, ask the job's manager to rebase from the Factory manager
 
-"Tell #12 to rebase on main": the Factory manager passes your words to that job's main agent (its manager), which gets one turn of its own conversation and answers, and the Factory manager relays the answer. The note the main agent reads begins "The person told the Factory manager, for you:". The turn is charged to the job's budget and is stopped after 3 minutes; what the main agent did before that stands.
+"Tell #12 to rebase on main": the Factory manager passes your words to that job's main agent (its manager), which gets one turn of its own conversation and answers, and the Factory manager passes the answer on. The note the main agent reads begins "The person told the Factory manager, for you:". The turn is charged to the job's budget and is stopped after 3 minutes; what the main agent did before that stands.
 
 It is refused, and nothing is passed on, when the message was not yours, when the job has no main agent conversation yet (one is made when the job starts or when you open the job's chat), when the job is finished or you stopped it, and when its budget is spent. A main agent in the middle of a turn of its own is not interrupted: the words are not passed on, and you ask again.
 

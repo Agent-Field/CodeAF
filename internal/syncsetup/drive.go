@@ -47,6 +47,12 @@ type DriveOptions struct {
 	OnRenewalChange func()
 	// Sleep replaces real time between background attempts; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// EarlyRecord says whether the START of a chat's first spoken turn may
+	// create its directory record, instead of waiting for the first sealed turn.
+	// It is read at the moment the turn starts, and nil means no. It exists for
+	// remote control: another computer can only open a chat it can list, and a
+	// chat whose first turn is long was on no other computer's list for all of it.
+	EarlyRecord func() bool
 }
 
 // Drive is the drive side of one chat: it publishes each sealed turn, holds
@@ -59,6 +65,14 @@ type Drive struct {
 	idleRequested atomic.Bool
 	idlePrepared  atomic.Bool
 	working       atomic.Bool
+	// earlyNoted is set once the startup head has been handed to the batcher
+	// for an early record, so the turns after the first do not read the journal
+	// again to decide the same thing.
+	earlyNoted atomic.Bool
+	// earlyAsked is set the one time the drive has said the first spoken turn
+	// began on a chat with no sealed head ([Drive.EarlyHeadOwed]), so a failed
+	// save is not asked for again at every later turn.
+	earlyAsked    atomic.Bool
 	workMu        sync.Mutex // Admission and voluntary release cannot cross each other.
 	activity      atomic.Uint64
 	released      atomic.Bool
@@ -887,8 +901,83 @@ func (d *Drive) Gate() error {
 func (d *Drive) Working(on bool) {
 	d.working.Store(on)
 	if d.batcher != nil {
+		// The flag is stored first so the publish that creates an early record is
+		// told the chat is working, and the row is never born idle.
 		d.batcher.Working(on)
+		if on {
+			d.recordEarly()
+		}
 	}
+}
+
+// recordEarly creates the directory record of a chat at the START of its first
+// spoken turn, behind [DriveOptions.EarlyRecord]. The record has always come
+// from the first SEALED turn, and the person's first message is journaled
+// before any turn seals, so a chat whose first turn runs for minutes was on no
+// other computer's list while it ran. The head handed over is the one this
+// window sealed at startup: a record needs some head to stand on, and that is
+// the least a head can be. Nothing about the turn travels, the title and folder
+// are whatever a publish sends today under the same storage rules, and when
+// the turn seals the head moves on exactly as it does for every chat.
+//
+// IT IS A NO-OP unless every one of these holds: the option is on now, the
+// chat has no record yet, and the journal holds a spoken message, which is the
+// same test [Drive.note] makes against a sealed head and what keeps a chat
+// nobody spoke in off every other computer. A chat that already has a record
+// needs nothing, because it is already listed and its working flag rides the
+// beat.
+func (d *Drive) recordEarly() {
+	if d.opt.EarlyRecord == nil || d.earlyNoted.Load() || d.batcher.Fence() != 0 || d.sync.isRemoved() {
+		return
+	}
+	if !d.opt.EarlyRecord() {
+		return
+	}
+	if spoken, _ := session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), -1); !spoken {
+		return
+	}
+	head, err := cellstore.Head(d.cell)
+	if err != nil || head == nil {
+		return
+	}
+	d.earlyNoted.Store(true)
+	d.batcher.Note(head.Turn)
+}
+
+// EarlyHeadOwed says the first spoken turn has begun on a chat that has never
+// been sealed, so [Drive.recordEarly] had no head to stand on and the record
+// would wait for the turn to end. It answers true at most once per drive, and
+// only when every one of these holds: the option is on now, a turn is running,
+// the chat has no record yet, no head exists, and the journal holds a spoken
+// message. The caller then has the chat sealed through its own recorder, the
+// road every other seal takes, and that seal reaches [Drive.note] and makes
+// the record exactly as a sealed turn does.
+//
+// A CHAT OPENED WITH /new HAS NO HEAD WHEN ITS FIRST TURN STARTS. The warm
+// capture opens the folder without sealing an empty turn, and the trailing seal
+// treats a journal that holds only its header as not grown. So the head the
+// early record was written to stand on is there only when something else had
+// sealed the chat, and for a new chat that waited for the first message the
+// record appeared when the turn ended, as it did before the option existed.
+//
+// The head this asks for is the chat as it stands when the turn starts, which
+// holds the person's first message. Nothing about that travels in the record,
+// and the frames behind it go where every sealed turn's frames go: nowhere
+// while blind pass-through is the road, the relay's store otherwise.
+func (d *Drive) EarlyHeadOwed() bool {
+	if d.batcher == nil || !d.working.Load() || d.opt.EarlyRecord == nil || d.earlyNoted.Load() || d.earlyAsked.Load() || d.batcher.Fence() != 0 || d.sync.isRemoved() {
+		return false
+	}
+	if !d.opt.EarlyRecord() {
+		return false
+	}
+	if head, err := cellstore.Head(d.cell); err != nil || head != nil {
+		return false
+	}
+	if spoken, _ := session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), -1); !spoken {
+		return false
+	}
+	return d.earlyAsked.CompareAndSwap(false, true)
 }
 
 func (d *Drive) Idle() {

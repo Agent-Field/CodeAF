@@ -184,7 +184,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which they meant would open a conversation on a machine they did not
 	// name.
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
-		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the sync service: name one or the other, not both")
+		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the relay: name one or the other, not both")
 	}
 	// --org IS THE FOURTH WAY TO NAME WHERE THE CONVERSATION IS, and it refuses
 	// what --at refuses (chatv3_org.go's check), beside the --at refusals above

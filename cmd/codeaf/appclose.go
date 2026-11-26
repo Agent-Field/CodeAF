@@ -307,7 +307,8 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 	b.locked(func() {
 		// AN AGENT THIS PROCESS IS OPENING IS ITS OWN WORD: the disk has not
 		// heard of its turn yet, and reading it there said idle mid-start.
-		if a.live == nil && a.transcript != "" && !a.opening && !a.starting {
+		// A LIVE VIEW HAS NO FOLDER HERE: its state is the live link's.
+		if a.live == nil && a.transcript != "" && !a.opening && !a.starting && a.liveRemote == nil {
 			dir = session.DirOf(a.transcript)
 		}
 	})

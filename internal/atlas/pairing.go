@@ -6,23 +6,23 @@ package atlas
 var Pairing = &Map{
 	Name:        "pairing",
 	Title:       "Pairing",
-	Description: "codeaf on two computers: pair with a link, continue a chat on the other",
+	Description: "codeaf on two computers: pair with a link, move a chat to the other",
 	Nodes: []Node{
 		// ── machines ──────────────────────────────────────────────────────
 		{ID: "machineA", Label: "Machine A", Short: "existing device", Kind: KindMachine, X: 0.08, Y: 0.1,
-			Summary: "The computer that already runs codeaf. It approves new machines and publishes each chat's turns so another machine can continue them.",
+			Summary: "The computer that already runs codeaf. It approves new machines and publishes each chat's turns so another machine can pick them up.",
 			Details: []string{"Holds the identity key and a device cert signed by it", "Publishes encrypted frames every turn while it holds the chat's lease"},
 			Files: []FileRef{
 				{Path: "cmd/codeaf/approvals.go", Symbols: []string{"approvalsDoor"}},
 				{Path: "cmd/codeaf/syncdrive.go", Symbols: []string{"startDrive"}, Note: "starts the drive side: publishes turns while this machine holds the lease"},
 			}},
 		{ID: "machineB", Label: "Machine B", Short: "new device", Kind: KindMachine, X: 0.92, Y: 0.1,
-			Summary: "The computer being added. It runs `codeaf pair`, and once joined it can 'continue here' on a chat that is running on A.",
+			Summary: "The computer being added. It runs `codeaf pair`, and once joined it can 'move here' on a chat that is running on A.",
 			Details: []string{"Generates its own ed25519 device key and x25519 box key", "Plaintext files only ever exist on the machines, never on the relay"},
 			Files:   []FileRef{{Path: "cmd/codeaf/pair.go", Symbols: []string{"runPair"}}}},
 		// ── services ──────────────────────────────────────────────────────
 		{ID: "hosted", Label: "hosted relay", Short: "default", Kind: KindService, X: 0.38, Y: 0.1,
-			Summary: "The default hosted sync service selected per release channel in internal/syncsetup/relayurl.go: a Cloudflare Worker with Durable Objects and R2. It holds the directory, the encrypted blobs and pairing requests, and it cannot decrypt any of them.",
+			Summary: "The default hosted relay selected per release channel in internal/syncsetup/relayurl.go: a Cloudflare Worker with Durable Objects and R2. It holds the directory, the encrypted blobs and pairing requests, and it cannot decrypt any of them.",
 			Details: []string{
 				"Limits: 5 GiB/identity, 1200 req/min/identity, 600/min/device",
 				"Pairing: 10-minute TTL, 10 link creates/hr, 3 pending per IP",
@@ -84,7 +84,7 @@ var Pairing = &Map{
 				{Path: "internal/directory/presence.go"},
 			}},
 		{ID: "sync", Label: "sync", Short: "syncsetup", Kind: KindGo, X: 0.55, Y: 0.38,
-			Summary: "Opens the connection to the relay, signs requests, seals the vault with chacha20poly1305, follows the directory (\"running on A\"), and runs Continuer.Take for 'continue here'.",
+			Summary: "Opens the connection to the relay, signs requests, seals the vault with chacha20poly1305, follows the directory (\"running on A\"), and runs Continuer.Take for 'move here'.",
 			Files: []FileRef{
 				{Path: "cmd/codeaf/syncwire.go", Symbols: []string{"syncOf", "syncFrom"}},
 				{Path: "cmd/codeaf/synctake.go", Symbols: []string{"wireSync", "watchStanding"}},
@@ -94,8 +94,8 @@ var Pairing = &Map{
 				{Path: "internal/syncsetup/take.go", Symbols: []string{"Continuer.Take", "restoreCopies", "pullVaultVia"}},
 				{Path: "internal/keys/seal.go", Symbols: []string{"seal", "open"}},
 			}},
-		{ID: "cells", Label: "cells", Short: "continue here", Kind: KindGo, X: 0.8, Y: 0.38,
-			Summary: "A cell is a chat together with its workspace. Available by default on Linux and macOS with a compatible engine. Pair the computers first; existing chats keep their layout and do not move. 'Continue here' on home moves the files, history, tool output and task records to this machine.",
+		{ID: "cells", Label: "cells", Short: "move here", Kind: KindGo, X: 0.8, Y: 0.38,
+			Summary: "A cell is a chat together with its workspace. Available by default on Linux and macOS with a compatible engine. Pair the computers first; existing chats keep their layout and do not move. 'Move here' on home moves the files, history, tool output and task records to this machine.",
 			Details: []string{"do_continue.go continues a `do` run on the same machine; it does not move anything between machines"},
 			Files: []FileRef{
 				{Path: "cmd/codeaf/cell.go", Symbols: []string{"runCell", "cellRewind", "cellEngine"}},
@@ -174,7 +174,7 @@ var Pairing = &Map{
 		{ID: "identity-sync", From: "identity", To: "sync", Label: "signs requests", Detail: "ed25519 device cert via wireauth."},
 		{ID: "sync-hosted", From: "sync", To: "hosted", Label: "/v1/dir + store", Detail: "Signed requests. Only ciphertext and directory rows cross."},
 		{ID: "sync-self", From: "sync", To: "selfrelay", Label: "CODEAF_SYNC_URL"},
-		{ID: "b-cells", From: "machineB", To: "cells", Label: "continue here"},
+		{ID: "b-cells", From: "machineB", To: "cells", Label: "move here"},
 		{ID: "cells-sync", From: "cells", To: "sync", Label: "Continuer.Take"},
 		{ID: "cells-cellsync", From: "cells", To: "cellsync", Label: "fetch + acquire"},
 		{ID: "cellsync-hosted", From: "cellsync", To: "hosted", Label: "encrypted frames", Detail: "Frames are XChaCha20-Poly1305 ciphertext; the relay never sees plaintext."},
@@ -197,8 +197,8 @@ var Pairing = &Map{
 			{From: "pair", To: "hosted", Message: "POST /v1/dir/requests/{code}/approve (signed); relay writes the Device record", Edge: "pair-hosted"},
 			{From: "hosted", To: "machineB", Message: "awaitDecision gets the grant; openLinkGrant installs identity, cert and SyncURL", Note: "single use: a second approver gets 409"},
 		}},
-		{ID: "continue", Title: "Continue chat", Summary: "Machine B takes over a chat running on A: workspace, history, tool output and task records.", Steps: []Step{
-			{From: "machineB", To: "cells", Message: "home shows 'running on A'; the person picks continue here", Edge: "b-cells", Note: "internal/tui3/homepanel_continue.go"},
+		{ID: "continue", Title: "Move chat", Summary: "Machine B takes over a chat running on A: workspace, history, tool output and task records.", Steps: []Step{
+			{From: "machineB", To: "cells", Message: "home shows 'running on A'; the person picks move here", Edge: "b-cells", Note: "internal/tui3/homepanel_continue.go"},
 			{From: "cells", To: "sync", Message: "syncsetup's Continuer.Take runs the takeover (internal/handoff): B's own unsealed edits are sealed into a branch first, then the lease moves", Edge: "cells-sync"},
 			{From: "sync", To: "hosted", Message: "Dir.Cell(id): read head, frame list and lease", Edge: "sync-hosted"},
 			{From: "cells", To: "cellsync", Message: "keepLocal: B's own edits are sealed and kept as a branch", Edge: "cells-cellsync"},

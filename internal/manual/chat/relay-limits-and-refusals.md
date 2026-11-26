@@ -1,12 +1,16 @@
 # Relay limits and refusals
 
-## Taking an open chat from another computer waits for a sync service update
+## Taking an open chat from another computer waits for a relay update
 
-An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Writing, saving, pairing, listing, viewing and opening or continuing a chat no computer holds (closed, released after about 2 idle seconds when `idle handoff` / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or lapsed) keep working. Close the chat on that computer (or let it go idle with `idle handoff` on), then continue or open it here; update your own `codeaf relay` to this build.
+An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a relay update; all else works, so close it there and move it here`. Writing, saving, pairing, listing, viewing and opening or continuing a chat no computer holds (closed, released after about 2 idle seconds when `idle handoff` / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or lapsed) keep working. Close the chat on that computer (or let it go idle with `idle handoff` on), then move or open it here; update your own `codeaf relay` to this build. With remote control on and that computer running the chat, you can also open it live from Home and work in it without taking it (the page *Remote control*).
+
+## Does a direct view count against the daily allowance — live traffic, daily limit, watch only until midnight
+
+The daily allowance of live traffic that *Remote control* describes counts the bytes the server carries for a live view, and nothing else. A view that has moved onto a direct connection between the two computers adds nothing to it, and the allowance neither cuts that view off nor turns it watch only. A view that has not moved to a direct connection turns watch only until 00:00 UTC when the allowance is used up, as that page says.
 
 ## Is there a storage limit on the relay — how much can I sync
 
-Hosted uploads need sync storage approval (Settings → Devices → sync storage); these limits apply with storage on.
+Hosted uploads need relay storage approval (Settings → Devices → relay storage); these limits apply with storage on.
 
 **A hosted relay has limits.** The hosted relay in this repository sets, for each identity:
 
@@ -22,10 +26,10 @@ With storage on, a chunk already held costs nothing again. Storage off refuses e
 
 ## How much sync space have I used
 
-When hosted storage is off, `/status` shows one dim `sync storage  off` line instead of sync space. The cached permission is refreshed in the background at launch and after each `/status`.
+When hosted storage is off, `/status` shows one dim `relay storage  off` line instead of sync space. The cached permission is refreshed in the background at launch and after each `/status`.
 
 With storage on, open `/status` in a chat to see a dim `sync space` line, for example
-`sync space  2.8 GiB of 5 GiB`. It shows how big your sync storage is and how
+`sync space  2.8 GiB of 5 GiB`. It shows how big your relay storage is and how
 close you are to the relay limit: the amount stored, then the byte limit the
 hosted relay reports. The same reading appears in `/status --json`. The permission refresher retains its last successful amount in this process. While hosted storage is on it makes no further permission requests, so this amount can trail new uploads. After a restart only the remembered on/off choice remains, and unknown usage draws no line.
 
@@ -47,11 +51,11 @@ The hosted relay lets one network make **200 new identities in a day**. A networ
 
 Pairing has limits on both kinds of relay: 10 new codes in an hour for one network, and a relay holds at most 2,000 waiting pairings. The messages are on the pairing page, for example `too many pairings from this network; wait 7 min` and `sync is full right now; try again in a few minutes`.
 
-## Sync storage is off — approval, retries and chats staying here
+## Relay storage is off — approval, retries and chats staying here
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
-**Sync storage is off** (`403`, code `storage_off`). While blind pass-through carries your chats, the notice says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`, once while it waits. When blind pass-through is off or unavailable, it says `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. No upload requests are made when this computer knows storage is off. A refresh that sees approval wakes sync automatically. This is separate from every full refusal; reads, pairing and live `--at` still work. Running uploads retry through the local gate on their normal backoff, capped at 60 seconds. One process-wide waiter starts chats waiting for storage within a minute of another process learning approval. Approval discovery runs at launch, after `/status`, and every ten minutes while a relay that reports storage is off (or a hosted address is unknown); serving computers use it too. It stops polling once storage is on.
+**Relay storage is off** (`403`, code `storage_off`). While blind pass-through carries your chats, the notice says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)`, once while it waits. When blind pass-through is off or unavailable, it says `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. No upload requests are made when this computer knows storage is off. A refresh that sees approval wakes sync automatically. This is separate from every full refusal; reads, pairing and live `--at` still work. Running uploads retry through the local gate on their normal backoff, capped at 60 seconds. One process-wide waiter starts chats waiting for storage within a minute of another process learning approval. Approval discovery runs at launch, after `/status`, and every ten minutes while a relay that reports storage is off (or a hosted address is unknown); serving computers use it too. It stops polling once storage is on.
 
 ## What do I see when the relay says no
 
@@ -75,7 +79,7 @@ A refused upload leaves the saved turn on this computer. These are the other sen
 - **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back`. Once removal is known, this computer stops contacting the relay; only a new pairing brings it back.
 - **The clock is off** (`401`, code `skew`). The chat says `this computer's clock is off by more than 5 minutes`, once. Running sync tries again at each normal turn of sync. If the clock refusal prevented sync from starting, correct the clock and reopen the chat.
 
-Each startup refusal is said once while the chat waits. Running sync says each sentence once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. Running sync retries an unreachable relay with the doubling wait; an unreachable startup is tried again on the chat's next activity. If this computer holds the chat and renewals fail for longer than one renewal period, it says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
+Each startup refusal is said once while the chat waits. Running sync says each sentence once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. Running sync retries an unreachable relay with the doubling wait; an unreachable startup is tried again on the chat's next activity. If this computer holds the chat and renewals fail for longer than one renewal period, it says `the relay at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
 
 ## Is the hosted relay full for everyone — global admission and storage limits
 

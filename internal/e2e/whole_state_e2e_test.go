@@ -236,7 +236,7 @@ func TestC6WholeState(t *testing.T) {
 			a.keys("M-c")
 			screen, ok = waitPlain(a, 40*time.Second, "Moved from")
 			frames("a-one-key-arrival", a)
-			if !ok || strings.Contains(screen, "Continue this chat here?") {
+			if !ok || strings.Contains(screen, say(t, "moveAsk")) {
 				t.Fatalf("C31.2 clean sleeping continuation required another key: %s", screen)
 			}
 			if !reflect.DeepEqual(before, c6Tree(t, original)) {

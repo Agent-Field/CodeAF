@@ -4,7 +4,7 @@
 
 Stopping a computer with `codeaf devices revoke <name>` cuts it off from the relay. It does not undo what it holds. That computer has your whole identity. It can read everything it already has, and it can make itself a new device.
 
-`codeaf identity rotate` is the real fix. It makes a replacement identity and moves your saved keys to it. With hosted sync storage off, rotation still finishes without uploading chats or resealed keys: chats stay on the computers that hold them. Previously stored frames remain under the old identity until grace-period erasure. The old identity is shut. The lost computer holds the old one, so it can read nothing of what you do from then on.
+`codeaf identity rotate` is the real fix. It makes a replacement identity and moves your saved keys to it. With hosted relay storage off, rotation still finishes without uploading chats or resealed keys: chats stay on the computers that hold them. Previously stored frames remain under the old identity until grace-period erasure. The old identity is shut. The lost computer holds the old one, so it can read nothing of what you do from then on.
 
 Run it on a computer you keep, as soon as you know a computer is lost:
 
@@ -91,9 +91,9 @@ A way to prove your identity with a written recovery phrase is not built.
 
 ## What rotation costs — uploads with storage on, local copies with storage off
 
-Hosted sync storage is off by default while privacy terms are being finished; request access in Settings → Devices → sync storage → enter to enable uploads. Pairing and live `--at` work while storage is off; your own sync service with `--store` needs no request.
+Hosted relay storage is off by default while privacy terms are being finished; request access in Settings → Devices → relay storage → enter to enable uploads. Pairing and live `--at` work while storage is off; your own relay with `--store` needs no request.
 
-With hosted storage off, rotation completes with no store writes. Chats remain on your computers; any already-stored frames are left to the old identity’s grace-period erasure. With storage on, a rotation uploads everything your chats hold, once, because the new identity starts empty. The plan it shows before you answer gives the number. A chat of 200 MB goes up as 200 MB. The transfer takes your network bandwidth and uses sync storage; the old and new copies count towards its limits during the grace period. There is no fixed price or duration promised by the command.
+With hosted storage off, rotation completes with no store writes. Chats remain on your computers; any already-stored frames are left to the old identity’s grace-period erasure. With storage on, a rotation uploads everything your chats hold, once, because the new identity starts empty. The plan it shows before you answer gives the number. A chat of 200 MB goes up as 200 MB. The transfer takes your network bandwidth and uses relay storage; the old and new copies count towards its limits during the grace period. There is no fixed price or duration promised by the command.
 
 While the old identity is kept for the grace period, the relay holds both copies.
 

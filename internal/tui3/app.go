@@ -319,6 +319,12 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// local says this note is a sentence this window wrote about itself through
+	// [app.note] — a refusal, a failed move, a hand-over — which is in nobody's
+	// record but this screen. A live view's snapshot refresh ([app.refreshHostedReplay])
+	// rebuilds every other entry from the host's transcript and puts these back,
+	// because a sentence the person has read must not vanish because a road swapped.
+	local bool
 	// summarized says an [entryCompact] pass replaced some of the conversation
 	// with a summary ([session.Event.Summarized]). Only such a pass stands
 	// outside the turn's fold (workfold.go); a free one folds with the work.
@@ -731,6 +737,10 @@ type (
 		to      int
 		earlier bool
 		seam    bool
+		older   bool
+		before  int
+		more    bool
+		err     error
 	}
 	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
 	// a message rather than a call because `git status` on a large tree is tens
@@ -1066,8 +1076,10 @@ type app struct {
 	// journal only ever grows at its end, so an index taken at open still names
 	// the same block an hour of turns later — where a count back from the end
 	// would have slid forward under every one of them.
-	replayFrom  int
-	replayFloor int
+	replayFrom     int
+	replayFloor    int
+	transcriptBase int
+	olderMore      bool
 	// earlier is the conversation a compaction edited away — what
 	// [session.Agent.EarlierHistory] hands over — and earlierFrom is where the
 	// DRAWN conversation starts inside it, exactly as replayFrom names a place in
@@ -2163,6 +2175,31 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when automations are off.
 	link LinkSeam
+	// liveView is the seam of the conversation in front when it is a live view of a
+	// chat another of this person's computers runs (live.go). Nil is every other
+	// conversation, and with it every live-view behaviour is absent.
+	liveView *LiveSeam
+	// liveMoveFrom records the file or cell of the live view a Move was started
+	// from so the progress line, composer bar, and completion handlers know to
+	// return to or retire that live view.
+	liveMoveFrom string
+	// followRetry is the follow of a new holder this window is still trying
+	// after its first try found no live door open (live.go). Nil when nothing
+	// is being retried, which is every window that was not just displaced.
+	followRetry *followRetry
+	// followSeq numbers the displacements, so a retry timer that outlived its
+	// displacement finds a newer number and does nothing.
+	followSeq uint64
+	// liveTurnTouchAt is when the live link was last told a person or a turn was
+	// active, so a streaming turn reports at most once a second.
+	liveTurnTouchAt time.Time
+	// armingLive makes [app.watchDriving] wait on the live seam's change channel
+	// instead of the link's, so the harness classifies both waits as one kind.
+	armingLive bool
+	// inRoute and liveTouchedInRoute let one routed message touch the live link
+	// once however many places on its path report the same action.
+	inRoute            bool
+	liveTouchedInRoute bool
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
 	seal           SealSeam
@@ -2356,6 +2393,9 @@ type app struct {
 	// (homepanel_machines.go).
 	machines       chatlist.Source
 	taker          Taker
+	openLive       func(context.Context, chatlist.Row) (Conversation, error)
+	remoteControl  func() bool
+	permitAsk      PermitAsker
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
@@ -2363,7 +2403,12 @@ type app struct {
 	// machinesRetaken replaces a listing begun before a completed take, so
 	// its late answer cannot put the previous holder back on screen.
 	machinesRetaken bool
-	machinePoll     machinePoll
+	// workspaceBeforeLive is this computer's own folder as it stood the moment a
+	// live view of another computer's chat came to the front, which overwrites
+	// [app.workspace] with that computer's folder. [app.ownWorkspace] answers it
+	// for Home while a live view is in front, and nothing else reads it.
+	workspaceBeforeLive string
+	machinePoll         machinePoll
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
@@ -3122,6 +3167,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		waitForRelease:      opts.WaitForRelease,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
+		openLive:            opts.OpenLive,
+		remoteControl:       opts.RemoteControl,
+		permitAsk:           opts.PermitAsk,
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
@@ -3662,7 +3710,7 @@ func (a *app) Init() tea.Cmd {
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
 	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
-		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(), a.armLive(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
 		// its own (automationwatch.go): this window learns of a run whichever
@@ -3870,6 +3918,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // switch ever sees them and hands on everything else untouched and in the order
 // it arrived (coalesce.go).
 func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
+	a.inRoute = true
+	a.liveTouchedInRoute = false
+	defer func() {
+		a.inRoute = false
+		a.liveTouchedInRoute = false
+	}()
 	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
 	// The seam forgets the sentence as it hands it over, so a second caller
 	// would not show it twice — it would swallow it. This is the one place the
@@ -4057,6 +4111,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		a.sawAPerson()
+		a.touchLive()
 		a.stirred()
 		// AND THE HAND IS STAMPED HERE, because this is the only line every
 		// keypress passes through, and what the question block needs to know
@@ -4107,6 +4162,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.hopKey(msg); took {
 				return a, tea.Batch(flushed, cmd)
 			}
+		}
+		if cmd, took := a.liveMoveKeyPress(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// THE TRAFFIC'S KEYS READ NEXT (teamrailpointer.go): esc while its card
 		// is over the body, and the two chords that show it and go to the
@@ -4470,6 +4528,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.clearPlaceRowHover()
+		a.touchLive()
 		a.stirred()
 		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
@@ -6080,6 +6139,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// wait re-arms itself.
 		return a, a.drivingMoved(msg)
 
+	case liveChangedMsg:
+		return a, a.liveMoved(msg)
+
+	case followRetryMsg:
+		// One more try at following the computer that took this window's chat
+		// (live.go's followHolderLive).
+		return a, a.followRetried(msg)
+
 	case heldMsg:
 		// The far machine's waiting room, answered. Each question is redrawn
 		// through the door its live twin comes through, and a kind this build
@@ -6184,6 +6251,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 // the next tick is scheduled. It is the ONLY place a streamed delta becomes
 // visible, which is what caps the repaint rate.
 func (a *app) paint() tea.Cmd {
+	a.touchLiveTurn()
 	// ONE FRAME IS A WHOLE STRIDE OF THE ANIMATION, which is the whole of what a
 	// slower link costs the picture: three slots pass in one frame over a
 	// connection, so the spinner arrives where it would have been anyway and it
@@ -6529,6 +6597,7 @@ func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 	// The turn is open and the first request is out with nothing back from it.
 	a.awaited = time.Now()
 	a.startClock()
+	a.touchLiveTurn()
 	return tea.Batch(waitEvent(ch, a.gen), a.wake())
 }
 
@@ -6673,6 +6742,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	if a.state == stateWorking {
 		a.startClock()
 	}
+	a.touchLiveTurn()
 	// THE COLLAPSE RULE (thinking.go): the first thing a turn says that is not
 	// reasoning ends the reasoning block. EventThinking is exempt because it is
 	// the marker that OPENED the run — collapsing on it would close the block
@@ -7483,6 +7553,7 @@ func (a *app) noteWritten(text string, block bool, facts []string) {
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
 		a.entries[n-1].told = true
 		a.entries[n-1].stale = true
+		a.entries[n-1].local = true
 	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
@@ -7623,6 +7694,7 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	// The turn is open and the first request is out with nothing back from it.
 	a.awaited = time.Now()
 	a.startClock()
+	a.touchLive()
 	a.follow()
 	a.touch()
 	ctx, agent := a.ctx, a.agent
@@ -8915,6 +8987,15 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	if !whole {
 		return
 	}
+	// A LIVE VIEW'S FOLDER IS ON ANOTHER COMPUTER, and it is written over
+	// [app.workspace] because everything inside that conversation (its paths, its
+	// place, its files) is about that folder. Home is about this computer, so the
+	// folder this window stood in is kept for [app.ownWorkspace] at the moment a
+	// live view first takes the front. Leaving a live view for a local
+	// conversation writes that conversation's own folder back as usual.
+	if conv.Live != nil && a.liveView == nil {
+		a.workspaceBeforeLive = a.workspace
+	}
 	if workspace := strings.TrimSpace(conv.Workspace); workspace != "" {
 		a.workspace = workspace
 	}
@@ -8970,6 +9051,9 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	if conv.Link != nil {
 		a.link = *conv.Link
 	}
+	a.liveView = conv.Live
+	a.liveTurnTouchAt = time.Time{}
+	a.syncLiveOlder()
 }
 
 // freshAndEmpty is the conversation nobody has used yet: nothing on screen, no

@@ -159,6 +159,14 @@ var setupMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
+		if patch.RemoteControl != nil {
+			// An engine that does not serve the switch says what an older one
+			// said of any field it lacked, so a window that checked the hello
+			// and one that did not get the same answer.
+			if _, ok := e.(RemoteControlSettingsServer); !ok {
+				return nil, Errorf(CodeBadParams, "settings has no field remote_control")
+			}
+		}
 		settings, err := e.SetSettings(patch)
 		if err != nil {
 			return nil, err
@@ -222,6 +230,7 @@ type SettingsPatchWire struct {
 	KnowledgeModel     *string           `json:"knowledge_model,omitempty"`
 	WhenPlanPaused     map[string]string `json:"when_plan_paused,omitempty"`
 	MemoryEnabled      *bool             `json:"memory_enabled,omitempty"`
+	RemoteControl      *bool             `json:"remote_control,omitempty"`
 	DefaultModel       *string           `json:"default_model,omitempty"`
 	AsksBefore         *string           `json:"asks_before,omitempty"`
 	WorkFolder         *string           `json:"work_folder,omitempty"`
@@ -371,6 +380,13 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 				err = Errorf(CodeBadParams, "memory_enabled must be true or false")
 			} else {
 				err = flag(name, &patch.MemoryEnabled)
+			}
+		case "remote_control":
+			// A switch has no "none": null would otherwise read as "leave it".
+			if strings.TrimSpace(string(fields[name])) == "null" {
+				err = Errorf(CodeBadParams, "remote_control must be true or false")
+			} else {
+				err = flag(name, &patch.RemoteControl)
 			}
 		case "dock_badge":
 			err = flag(name, &patch.DockBadge)

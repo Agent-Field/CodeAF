@@ -337,7 +337,7 @@ command).
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -347,7 +347,7 @@ While hosted sync storage is off, a chat still moves by blind pass-through betwe
 | `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device that is already paired: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` declines |
 | `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` asks before removing the computer under the cursor; only `y` removes it and any other key keeps it, and a removed device can only return as a new request you approve (`/settings` → `Devices` holds the same list, including this computer and `Add another device`) |
 
-The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal `codeaf pair --code` shows a code and `codeaf pair <code>` uses one; bare `codeaf pair` requests approval by link instead. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
+The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal `codeaf pair --code` shows a code and `codeaf pair <code>` uses one; bare `codeaf pair` requests approval by link instead. From the terminal, `codeaf devices` lists your computers, `codeaf devices permit <name> [--watch on|off] [--drive on|off]` shows or changes whether a paired computer may watch or type here, `codeaf devices revoke <name>` removes one, and `codeaf devices rename <name>` renames this computer. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
 
 ## Cache, display and export commands
 
@@ -875,6 +875,11 @@ and the crew is changed on its panel. The `crew` line here and on the phone's st
 is where it is read. Every ordinary launch has a crew — auto is an answer, not an absence —
 so the line is always there; the one session that shows none is a **remote** one opened
 with `--host`, where the crew belongs to the other machine.
+
+In a chat opened live from another of your computers (*Remote control*), `/status` adds a
+`road` line that says how the view travels: `live · direct` between the two computers, or
+`live · relay` through the server in between. It follows the road the view is on right now, with no
+notice when it changes, and an offline copy and an ordinary chat draw none.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -1974,7 +1979,7 @@ the Memory tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts
-`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `sync storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
+`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `relay storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
@@ -2341,6 +2346,6 @@ nothing was left behind, `/setup` says so and does nothing.
 
 Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. A compatible furrow engine is required. Without a cell there is nothing to set up.
 
-## Why pairing commands do not turn on sync storage — request access in Devices
+## Why pairing commands do not turn on relay storage — request access in Devices
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.

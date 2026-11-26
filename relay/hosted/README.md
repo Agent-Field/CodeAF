@@ -204,6 +204,19 @@ socket stopped answering (a pong is asked for and not given within 5 s) replaces
 machine whose network dropped comes back before the platform has closed its old socket. A colliding
 key never replaces an existing registration, silent or live.
 
+A dial may say what it is for in a `Codeaf-Door` request header. `live` is a viewer watching or driving a chat:
+it is refused (`429`) once the machine already has `LIVE_STREAMS` (14) streams attached, counting every stream
+whoever holds it, so two are always free for `move`, which is held only to `MAX_STREAMS` (16). A dial with no
+header, or a value that is neither, is held to 16 exactly as before the header existed, so an older client
+behaves as it always did and an older Worker, which never reads the header, behaves as it always did for a
+newer one. The class is a claim and not an authentication: it only decides how the machine's streams are
+shared, and who may speak on one is settled by the host. A `live` stream also has a breaker (`src/engine/breaker.js`)
+that closes it with `1008` if it sustains more than 4 MiB/s over 5 s in either direction, for a host that ignores
+the pace it is meant to keep. It is computed when a message arrives. There is no timer and no alarm in a machine
+object, and a test pins it, because either would keep an idle live view from hibernating. The two `429`s for a
+caller's rate (30 dials and 10 registrations a minute) carry `Retry-After`. A live session adds no stored object and
+no field to any record: the only write on the dial path is the stream-id counter, which exists today.
+
 ## Base path
 
 A deployment can share a hostname by using a path prefix, such as
@@ -258,7 +271,9 @@ npx wrangler deploy --config wrangler.custom.toml
 | link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
 | link requests: live in all | 2,000 | `503 full` |
 | machine doors: surfaces on one machine at once (`MAX_STREAMS`) | 16 | `429` |
-| machine doors: dials and registrations a minute, per network at the Worker front (`MACHINE_DIAL_LIMIT`, `MACHINE_REGISTER_LIMIT`) and per machine name in memory | 30, 10 | `429` |
+| machine doors: surfaces a dial that sends `Codeaf-Door: live` may leave attached (`LIVE_STREAMS`, against the machine's total, so the last two are kept for `Codeaf-Door: move`; a dial with no class or an unknown one gets all 16) | 14 | `429` |
+| machine doors: a live stream's rate, in each direction, before it is cut (`BREAKER_BYTES_PER_SECOND` over `BREAKER_WINDOW_MS`, computed when a message arrives, never from a timer or an alarm) | 4 MiB/s over 5 s | close `1008` |
+| machine doors: dials and registrations a minute, per network at the Worker front (`MACHINE_DIAL_LIMIT`, `MACHINE_REGISTER_LIMIT`) and per machine name in memory | 30, 10 | `429`, `Retry-After` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused

@@ -13,8 +13,8 @@ func TestRelayWaitAndChoiceWordsAreInTheChatManual(t *testing.T) {
 		t.Fatal("missing continue manual")
 	}
 	for _, words := range []string{
-		"continuing <Y> next; <X> is still on its way here",
-		"<holder> picked this chat up again; press enter to continue it here",
+		"moving <Y> next; <X> is still on its way here",
+		"<holder> picked this chat up again; press enter to move it here",
 		"waiting for <host>; still checking",
 		"<host> did not answer in " + machinesAskTimeout.String() + "; still trying",
 		"<host> is unreachable; still trying",

@@ -113,6 +113,9 @@ func (a *app) teamOfFront() (team, bool) {
 // and the box says which. "" elsewhere. Frame-safe, allocation free for every
 // conversation that is not in a managed team.
 func (a *app) trafficHint() string {
+	if live := a.liveFront(); live != nil && live.Host != "" {
+		return liveMessageHint(live.Host)
+	}
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
 	}

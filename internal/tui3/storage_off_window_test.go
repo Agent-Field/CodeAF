@@ -22,7 +22,7 @@ func TestFirstStatusAfterPairing(t *testing.T) {
 	door.code = "id_account"
 	cmd := a.runStatusCommand("")
 	shown := plain(frame(a))
-	if !strings.Contains(strings.Join(strings.Fields(shown), " "), "sync storage off") || requests != 0 || cmd == nil {
+	if !strings.Contains(strings.Join(strings.Fields(shown), " "), "relay storage off") || requests != 0 || cmd == nil {
 		t.Fatalf("first status frame, requests=%d: %s", requests, shown)
 	}
 }
@@ -34,7 +34,7 @@ func TestStorageSearchActionMatchesPermission(t *testing.T) {
 			door := &storageApprovals{fakeApprovals: devicesFake(), code: "id_account", state: state}
 			a, r := openSettingsDevices(t, door, time.Now())
 			r.press("ctrl+u")
-			r.typeText("sync storage")
+			r.typeText("relay storage")
 			found := false
 			for i, item := range a.sheet.items {
 				if item.dev != nil && item.dev.storage {
@@ -77,7 +77,7 @@ func TestCloseStorageOffReceipt(t *testing.T) {
 		err  error
 		want string
 	}{
-		{"storage off", syncwords.UploadFailure(wireauth.ErrStorageOff), "saved here; sync storage is off for this account, so it stays on this computer"},
+		{"storage off", syncwords.UploadFailure(wireauth.ErrStorageOff), "saved here; relay storage is off for this account, so it stays on this computer"},
 		{"local failure", errors.New("disk full"), closeSaveFailedWord},
 		{"mixed failure", errors.Join(errors.New("disk full"), syncwords.UploadFailure(wireauth.ErrStorageOff)), closeSaveFailedWord},
 	} {
@@ -107,7 +107,7 @@ func TestCloseStorageOffReceipt(t *testing.T) {
 func TestOpenSettingsNoticesPairingAnswer(t *testing.T) {
 	door := &storageApprovals{fakeApprovals: devicesFake()}
 	a, _ := openSettingsDevices(t, door, time.Now())
-	if strings.Contains(plain(frame(a)), "sync storage") {
+	if strings.Contains(plain(frame(a)), "relay storage") {
 		t.Fatal("unpaired row shown")
 	}
 	door.code, door.state = "id_account", "off"
@@ -117,7 +117,7 @@ func TestOpenSettingsNoticesPairingAnswer(t *testing.T) {
 	}
 	a.Update(cmd())
 	shown := plain(frame(a))
-	if !strings.Contains(shown, "sync storage") || a.sheet.storageState != "off" {
+	if !strings.Contains(shown, "relay storage") || a.sheet.storageState != "off" {
 		t.Fatalf("paired row missing: %s", shown)
 	}
 }
@@ -151,7 +151,7 @@ func TestLateCloseStorageOffReceipt(t *testing.T) {
 	<-finished
 	a.Update(noticesMsg{})
 	shown := strings.Join(strings.Fields(plain(frame(a))), " ")
-	if !strings.Contains(shown, "saved here; sync storage is off for this account, so it stays on this computer") || strings.Contains(shown, closeSaveFailedWord) {
+	if !strings.Contains(shown, "saved here; relay storage is off for this account, so it stays on this computer") || strings.Contains(shown, closeSaveFailedWord) {
 		t.Fatalf("late receipt: %s", shown)
 	}
 }

@@ -60,6 +60,9 @@ import (
 
 // raiseHomeAsk puts one question on home's card, replacing whatever was there.
 func (a *app) raiseHomeAsk(q questionShown) {
+	if a.home.ask != nil && a.home.ask.question.Kind == homePermitKind && q.question.Kind != homePermitKind {
+		a.home.permitAsked = false
+	}
 	if q.question.Asked.IsZero() {
 		q.question.Asked = a.now()
 	}
@@ -180,6 +183,16 @@ func (a *app) homeAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	ask, ok := a.homeAsking()
 	if !ok {
 		return nil, false
+	}
+	if ask.question.Kind == homePermitKind {
+		switch msg.String() {
+		case "esc":
+			a.dropHomeAsk()
+			a.home.armed = ""
+			return nil, true
+		case "1", "2", "3":
+			return a.questionAnswerKey(ask, msg.String()), true
+		}
 	}
 	return a.questionKeyOn(ask, msg)
 }

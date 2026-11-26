@@ -52,7 +52,7 @@ screen. Its heading is `Basic settings`, one line, with the keys line directly u
 
 ## I already use codeaf on a second computer — the code field on the first screen
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -65,7 +65,7 @@ have a code from another device?
 use your own relay: codeaf pair <code> --via <url>
 ```
 
-On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your identity; chats copy here when sync storage is enabled, and move by blind pass-through while both computers are running codeaf when it is off. Read *Pairing your chats with a second computer* for the rest.
+On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your identity; chats copy here when relay storage is enabled, and move by blind pass-through while both computers are running codeaf when it is off. Read *Pairing your chats with a second computer* for the rest.
 
 ## Skipping setup and reading its header
 

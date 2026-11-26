@@ -128,7 +128,7 @@ func TestResumeNeverOffersThisComputersOwnDevice(t *testing.T) {
 		keepSurfaceWorkersInTest(t, a)
 		a.deviceID = "self"
 		a.Update(homeMachinesMsg{rows: []chatlist.Row{{Cell: "chat", DeviceID: "self", Device: "laptop", Status: status}}})
-		if got := leftOffFrame(a); strings.Contains(got, "Continue laptop's latest chat here?") {
+		if got := leftOffFrame(a); strings.Contains(got, "Move laptop's latest chat here?") {
 			t.Fatalf("offered this computer for %s: %s", status, got)
 		}
 	}
@@ -136,7 +136,7 @@ func TestResumeNeverOffersThisComputersOwnDevice(t *testing.T) {
 	keepSurfaceWorkersInTest(t, a)
 	a.Update(homeMachinesMsg{rows: []chatlist.Row{{Cell: "chat", DeviceID: "self", Device: "laptop", Status: chatlist.Off}}})
 	a.Update(rosterMsg{devices: []chatlist.Device{{ID: "self", Name: "laptop", Self: true}}})
-	if got := leftOffFrame(a); strings.Contains(got, "Continue laptop's latest chat here?") {
+	if got := leftOffFrame(a); strings.Contains(got, "Move laptop's latest chat here?") {
 		t.Fatalf("the self-device reading left its stale offer: %s", got)
 	}
 }
@@ -171,7 +171,7 @@ func TestFirstEnterWaitsForOwnershipReading(t *testing.T) {
 	_, cmd := a.Update(key("enter"))
 	close(src.ready)
 	spend(t, a, cmd)
-	if got := plain(frame(a)); strings.Contains(got, chatlist.Unreachable) || !strings.Contains(got, "Continue this chat here?") {
+	if got := plain(frame(a)); strings.Contains(got, chatlist.Unreachable) || !strings.Contains(got, "Move this chat here?") {
 		t.Fatalf("first send did not raise the card: %s", got)
 	}
 	if a.input.String() != "keep these words" {
@@ -216,7 +216,7 @@ func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
 	for range 3 {
 		a.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	}
-	outage := "the sync service is not answering; this chat keeps working here and catches up when it is back"
+	outage := "the relay is not answering; this chat keeps working here and catches up when it is back"
 	if got := plain(frame(a)); strings.Count(got, outage) != 1 {
 		t.Fatalf("outage notice count is wrong: %s", got)
 	}

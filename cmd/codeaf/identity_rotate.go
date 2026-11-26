@@ -152,7 +152,7 @@ func planText(p rotate.Plan) string {
 		fmt.Fprintf(&b, ", %d of them not on this computer (%s to fetch first)", p.Missing, rotationMegabytes(p.DownBytes))
 	}
 	if p.StorageOff {
-		b.WriteString(".\nsync storage is off; your chats stay on this computer.\n")
+		b.WriteString(".\nrelay storage is off; your chats stay on this computer.\n")
 		if p.DownBytes > 0 {
 			fmt.Fprintf(&b, "allow about %s to fetch the missing chats.\n", minutes(p.Wait))
 		}

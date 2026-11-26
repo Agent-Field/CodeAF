@@ -116,7 +116,7 @@ type Continued struct {
 	KeptBranch func() (string, uint32) `json:"-"`
 }
 
-// Continuer is the take side of one machine: `continue here`.
+// Continuer is the take side of one machine: `move here`.
 type Continuer struct {
 	sync     *Sync
 	eng      cellstore.Engine
@@ -1166,7 +1166,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		if c.sync.teamsSharing() {
 			if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
-				c.say(taken.Cell, "This chat continued here, but its teams could not be updated yet: "+err.Error())
+				c.say(taken.Cell, "This chat moved here, but its teams could not be updated yet: "+err.Error())
 			}
 		}
 		recordStep("send_lease", "")
@@ -1514,7 +1514,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 				hErr := hook(runCtx, taken.Cell)
 				hookDone()
 				if hErr != nil {
-					c.say(taken.Cell, "This chat continued here, but part of its state could not be updated yet: "+hErr.Error())
+					c.say(taken.Cell, "This chat moved here, but part of its state could not be updated yet: "+hErr.Error())
 				}
 			}
 
@@ -1535,7 +1535,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			}
 			if c.sync.teamsSharing() {
 				if tErr := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); tErr != nil {
-					c.say(taken.Cell, "This chat continued here, but its teams could not be updated yet: "+tErr.Error())
+					c.say(taken.Cell, "This chat moved here, but its teams could not be updated yet: "+tErr.Error())
 				}
 			}
 			stashPath := filepath.Join(taken.Cell.Root, "resume.pending")

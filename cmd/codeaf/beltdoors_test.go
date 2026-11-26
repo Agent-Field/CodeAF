@@ -29,7 +29,8 @@ import (
 // The cap moves by exactly those seven lines; unrelated help growth still fails.
 // The pairing door adds its two forms and their descriptions, four lines more.
 // The devbox door adds its form and description, two lines more.
-const helpLineCap = 123
+// The devices permit door adds its form and description, two lines more.
+const helpLineCap = 125
 
 // doorsOffThePage are the command words main.go dispatches that `codeaf --help`
 // deliberately does NOT name, so the check below does not demand a line for

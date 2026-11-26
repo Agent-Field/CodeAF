@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -105,8 +108,11 @@ type Client struct {
 	// it is read under mu and never cached by anything that outlives a frame.
 	conn io.ReadWriteCloser
 	// lines is the decoder over the read half, owned by the reader goroutine
-	// after the handshake and touched by nothing else.
-	lines *json.Decoder
+	// after the handshake and touched by nothing else. When maxLine is set,
+	// bounded replaces it with a line-capped buffered reader.
+	lines   *json.Decoder
+	bounded *bufio.Reader
+	maxLine int
 
 	// welcome is what the engine said at the door, and what the door in
 	// cmd/codeaf reads its Options out of.
@@ -132,6 +138,10 @@ type Client struct {
 	// which is the whole of what [Client.LinkNote] reports and the reason a call
 	// made in that gap is refused rather than written onto a dead pipe.
 	reconnecting bool
+	// noteAt is the first moment [Client.LinkNote] may say `reconnecting` for the
+	// redial in progress. Zero says it at once; a planned road swap sets it a
+	// moment ahead so that a swap which takes milliseconds says nothing.
+	noteAt time.Time
 	// notice is one sentence the surface should show once — the two facts a
 	// redial can discover that a person must not be left to guess at. See
 	// [Client.TakeNotice].
@@ -175,6 +185,7 @@ type Client struct {
 	// their ids belong to this connection and never enter turn replay cursors.
 	sideAsks     map[uint64]func(string)
 	calls        map[uint64]chan result
+	pendingSends map[uint64]Frame
 	streams      map[uint64]*stream
 	observers    map[uint64]*stream
 	replayCursor session.ReplayCursor
@@ -270,6 +281,33 @@ type result struct {
 	answered bool
 }
 
+// ClientOption configures optional client reader behavior before attaching.
+type ClientOption func(*Client)
+
+// WithMaxLine caps each inbound newline-delimited frame line to max bytes.
+// Zero keeps the default unbounded decoder used for local pipes and sockets.
+func WithMaxLine(max int) ClientOption {
+	return func(c *Client) {
+		c.maxLine = max
+	}
+}
+
+// SetMaxLine sets the inbound frame line ceiling on c before or across dials.
+func (c *Client) SetMaxLine(max int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxLine = max
+	if c.conn != nil {
+		if max > 0 {
+			c.bounded = bufio.NewReaderSize(c.conn, max+1)
+			c.lines = nil
+		} else {
+			c.lines = json.NewDecoder(c.conn)
+			c.bounded = nil
+		}
+	}
+}
+
 // Dial performs the handshake on an already-open pipe pair and returns the live
 // client. It is separate from spawning ssh on purpose: the spawning belongs to
 // the door (cmd/codeaf, which owns processes and flags), and a test drives this
@@ -279,8 +317,8 @@ type result struct {
 // order the door runs things in: the handshake happens while the terminal is
 // still the person's, so ssh's own passphrase and host-key questions, and the
 // sentence below about a version mismatch, are plain text on a plain screen.
-func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
-	c := newClient(host, hello)
+func Dial(conn io.ReadWriteCloser, host string, hello Hello, opts ...ClientOption) (*Client, error) {
+	c := newClient(host, hello, opts...)
 	if _, err := c.attach(conn); err != nil {
 		return nil, err
 	}
@@ -290,7 +328,7 @@ func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
 
 // newClient is the empty client both doors build — [Dial] and [Roam] — before
 // anything has been said on a pipe.
-func newClient(host string, hello Hello) *Client {
+func newClient(host string, hello Hello, opts ...ClientOption) *Client {
 	hello.Version = Version
 	hello.LocalSavingReceipts = true
 	hello.SyncNoticeWords = true
@@ -306,21 +344,28 @@ func newClient(host string, hello Hello) *Client {
 		hello.ClientID = newClientID()
 	}
 	hello.Encodings = []string{frameEncodingGzip}
-	return &Client{
+	c := &Client{
 		clientTools: clientToolLink{owner: rand.Text()},
 
-		host:    strings.TrimSpace(host),
-		hello:   hello,
-		calls:   map[uint64]chan result{},
-		streams: map[uint64]*stream{},
-		done:    make(chan struct{}),
-		stop:    make(chan struct{}),
+		host:         strings.TrimSpace(host),
+		hello:        hello,
+		calls:        map[uint64]chan result{},
+		pendingSends: map[uint64]Frame{},
+		streams:      map[uint64]*stream{},
+		done:         make(chan struct{}),
+		stop:         make(chan struct{}),
 
 		driver:     Driver{Yours: true},
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
 		passes:     make(chan session.Event, passRoom),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
+	return c
 }
 
 // newClientID gives one surface a stable identity to carry through every
@@ -350,19 +395,22 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	if err != nil {
 		return Welcome{}, err
 	}
-	lines := json.NewDecoder(conn)
 	c.mu.Lock()
-	c.conn, c.lines = conn, lines
+	c.conn = conn
+	if c.maxLine > 0 {
+		c.bounded = bufio.NewReaderSize(conn, c.maxLine+1)
+		c.lines = nil
+	} else {
+		c.lines = json.NewDecoder(conn)
+		c.bounded = nil
+	}
 	c.mu.Unlock()
 
 	if err := c.write(Frame{Kind: "hello", Payload: payload}); err != nil {
 		return Welcome{}, c.gone(err)
 	}
 	var frame Frame
-	if err := lines.Decode(&frame); err != nil {
-		return Welcome{}, c.gone(err)
-	}
-	if err := expandFrame(&frame); err != nil {
+	if err := c.readFrame(&frame); err != nil {
 		return Welcome{}, c.gone(err)
 	}
 	switch frame.Kind {
@@ -700,7 +748,7 @@ func (c *Client) Ping() (time.Duration, error) {
 func (c *Client) LinkNote() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.dead != nil || !c.reconnecting {
+	if c.dead != nil || !c.reconnecting || time.Now().Before(c.noteAt) {
 		return ""
 	}
 	return c.roamingNote()
@@ -827,6 +875,12 @@ func (c *Client) SendRefusal() string {
 // again. A sentence that only reported the failure would leave a person
 // wondering whether their work survived.
 func (c *Client) gone(cause error) error {
+	// A view the far end ended on purpose already has its one true sentence,
+	// and "run the same command" would be wrong advice for it: the same command
+	// asks the same computer, which has just said no.
+	if reason, ended := endedByFarEnd(cause); ended {
+		return errors.New(chatlist.LiveSaid(reason, c.where()))
+	}
 	sentence := fmt.Sprintf("the connection to %s is gone — run the same command to pick the conversation back up", c.where())
 	// A cause worth repeating is one the FAR END chose to say (a "fatal" frame's
 	// reason). Transport errors are not: "read |0: file already closed" tells a
@@ -878,25 +932,97 @@ func (c *Client) write(frame Frame) error {
 	return flushFrame(conn)
 }
 
+// readFrame decodes and expands one inbound frame from the active link. When
+// maxLine is zero it uses the unbounded json.Decoder; when maxLine is positive
+// it reads a single newline-delimited line from the bounded bufio.Reader so an
+// oversized line never allocates past maxLine+1 bytes.
+func (c *Client) readFrame(frame *Frame) error {
+	c.mu.Lock()
+	lines := c.lines
+	bounded := c.bounded
+	maxLine := c.maxLine
+	c.mu.Unlock()
+
+	if maxLine <= 0 {
+		if err := lines.Decode(frame); err != nil {
+			return err
+		}
+		if err := expandFrame(frame); err != nil {
+			return buriedError{err}
+		}
+		return nil
+	}
+
+	raw, err := bounded.ReadSlice('\n')
+	if errors.Is(err, bufio.ErrBufferFull) {
+		return c.tooLargeError()
+	}
+	if err != nil {
+		if errors.Is(err, io.EOF) && len(raw) > 0 {
+			if len(raw) > maxLine {
+				return c.tooLargeError()
+			}
+		} else {
+			return err
+		}
+	}
+	raw = bytes.TrimSuffix(raw, []byte{'\n'})
+	raw = bytes.TrimSuffix(raw, []byte{'\r'})
+	if len(raw) > maxLine {
+		return c.tooLargeError()
+	}
+	if err := json.Unmarshal(raw, frame); err != nil {
+		return err
+	}
+	if err := expandFrameCap(frame, maxLine); err != nil {
+		if errors.Is(err, errExpandedFrameTooLarge) {
+			return c.tooLargeError()
+		}
+		return buriedError{err}
+	}
+	return nil
+}
+
+// buriedError marks a frame that arrived whole but could not be expanded. The
+// link is fine and the stream is not, so the client is buried with the cause
+// rather than treated as a dropped link that a roaming client would redial.
+type buriedError struct{ err error }
+
+func (e buriedError) Error() string { return e.err.Error() }
+func (e buriedError) Unwrap() error { return e.err }
+
+func (c *Client) tooLargeError() error {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	return spokenError{reason: fmt.Sprintf("%s sent a message too large to read", c.where())}
+}
+
 // read is the reader goroutine: the only thing that decodes frames, and the
 // only thing that writes to the routing maps.
 func (c *Client) read() {
 	for {
-		c.mu.Lock()
-		lines := c.lines
-		c.mu.Unlock()
 		var frame Frame
-		if err := lines.Decode(&frame); err != nil {
+		if err := c.readFrame(&frame); err != nil {
+			var spoken spokenError
+			if errors.As(err, &spoken) {
+				c.bury(err)
+				return
+			}
+			var buried buriedError
+			if errors.As(err, &buried) {
+				c.bury(buried.err)
+				return
+			}
 			// The link under this reader stopped. On a roaming client that is a
 			// pause and not an ending, so [Client.lost] is what decides which of
 			// the two this was, and it comes back true holding a live pipe.
 			if c.lost(err) {
 				continue
 			}
-			return
-		}
-		if err := expandFrame(&frame); err != nil {
-			c.bury(err)
 			return
 		}
 		switch frame.Kind {
@@ -916,6 +1042,8 @@ func (c *Client) read() {
 			c.deliver(frame)
 		case "event":
 			c.stream(frame.ID).push(frame.Seq, frame.Payload)
+		case "gap":
+			c.gapFrame(frame)
 		case "closed":
 			c.stream(frame.ID).finish()
 		case "turn":
@@ -1009,6 +1137,7 @@ func (c *Client) deliver(frame Frame) {
 	c.mu.Lock()
 	waiting, ok := c.calls[frame.ID]
 	delete(c.calls, frame.ID)
+	delete(c.pendingSends, frame.ID)
 	c.mu.Unlock()
 	if !ok {
 		// A result for a call that has already given up (its deadline passed).
@@ -1099,6 +1228,7 @@ func (c *Client) bury(cause error) {
 	dead := c.dead
 	calls, streams := c.calls, c.streams
 	c.calls, c.streams = map[uint64]chan result{}, map[uint64]*stream{}
+	c.pendingSends = map[uint64]Frame{}
 	// AND THE TAKE-BACK'S RECEIPTS GO WITH THEM: a stream id from the
 	// connection that just died names nothing on the one that follows, and a
 	// stale receipt would match a queued message it was never handed
@@ -1252,11 +1382,19 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 		return nil, true, errors.New(c.roamingRefusal())
 	}
 	c.calls[id] = waiting
+	frame := Frame{Kind: "call", ID: id, Method: method, Payload: payload}
+	if hasRepeatClientID(method, payload) {
+		if c.pendingSends == nil {
+			c.pendingSends = map[uint64]Frame{}
+		}
+		c.pendingSends[id] = frame
+	}
 	c.mu.Unlock()
 
-	if err := c.write(Frame{Kind: "call", ID: id, Method: method, Payload: payload}); err != nil {
+	if err := c.write(frame); err != nil {
 		c.mu.Lock()
 		delete(c.calls, id)
+		delete(c.pendingSends, id)
 		roaming := c.roam != nil && !c.closing
 		c.mu.Unlock()
 		// A WRITE THAT FAILED IS NOT A CALL THAT DID NOT HAPPEN. The frame may
@@ -1279,20 +1417,26 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 	}
 	timer := time.NewTimer(deadline)
 	defer timer.Stop()
-	select {
-	case answer := <-waiting:
-		return answer.payload, answer.answered, answer.err
-	case <-ctx.Done():
-		// The caller walked away from a call that is still out there.
-		c.forget(id)
-		return nil, false, ctx.Err()
-	case <-timer.C:
-		// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
-		// this call right now; what ran out is this end's patience. A live
-		// connection is not declared gone for that — [Client.late] is the
-		// honest sentence, and the rest of the room stays up.
-		c.forget(id)
-		return nil, false, c.late()
+	for {
+		select {
+		case answer := <-waiting:
+			return answer.payload, answer.answered, answer.err
+		case <-ctx.Done():
+			// The caller walked away from a call that is still out there.
+			c.forget(id)
+			return nil, false, ctx.Err()
+		case <-timer.C:
+			if c.isHeldForResend(id) {
+				timer.Reset(deadline)
+				continue
+			}
+			// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
+			// this call right now; what ran out is this end's patience. A live
+			// connection is not declared gone for that — [Client.late] is the
+			// honest sentence, and the rest of the room stays up.
+			c.forget(id)
+			return nil, false, c.late()
+		}
 	}
 }
 
@@ -1333,7 +1477,67 @@ func (e lateError) Is(target error) bool { return target == ErrLate }
 func (c *Client) forget(id uint64) {
 	c.mu.Lock()
 	delete(c.calls, id)
+	delete(c.pendingSends, id)
 	c.mu.Unlock()
+}
+
+func (c *Client) isHeldForResend(id uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.pendingSends[id]
+	return c.reconnecting && ok
+}
+
+func (c *Client) resendUnanswered() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.roam != nil && c.roam.ResendUnanswered
+}
+
+func newSendClientID() string {
+	return "rc-" + newClientID()
+}
+
+func hasRepeatClientID(method string, payload json.RawMessage) bool {
+	switch method {
+	case MethodSubmit, MethodFollowUp, MethodSteer:
+	default:
+		return false
+	}
+	if len(payload) == 0 {
+		return false
+	}
+	var args struct {
+		ClientID string `json:"clientId"`
+	}
+	return json.Unmarshal(payload, &args) == nil && args.ClientID != ""
+}
+
+func (c *Client) gapFrame(frame Frame) {
+	var gap Gap
+	if err := json.Unmarshal(frame.Payload, &gap); err != nil {
+		return
+	}
+	if gap.Stream == 0 {
+		gap.Stream = frame.ID
+	}
+	c.mu.Lock()
+	s := c.streams[gap.Stream]
+	var onGap func(Gap)
+	if c.roam != nil {
+		onGap = c.roam.OnGap
+	}
+	c.mu.Unlock()
+	if s != nil && gap.First > 1 {
+		s.mu.Lock()
+		if s.seen < gap.First-1 {
+			s.seen = gap.First - 1
+		}
+		s.mu.Unlock()
+	}
+	if onGap != nil {
+		onGap(gap)
+	}
 }
 
 // ── the typed doors ─────────────────────────────────────────────────────────
@@ -1875,7 +2079,11 @@ func (a *Agent) Client() *Client { return a.c }
 // nothing a person can press is lost — but a caller reading this method's
 // signature should know which of the two it is holding.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
-	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
+	args := SubmitArgs{Text: text}
+	if a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(ctx, MethodSubmit, args)
 }
 
 // SubmitMessage is Submit with what the door knows about the message beyond its
@@ -1896,10 +2104,17 @@ func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (
 	}
 	mark := argsOf(message)
 	mark.Queued = false
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
 	if mark.marked() && !a.MessageMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
 	}
-	return a.open(ctx, MethodSubmit, argsOf(message))
+	args := argsOf(message)
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(ctx, MethodSubmit, args)
 }
 
 // SubmitComposed is Submit for a message that carries pictures and what the
@@ -1951,13 +2166,24 @@ func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, 
 	if argsOf(message).composed() {
 		return nil, errors.New("engine: a correction carries no pictures; send them as a message")
 	}
-	if !argsOf(message).marked() {
+	mark := argsOf(message)
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
+	if !mark.marked() {
+		if message.ClientID != "" {
+			return a.open(nil, MethodSteer, argsOf(message))
+		}
 		return a.Steer(message.Text)
 	}
 	if !a.SteerMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a correction's description; update it before sending")
 	}
-	return a.open(nil, MethodSteer, argsOf(message))
+	args := argsOf(message)
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(nil, MethodSteer, args)
 }
 
 // FollowUpMessage is FollowUp with what the door knows about the message beyond
@@ -1971,10 +2197,14 @@ func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Even
 	if argsOf(message).composed() {
 		return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
 	}
-	if !argsOf(message).marked() {
+	mark := argsOf(message)
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
+	if !mark.marked() {
 		// A creation context alone goes to an engine that keeps marks, and is
 		// left behind by one that does not: the team is then unknown there.
-		if message.Creation != nil && a.FollowUpMarksKnown() {
+		if (message.Creation != nil && a.FollowUpMarksKnown()) || message.ClientID != "" {
 			return a.followUp(argsOf(message))
 		}
 		return a.FollowUp(message.Text)
@@ -2040,6 +2270,9 @@ func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
 
 // followUp is the FollowUp call's one body, plain or marked.
 func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
 	payload, err := a.c.call(nil, MethodFollowUp, args)
 	if err != nil {
 		return nil, err
@@ -2047,6 +2280,11 @@ func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
 	var ref StreamRef
 	if err := json.Unmarshal(payload, &ref); err != nil {
 		return nil, err
+	}
+	if ref.Stream == 0 {
+		done := make(chan session.Event)
+		close(done)
+		return done, nil
 	}
 	s := a.c.stream(ref.Stream)
 	s.keepFollowRef(&a.c.followRefs, ref.Stream)
@@ -2130,7 +2368,11 @@ func (f *followRefs) forget() {
 // one; making the far end infer which was meant would erase the person's
 // intent at the wire.
 func (a *Agent) Steer(text string) (<-chan session.Event, error) {
-	return a.open(nil, MethodSteer, SubmitArgs{Text: text})
+	args := SubmitArgs{Text: text}
+	if a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(nil, MethodSteer, args)
 }
 
 // open is the stream-opening calls' one body: the call, the [StreamRef] it
@@ -2143,6 +2385,11 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 	var ref StreamRef
 	if err := json.Unmarshal(payload, &ref); err != nil {
 		return nil, err
+	}
+	if ref.Stream == 0 {
+		done := make(chan session.Event)
+		close(done)
+		return done, nil
 	}
 	return a.c.stream(ref.Stream).events(), nil
 }
@@ -2543,6 +2790,25 @@ func (a *Agent) ContextTokens() int { return a.c.facts.read().ContextTokens }
 // Transcript is the conversation so far, shaped for display.
 func (a *Agent) Transcript() []session.DisplayEntry {
 	return a.entries(MethodTranscript, nil)
+}
+
+// TranscriptPage reads one bounded page of the conversation's transcript ending
+// before the absolute entry index before (zero for the tail). An older engine
+// without the door answers "no such method", which comes back unchanged so the
+// caller can fall back to the whole-transcript read.
+func (a *Agent) TranscriptPage(ctx context.Context, before, limit int) (Page, error) {
+	payload, err := a.c.call(ctx, MethodTranscriptPage, TranscriptPageArgs{
+		Before: before,
+		Limit:  limit,
+	})
+	if err != nil {
+		return Page{}, err
+	}
+	var page Page
+	if err := json.Unmarshal(payload, &page); err != nil {
+		return Page{}, err
+	}
+	return page, nil
 }
 
 // EarlierHistory is the conversation above the session's latest compaction and
@@ -3089,6 +3355,12 @@ func (a *Agent) MessageClientIDsKnown() bool {
 	return a.welcomeSays(func(w Welcome) bool { return w.MessageClientIDs })
 }
 
+// MessageRepeatKnown is whether the holder deduplicates remote sends by device
+// and ClientID ([Welcome.MessageRepeat]).
+func (a *Agent) MessageRepeatKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageRepeat })
+}
+
 // MessageFromKnown is whether the engine keeps who sent a message on the
 // person's behalf ([Welcome.MessageFrom]).
 func (a *Agent) MessageFromKnown() bool {
@@ -3099,7 +3371,7 @@ func (a *Agent) MessageFromKnown() bool {
 // sender or an attachment source this engine cannot keep, and nil for one that
 // carries none or whose engine can.
 func (a *Agent) refuseUnkeptMarks(message session.Submission) error {
-	if message.ClientID != "" && !a.MessageClientIDsKnown() {
+	if message.ClientID != "" && !a.MessageClientIDsKnown() && !a.MessageRepeatKnown() {
 		return errors.New("engine: this engine cannot keep a message's client id; update it before sending")
 	}
 	if message.From != "" && !a.MessageFromKnown() {

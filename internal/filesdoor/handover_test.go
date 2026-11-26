@@ -139,7 +139,7 @@ func (f *failingRegistrar) loop(register func(n int) error, hold func(), stopAft
 func TestFilesDoorRegistrationNeverGivesUpAndMakesAtMostSixAttemptsAMinute(t *testing.T) {
 	failures := []error{
 		relay.ErrNameTaken, relay.ErrTooMany, relay.ErrUnreachable, relay.ErrNoDoor,
-		errors.New("the sync service refused this machine"),
+		errors.New("the relay refused this machine"),
 	}
 	f := &failingRegistrar{clock: time.Unix(0, 0)}
 	r, ctx, _ := f.loop(func(n int) error { return failures[n%len(failures)] }, func() { t.Error("held a registration that never happened") }, 60)

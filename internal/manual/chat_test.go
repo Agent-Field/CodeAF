@@ -241,6 +241,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
 		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
+		{"can my laptop watch or type into a chat that is running on my desktop", "desktop-sync"},
+		{"does someone watching my chat from another computer stop it being closed when it goes idle", "desktop-sync"},
+		{"I closed a chat on this desktop and my other computer says it closed", "desktop-sync"},
 		{"my crew from the other computer shows as loose chats in the desktop", "desktop-sync"},
 		{"can I continue a crew made on another computer here", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
@@ -3956,6 +3959,50 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// Remote control (internal/manual/chat/remote-control.md): working in a chat
+		// another of the person's computers is running, without moving it.
+		{"how do I see my chat from my other computer", "remote-control"},
+		{"can I drive a chat on my desktop from my laptop without moving it", "remote-control"},
+		{"open a chat that is running on another computer live", "remote-control"},
+		{"why can't I type in a chat that is running on my other computer", "remote-control"},
+		{"what does watch only mean", "remote-control"},
+		{"who has the keyboard when two computers have the same chat open", "remote-control"},
+		{"my desktop went offline while I was looking at its chat", "remote-control"},
+		{"my live view says my desktop turned remote control off", "remote-control"},
+		{"does remote control work when relay storage is off", "remote-control"},
+		{"how do I stop my laptop from controlling my desktop's chats", "remote-control"},
+		{"can the relay read what I type on my other computer", "remote-control"},
+		{"why was I disconnected after ten minutes", "remote-control"},
+		{"it says daily limit and watch only", "remote-control"},
+		{"how do I turn remote control on", "remote-control"},
+		{"what is the difference between remote control and move here", "remote-control"},
+		{"can my laptop answer a question that is waiting on my desktop", "remote-control"},
+		{"remote control says restart codeaf on the other computer", "remote-control"},
+		{"do I need to restart codeaf after I turn remote control on", "remote-control"},
+		{"I turned remote control on in settings but enter still asks to move the chat", "remote-control"},
+		{"after I open a chat live from my other computer Home's project is a folder that does not exist on this computer", "remote-control"},
+		{"does opening a chat live change the project on home", "remote-control"},
+		{"is remote control the same as codeaf serve and --at", "remote-control"},
+		// The direct road (the same page): two computers on one network connect
+		// without the relay, what /status says, and the switches that govern it.
+		{"does my remote view go through the relay", "remote-control"},
+		{"can my two computers connect directly", "remote-control"},
+		{"how do I see if remote control is direct", "remote-control"},
+		{"make remote control only use the relay", "remote-control"},
+		{"what is STUN and does codeaf contact Google", "remote-control"},
+		{"why does status say live direct", "remote-control"},
+		{"does remote control work on a network that blocks UDP", "remote-control"},
+		// The desktop's own switch (desktop-sync.md): where it is and why it says restart.
+		{"how do I turn on remote control in the desktop app", "desktop-sync"},
+		{"the Remote control switch in the desktop settings says restart", "desktop-sync"},
+		{"Remote control is set by CODEAF_REMOTE_CONTROL and the switch is greyed out", "desktop-sync"},
+		// The keyboard of a chat the desktop runs (desktop-sync.md): who is typing, and Type here.
+		{"my desktop chat says Typing from another computer now and I can't type", "desktop-sync"},
+		{"how do I take the keyboard back in the desktop app from my other computer", "desktop-sync"},
+		{"what does the Type here button do in the desktop", "desktop-sync"},
+		// A new chat on another computer's Home (remote-control.md): when the row first appears.
+		{"my new chat does not show on my other computer while its first message is still running", "remote-control"},
+		{"when does a chat appear on my other computer's Home with remote control on", "remote-control"},
 		// Sharing and moving inside an organization: roles, grants, the
 		// operator's policy, a shared chat read-only, move against share, an
 		// expiry, and Afi's pane and a task's conversation as sessions.
@@ -5194,8 +5241,8 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
 		{"why can't I type in this chat", cont, "Your words stay in the box"},
-		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
-		{"continue on this machine", cont, "Continue tower's latest chat here?"},
+		{"my message did not send and home opened with a question", cont, "Move this chat here?"},
+		{"continue on this machine", cont, "Move tower's latest chat here?"},
 		{"what does running on tower mean", cont, "Move here"},
 		{"what does moved from tower in 3.2s mean", cont, "Everything as you left it."},
 		{"what is the card that says set this machine up", cont, "set up"},
@@ -5279,7 +5326,7 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"is the task history carried to the other computer", "continuing-a-chat-on-another-computer", "rebuilt from the chat's own record"},
 		{"does /remember work on my other computer", "what-i-remember", "within one sync round"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
-		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device moved this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
 		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
 		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
@@ -5453,7 +5500,7 @@ func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
 		t.Run(probe.question, func(t *testing.T) {
 			for _, section := range Chat().Search(probe.question, DefaultResults) {
 				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
-					if !strings.Contains(section.Body, "sync storage approval") {
+					if !strings.Contains(section.Body, "relay storage approval") {
 						t.Fatalf("approval missing: %s", section.Body)
 					}
 					return

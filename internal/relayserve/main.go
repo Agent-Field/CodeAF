@@ -74,7 +74,7 @@ func Main(args []string) error {
 func RelayHelp(out io.Writer) {
 	fmt.Fprintln(out, `usage: codeaf relay [--listen host:port] [--store path]
 
-Run your own sync service.
+Run your own relay.
 
   --listen host:port  address to listen on (default :8787)
   --store path        keep your devices and saved chats here; empty connects machines only

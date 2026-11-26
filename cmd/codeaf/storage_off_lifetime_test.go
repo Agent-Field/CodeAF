@@ -283,7 +283,7 @@ func TestStorageOffContinuedChatSendsAfterItsOwnEmptyHeadHoldExpires(t *testing.
 			t.Fatal(err)
 		}
 		waitStorageOffBoundary(t, "locally saved "+marker, func() bool {
-			if strings.Contains(screen.Plain(), "Continue this chat here?") {
+			if strings.Contains(screen.Plain(), "Move this chat here?") {
 				t.Fatal("own empty-head chat asked to continue again")
 			}
 			raw, _ := os.ReadFile(cfg.SessionFile)
@@ -319,7 +319,7 @@ func TestStorageOffContinuedChatSendsAfterItsOwnEmptyHeadHoldExpires(t *testing.
 	if err != nil || latest.Cell.Lease.Fence <= previous.Cell.Lease.Fence || latest.Cell.Lease.Device != s.Device.ID() {
 		t.Fatalf("send did not reacquire: %+v %v", latest, err)
 	}
-	if strings.Contains(screen.Plain(), "Continue this chat here?") {
+	if strings.Contains(screen.Plain(), "Move this chat here?") {
 		t.Fatal("own expired chat asked to continue")
 	}
 	if store.writes.Load() != 0 {
@@ -508,7 +508,7 @@ func testRecordedHeadReturn(t *testing.T, mode string) {
 			t.Fatal(err)
 		}
 		waitStorageOffBoundary(t, "saved "+marker, func() bool {
-			if strings.Contains(shown(), "Continue this chat here?") {
+			if strings.Contains(shown(), "Move this chat here?") {
 				t.Fatal("own chat asked to continue again")
 			}
 			raw, _ := os.ReadFile(cfg.SessionFile)
@@ -591,7 +591,7 @@ func testRecordedHeadReturn(t *testing.T, mode string) {
 				t.Fatal(err)
 			}
 			waitStorageOffBoundary(t, "continue question or missing-turns refusal", func() bool {
-				return strings.Contains(shown(), "Continue this chat here?") || mode == "missing saved turns" && strings.Contains(shown(), "this computer is missing saved turns; your local turns stay here")
+				return strings.Contains(shown(), "Move this chat here?") || mode == "missing saved turns" && strings.Contains(shown(), "this computer is missing saved turns; your local turns stay here")
 			})
 			latest, err := s.Dir.Cell(t.Context(), c.ID)
 			if err != nil || latest.Cell.Lease.Fence != free.Cell.Lease.Fence || turns.Load() != calls {

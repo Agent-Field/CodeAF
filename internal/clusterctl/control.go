@@ -24,7 +24,7 @@ var ErrUnavailable = errors.New(cs.LeadershipUnavailable)
 
 // ErrUnsupported distinguishes an absent leadership capability from a lost
 // quorum. Clients can refuse before saving an intent the relay cannot finish.
-var ErrUnsupported = errors.New("this sync service does not offer cluster leadership yet; your saved chats are still here")
+var ErrUnsupported = errors.New("this relay does not offer cluster leadership yet; your saved chats are still here")
 
 type CommittedRefusal struct {
 	Code     cs.Code `json:"code"`

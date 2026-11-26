@@ -170,8 +170,12 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 	a.fileMachines(msg)
 	a.machineRead.err = msg.err
 	a.machineRead.readWithin = msg.readWithin
+	var liveCmd tea.Cmd
 	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
-		a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
+		var followed bool
+		if liveCmd, followed = a.followHolderLive(row); !followed {
+			a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
+		}
 	}
 	a.machineRead.down = msg.err != nil && !a.machineRead.computerRemoved
 	a.machineRead.merge = a.branches.Merge != nil
@@ -182,7 +186,7 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 	if !a.machinesAsking {
 		owed = a.readOwedByFrames(msg.err == nil)
 	}
-	return tea.Batch(owed, a.finishBring(), a.continueAfterQuit(msg.err))
+	return tea.Batch(owed, liveCmd, a.finishBring(), a.continueAfterQuit(msg.err))
 }
 
 // into merges the other machines' chats into the panel's own lines, newest
@@ -384,7 +388,7 @@ func machineLineWithDesc(row chatlist.Row, readAt, now time.Time, desc, merge bo
 		now = readAt
 	}
 	at := readAt.Add(-row.DurableAgo)
-	note, short := chatlist.StatusLine(row), ""
+	note, short := chatlist.StatusLineAt(row, now), ""
 	if row.Status == chatlist.Branch {
 		// A branch's sentence names what can be done with it and has a narrow
 		// spelling for frames that cannot hold the whole.

@@ -369,7 +369,7 @@ func lifecycleRelayJourney(t *testing.T, live bool) {
 		b.waitFor(45*time.Second, "Offline real workspace")
 	}
 	b.keys("M-m")
-	b.waitFor(20*time.Second, "Continue this chat here?")
+	b.waitFor(20*time.Second, say(t, "moveAsk"))
 	b.keys("1", "Enter")
 	b.waitFor(90*time.Second, "Moved from")
 	var copied string

@@ -78,13 +78,20 @@ func ConnectWithKey(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey) 
 // door can never complete against a door of a different kind, even when a
 // caller hands both the same static key. It must not be empty.
 func ConnectWithKeyPrologue(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey, prologue string) (*Tunnel, error) {
+	return ConnectWithKeyIntent(conn, peer, key, IntentFiles, prologue)
+}
+
+// ConnectWithKeyIntent is ConnectWithKeyPrologue when a registration serves
+// more than one door and the first byte on the stream selects which prologue
+// the responder runs.
+func ConnectWithKeyIntent(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey, intent byte, prologue string) (*Tunnel, error) {
 	if key == nil {
 		return nil, errors.New("pair: an identity tunnel needs a static key")
 	}
 	if prologue == "" {
 		return nil, errors.New("pair: an identity tunnel needs a prologue")
 	}
-	return connectTaskTunnel(conn, peer, Device{private: key}.noiseKey(), "", prologue)
+	return connectTaskTunnel(conn, peer, Device{private: key}.noiseKey(), intent, "", prologue)
 }
 
 // AcceptWithKey answers an identity task tunnel. Device authorization follows
@@ -102,15 +109,31 @@ func AcceptWithKeyPrologue(conn io.ReadWriteCloser, key *ecdh.PrivateKey, prolog
 	if prologue == "" {
 		return nil, errors.New("pair: an identity tunnel needs a prologue")
 	}
+	tunnel, _, err := AcceptWithKeyPrologues(conn, key, nil, map[byte]string{IntentFiles: prologue})
+	return tunnel, err
+}
+
+// AcceptWithKeyPrologues answers an identity tunnel on a registration that may
+// carry more than one intent byte. An intent without a prologue or one that
+// admit refuses closes the stream before a single byte is written back.
+func AcceptWithKeyPrologues(conn io.ReadWriteCloser, key *ecdh.PrivateKey, admit func(intent byte) bool, prologues map[byte]string) (*Tunnel, byte, error) {
+	if key == nil {
+		return nil, 0, errors.New("pair: an identity tunnel needs a static key")
+	}
+	if len(prologues) == 0 {
+		return nil, 0, errors.New("pair: an identity tunnel needs a prologue")
+	}
 	var intent [1]byte
 	if _, err := io.ReadFull(conn, intent[:]); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if intent[0] != intentConnect {
-		return nil, errors.New("this door takes identity connections")
+	prologue := prologues[intent[0]]
+	if prologue == "" || (admit != nil && !admit(intent[0])) {
+		_ = conn.Close()
+		return nil, intent[0], errors.New("this door takes identity connections")
 	}
 	tunnel, _, err := acceptTaskTunnel(conn, Device{private: key}.noiseKey(), func([]byte, string) error { return nil }, prologue)
-	return tunnel, err
+	return tunnel, intent[0], err
 }
 
 // Read hands back plaintext. A record arrives whole and is drained across as
@@ -264,8 +287,8 @@ func acceptAsMachine(conn io.ReadWriteCloser, me Device, allow func(key []byte, 
 	return &Tunnel{conn: conn, peer: deviceKey, send: second, recv: first}, deviceKey, nil
 }
 
-func connectTaskTunnel(conn io.ReadWriteCloser, machineKey []byte, static noise.DHKey, label, prologue string) (*Tunnel, error) {
-	if _, err := conn.Write([]byte{intentConnect}); err != nil {
+func connectTaskTunnel(conn io.ReadWriteCloser, machineKey []byte, static noise.DHKey, intent byte, label, prologue string) (*Tunnel, error) {
+	if _, err := conn.Write([]byte{intent}); err != nil {
 		return nil, err
 	}
 	handshake, err := noise.NewHandshakeState(noise.Config{

@@ -26,18 +26,18 @@ func runService(args []string, stdout io.Writer) error {
 	case len(args) == 2 && args[0] == "--url":
 		url = args[1]
 	case len(args) != 0:
-		return usageErr("service takes only --url <sync service>")
+		return usageErr("service takes only --url <relay>")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), serviceProbeWithin)
 	defer cancel()
 	missing, err := probeService(ctx, url)
 	if err != nil {
-		return fmt.Errorf("could not check the sync service at %s: %w", url, err)
+		return fmt.Errorf("could not check the relay at %s: %w", url, err)
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("the sync service at %s must be updated before this build ships; it does not promise %s", url, describe(missing))
+		return fmt.Errorf("the relay at %s must be updated before this build ships; it does not promise %s", url, describe(missing))
 	}
-	fmt.Fprintf(stdout, "the sync service at %s promises everything this build needs\n", url)
+	fmt.Fprintf(stdout, "the relay at %s promises everything this build needs\n", url)
 	return nil
 }
 

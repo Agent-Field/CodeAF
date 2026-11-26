@@ -75,7 +75,7 @@ const steadyAfter = time.Minute
 
 // TooManyRegistrationsLine is what `codeaf serve` prints when the relay turns
 // registrations away at its per-minute ceiling.
-const TooManyRegistrationsLine = "the sync service is turning registrations away right now — waiting before trying again"
+const TooManyRegistrationsLine = "the relay is turning registrations away right now — waiting before trying again"
 
 // LostSyncLine is what `codeaf serve` prints, once per outage, when its
 // connection to the relay is lost and it starts trying again.
@@ -98,6 +98,20 @@ func (h *Host) handshakeWithin() time.Duration {
 		return h.handshake
 	}
 	return HandshakeWithin
+}
+
+// spread is how long to actually wait at a point in a back-off schedule. A
+// relay restart drops every machine and every viewer in the same instant, and
+// a schedule that is exactly one second then two then four brings them all
+// back in the same instants too, into a relay that counts registrations per
+// minute. The first wait after a drop is therefore [relay.FirstRetry], and
+// every later one is the schedule's own wait scaled by [relay.Jitter], so the
+// caps keep their meaning on average and no two machines keep step.
+func spread(schedule time.Duration, first bool) time.Duration {
+	if first {
+		return relay.FirstRetry()
+	}
+	return relay.Jitter(schedule)
 }
 
 func (h *Host) wait(ctx context.Context, d time.Duration) error {
@@ -156,12 +170,15 @@ func (h *Host) sayBanner(line string, force bool) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync service")
+		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your relay")
 	}
 	if h.Desk != nil && h.Desk.Now == nil && h.Now != nil {
 		h.Desk.Now = h.Now
 	}
+	// wait is the back-off schedule, doubled after each wait and capped at a
+	// minute. It is never slept as it stands: see [spread].
 	wait := time.Second
+	first := true
 	announced := false
 	// told and throttled are each said once per spell, not once per retry.
 	// told is set when the person has been told sync was lost and not yet
@@ -241,13 +258,15 @@ func (h *Host) Run(ctx context.Context) error {
 			// backing off instead of hammering the relay every second.
 			if h.now().Sub(since) >= steadyAfter {
 				wait = time.Second
+				first = true
 				throttled = false
 			}
 		}
 
-		if err := h.wait(ctx, wait); err != nil {
+		if err := h.wait(ctx, spread(wait, first)); err != nil {
 			return nil
 		}
+		first = false
 		if wait *= 2; wait > time.Minute {
 			wait = time.Minute
 		}

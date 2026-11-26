@@ -60,7 +60,7 @@ removal of the one-time setup values. Then open `codeaf chat --at build-box`.
 
 ## How saved provider keys, settings and shared memories reach the box
 
-Saved keys, settings and shared memories wait for hosted sync storage approval (Settings → Devices → sync storage). A self-hosted sync service with `--store` needs no request.
+Saved keys, settings and shared memories wait for hosted relay storage approval (Settings → Devices → relay storage). A self-hosted relay with `--store` needs no request.
 
 The box starts `codeaf serve` with `CODEAF_SERVE_SYNC=1`, so it pulls the identity's saved provider keys,
 settings and shared memories at startup and every five seconds by default,
@@ -152,7 +152,7 @@ to admit another computer yet; use the creating laptop.
 
 ## Send a task to my dev box
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 A dev box also takes tasks. It starts `codeaf serve --take-tasks` whenever its
 installed build lists that option, so a chat on your laptop can run one task on the

@@ -212,3 +212,107 @@ func TestChatsTableOfOnlyThisComputerOffersPairing(t *testing.T) {
 		t.Fatalf("a lone computer drew %q (%v), want this device and the pairing next step", table, err)
 	}
 }
+
+func TestDevicesPermitShowsAndEditsOnlyThisComputersOwnBook(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("CODEAF_HOME", homeDir)
+	chats, dir := chatsWith(t, "laptop")
+	chats.identity = "id_test"
+	kinds := []deviceKind{chats}
+
+	// Stamp a legacy baseline so an unrecorded peer defaults to watch on, drive off.
+	book := pair.Permits()
+	if _, class := book.For("id_test", otherComputer); class != pair.ClassLegacy {
+		t.Fatalf("initial class = %v, want %v", class, pair.ClassLegacy)
+	}
+
+	beforeList, err := dir.List(devicesCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	said, err := captureStdout(t, func() error { return runDevicesPermit(kinds, []string{"laptop"}) })
+	if err != nil {
+		t.Fatalf("permit laptop: %v", err)
+	}
+	if !strings.Contains(said, "laptop: watch on, type off") {
+		t.Fatalf("permit laptop = %q, want watch on, type off", said)
+	}
+
+	said, err = captureStdout(t, func() error { return runDevicesPermit(kinds, []string{"laptop", "--drive", "on"}) })
+	if err != nil {
+		t.Fatalf("permit laptop --drive on: %v", err)
+	}
+	if !strings.Contains(said, "laptop: watch on, type on") {
+		t.Fatalf("permit laptop --drive on = %q, want watch on, type on", said)
+	}
+	if p, class := pair.Permits().For("id_test", otherComputer); !p.Watch || !p.Drive || class != pair.ClassExplicit || p.By != "person" {
+		t.Fatalf("Permits().For = (%+v, %v), want Watch=true Drive=true ClassExplicit By=person", p, class)
+	}
+
+	said, err = captureStdout(t, func() error { return runDevicesPermit(kinds, []string{"laptop", "--watch", "off"}) })
+	if err != nil {
+		t.Fatalf("permit laptop --watch off: %v", err)
+	}
+	if !strings.Contains(said, "laptop: watch off") {
+		t.Fatalf("permit laptop --watch off = %q, want watch off", said)
+	}
+
+	said, err = captureStdout(t, func() error { return runDevicesPermit(kinds, []string{"laptop", "--drive", "on"}) })
+	if err != nil {
+		t.Fatalf("permit laptop --drive on after watch off: %v", err)
+	}
+	if !strings.Contains(said, "laptop: watch off, type on") {
+		t.Fatalf("permit laptop --drive on after watch off = %q, want watch off, type on", said)
+	}
+	if p, _ := pair.Permits().For("id_test", otherComputer); p.Watch || !p.Drive {
+		t.Fatalf("Permits().For after --watch off then --drive on = %+v, want Watch=false Drive=true", p)
+	}
+
+	// Directory record was never modified.
+	afterList, err := dir.List(devicesCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterList.Version != beforeList.Version || afterList.Devices[otherComputer].Revoked != beforeList.Devices[otherComputer].Revoked || afterList.Devices[otherComputer].Name != beforeList.Devices[otherComputer].Name {
+		t.Fatalf("directory record changed: before=%+v after=%+v", beforeList, afterList)
+	}
+
+	// An unknown name is refused with revoke's exact sentence.
+	_, err = captureStdout(t, func() error { return runDevicesPermit(kinds, []string{"ghost"}) })
+	wantErr := unknownDevice("ghost").Error()
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("permit ghost err = %v, want %q", err, wantErr)
+	}
+}
+
+func TestDevicesHelpListsPermitAndFitsEightyColumns(t *testing.T) {
+	for _, topic := range []string{"devices", "devices permit"} {
+		text := usageForCommand(topic)
+		if !strings.Contains(text, "codeaf devices permit <name> [--watch on|off] [--drive on|off]") {
+			t.Fatalf("usageForCommand(%q) missing permit line:\n%s", topic, text)
+		}
+		for _, line := range strings.Split(text, "\n") {
+			if len(line) > 80 {
+				t.Fatalf("usageForCommand(%q) line exceeds 80 columns (%d): %q", topic, len(line), line)
+			}
+		}
+	}
+	var buf bytes.Buffer
+	oldOut := usageOut
+	usageOut = &buf
+	defer func() { usageOut = oldOut }()
+	err := runDevicesPermit(nil, []string{"--help"})
+	if err != exitHelped {
+		t.Fatalf("devices permit --help: %v", err)
+	}
+	helpOut := buf.String()
+	if !strings.Contains(helpOut, "--watch") || !strings.Contains(helpOut, "--drive") {
+		t.Fatalf("devices permit --help missing flags:\n%s", helpOut)
+	}
+	for _, line := range strings.Split(helpOut, "\n") {
+		if len(line) > 80 {
+			t.Fatalf("devices permit --help line exceeds 80 columns (%d): %q", len(line), line)
+		}
+	}
+}

@@ -35,7 +35,7 @@ func TestALostRaceKeepsItsRetryCardAndDraft(t *testing.T) {
 	}
 	confirm(t, a)
 	q, ok := a.homeAsking()
-	if !ok || q.question.Options[0].Label != continueRetry || q.question.Options[1].Label != continueStay {
+	if !ok || q.question.Options[0].Label != moveRetry || q.question.Options[1].Label != moveStay {
 		t.Fatalf("missing retry card: %+v", q)
 	}
 	if !strings.Contains(homeText(a), lostRaceWord) || q.question.Subject.Name != src.row.Title {
@@ -64,7 +64,7 @@ func TestARefreshedHoldAsksAgainInsteadOfBlamingAnotherDevice(t *testing.T) {
 	if !ok {
 		t.Fatalf("no refreshed card:\n%s", homeText(a))
 	}
-	if a.home.msg != "tower picked this chat up again; press enter to continue it here" {
+	if a.home.msg != "tower picked this chat up again; press enter to move it here" {
 		t.Fatal(a.home.msg)
 	}
 	if len(taker.seen) != 1 {
@@ -113,7 +113,7 @@ func TestALostRaceFromASilentReturnKeepsItsCardAndDraft(t *testing.T) {
 	want := a.mainComposer()
 	drive(t, a, key("enter"))
 	q, ok := a.homeAsking()
-	if !a.at(pageHome) || !ok || q.question.Options[0].Label != continueRetry {
+	if !a.at(pageHome) || !ok || q.question.Options[0].Label != moveRetry {
 		t.Fatalf("silent refusal has no card: %s", homeText(a))
 	}
 	if len(old.sent) != 0 || !reflect.DeepEqual(a.mainComposer(), want) {

@@ -811,6 +811,13 @@ type Settings struct {
 	// the posture ladder: the gate a conversation that follows Settings
 	// stands at. Read only; settings.set changes it through asks_before.
 	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,deny"`
+	// RemoteControl is the Remote control switch: whether another computer of
+	// this person's may open the chats this one runs. It is present only from
+	// an engine that announces settings.remote_control, and then always, off
+	// as false. RemoteControlPinnedBy names the environment variable that
+	// fixes the value, which makes the switch read only; absent is not pinned.
+	RemoteControl         *bool  `json:"remote_control,omitempty"`
+	RemoteControlPinnedBy string `json:"remote_control_pinned_by,omitempty"`
 }
 
 // SettingsPatch is settings.set's params: only the fields present change. A
@@ -820,6 +827,7 @@ type SettingsPatch struct {
 	KnowledgeModel     *string
 	WhenPlanPaused     map[string]string
 	MemoryEnabled      *bool
+	RemoteControl      *bool
 	DefaultModel       *string
 	BudgetUSD          *Figure
 	AsksBefore         *string

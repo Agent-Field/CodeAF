@@ -72,11 +72,11 @@ func TestSameChatGesturesCheckCachedRemoteOwnershipBeforeReturning(t *testing.T)
 				t.Fatal("front-chat shortcut bypassed ownership")
 			}
 			ask, ok := a.homeAsking()
-			if !ok || ask.question.Head != continueAsk {
+			if !ok || ask.question.Head != moveAsk {
 				t.Fatal("no continuation question", ask, ok)
 			}
 			frame, _, _ := a.frame()
-			if !strings.Contains(plain(frame), continueAsk) {
+			if !strings.Contains(plain(frame), moveAsk) {
 				t.Fatal("the continuation question is not visible")
 			}
 		})
@@ -103,7 +103,7 @@ func TestRemoteMemberCompletionIsDeduplicatedAndItsLinkContinuesHere(t *testing.
 	a.completeChat(chosen)
 	a.mentionChatPress(chosen.key)
 	ask, ok := a.homeAsking()
-	if !ok || ask.question.Head != continueAsk {
+	if !ok || ask.question.Head != moveAsk {
 		t.Fatal("chosen remote link missed continuation")
 	}
 }

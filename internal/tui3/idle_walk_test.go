@@ -194,7 +194,7 @@ func TestIdleOpen_C7_D2_LocalViewerKeepsLiveHoldChoice(t *testing.T) {
 	source.change(func(r *chatlist.Row) { r.Status, r.Released, r.AutoOpen = chatlist.Running, false, false })
 	drain(t, a, a.askMachines())
 	drain(t, a, a.homeOpenLine(selected))
-	if taker.opens != 0 || len(taker.cells) != 0 || strings.Contains(homeText(a), continueAsk) {
+	if taker.opens != 0 || len(taker.cells) != 0 || strings.Contains(homeText(a), moveAsk) {
 		t.Fatal("a live local viewer changed the base open shortcut")
 	}
 }

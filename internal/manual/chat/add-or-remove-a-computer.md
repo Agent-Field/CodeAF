@@ -2,7 +2,7 @@
 
 ## How do I add another computer — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -14,7 +14,7 @@ confirming: existing chats stay here but stop syncing, shared memories and
 settings clear, and local provider keys stay here. A startup-only computer can
 pair directly. A home that only completed desktop setup and installed the bundled
 Canvas skill can still join. Startup lock files, empty app/service/factory folders and the
-factory migration marker do not count as local work. Choosing a sync service and
+factory migration marker do not count as local work. Choosing a relay and
 saving its storage status also leave an unused home eligible to join. Credential history is
 accepted only when it has the known digest-only metadata format; actual keys,
 unknown content and nonempty work folders remain protected.
@@ -42,13 +42,13 @@ Click `+ Add another device` or press `alt+d` to open the steps. Click the headi
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
 2. On this device, click the card’s link field, type or paste the link, and press Enter. Opening the card also focuses its field. You can edit the link before submitting it; clicking inside the field places the caret there. Esc or Tab returns typing to the normal message box, and clicking the message box does the same. Your chat draft stays separate. You can also paste it anywhere on home when the card’s field is not focused, or type it as your message and press Enter. The approval replaces the steps on Home; approving, declining or closing it keeps you on Home. The link is never sent to the model (see "Approve a new device" below).
 
-## Add a device through your own sync service — pairing instructions include --via
+## Add a device through your own relay — pairing instructions include --via
 
-When this computer uses your own sync service, step 1 includes its address: `1. On the new device, install and run: codeaf pair --via http://127.0.0.1:8901`. `/pair`, Settings → Devices → Add another device, and `codeaf pair --code` include the same `--via` argument.
+When this computer uses your own relay, step 1 includes its address: `1. On the new device, install and run: codeaf pair --via http://127.0.0.1:8901`. `/pair`, Settings → Devices → Add another device, and `codeaf pair --code` include the same `--via` argument.
 
 Approving a self-hosted page's link in a terminal keeps that page's service when it matches this computer's selected service. A link waiting on a different service is refused before its code is sent.
 
-The computer showing a numeric pairing code saves its selected sync service when
+The computer showing a numeric pairing code saves its selected relay when
 it approves the joining computer, just before sending the identity. Showing or
 cancelling a code alone does not change the saved service.
 
@@ -56,9 +56,9 @@ The card goes away once you have two devices. After that, `/pair` or Settings �
 
 ## Do older chats move after pairing?
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
-Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted sync storage is off, that background preparation sends nothing to the sync service: an older chat that is not open on its computer cannot move to another one until it is opened there (*Blind pass-through*) or sync storage is approved.
+Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted relay storage is off, that background preparation sends nothing to the relay: an older chat that is not open on its computer cannot move to another one until it is opened there (*Blind pass-through*) or relay storage is approved.
 
 ## Pairing a server with no browser — the link, token and check number
 
@@ -83,7 +83,7 @@ A device with no screen or no browser, such as a server, does the same: run `cod
 Paired with laptop-a. Run codeaf to open your chats.
 ```
 
-The approving device says `desk-b is now paired. Your chats can continue there.`
+The approving device says `desk-b is now paired. desk-b can also see and control your chats here. Change that in /devices.`
 
 ## What does codeaf pair --code do
 
@@ -102,9 +102,9 @@ usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> | codea
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
 - `codeaf pair approve <link-or-token>` is for a device that is already in. It shows who is asking and the check number, then asks on its own line: `a approve · d decline:`. `a`, `y` and `yes` approve, without regard to case; `d`, Esc, Enter and unrecognised input decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
-- `--via <address>` names the address of the sync service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
+- `--via <address>` names the address of the relay to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
-With a self-hosted address (`CODEAF_SYNC_URL=<url>` or `--via <address>`), the link opens that sync service’s own `/p/<code>` page, and the terminal approval token includes `--via <address>`. It never prints a hosted page link for that invitation. The page shows the token command and an app link that keep the same address; the key stays after `#`. An address without a web page uses only the terminal token. Pasting a self-hosted link into a chat configured for another address sends no request and says `that link is waiting on codeaf.agentfield.ai, but this computer syncs through 127.0.0.1:8901 — on the new device run: codeaf pair --via http://127.0.0.1:8901`.
+With a self-hosted address (`CODEAF_SYNC_URL=<url>` or `--via <address>`), the link opens that relay’s own `/p/<code>` page, and the terminal approval token includes `--via <address>`. It never prints a hosted page link for that invitation. The page shows the token command and an app link that keep the same address; the key stays after `#`. An address without a web page uses only the terminal token. Pasting a self-hosted link into a chat configured for another address sends no request and says `that link is waiting on codeaf.agentfield.ai, but this computer syncs through 127.0.0.1:8901 — on the new device run: codeaf pair --via http://127.0.0.1:8901`.
 
 A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again. Ctrl+c while it waits ends with `Cancelled. Nothing was paired.`
 
@@ -139,6 +139,7 @@ A new device wants to pair.
   △ laptop · Linux
   asked just now · 9 min left
 Check number 4821. Approve only if the new device shows the same number.
+laptop can also see and control your chats here. Change that in /devices.
 a approve · d decline · esc later
 ```
 
@@ -153,10 +154,12 @@ While your answer is on its way the screen says `approving…` or `declining…`
 When you approve, your screen says:
 
 ```
-laptop is now paired. Your chats can continue there.
+laptop is now paired. laptop can also see and control your chats here. Change that in /devices.
 ```
 
-Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop is now paired. Your chats can continue there.` and a no says `Declined. Nothing was paired.` The terminal first says `laptop (Linux) wants to pair.` (the system is left out when it is not known). `codeaf pair approve` with nothing after it says `usage: codeaf pair approve <link-or-token> — the link or token the new device shows; for a numeric pairing code use codeaf pair <code>`.
+Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop is now paired. laptop can also see and control your chats here. Change that in /devices.` and a no says `Declined. Nothing was paired.` The terminal first says `laptop (Linux) wants to pair.` (the system is left out when it is not known). `codeaf pair approve` with nothing after it says `usage: codeaf pair approve <link-or-token> — the link or token the new device shows; for a numeric pairing code use codeaf pair <code>`.
+
+A computer paired from now on can also see and control your chats here, and one paired earlier can only watch until you allow it; both are changed in `/devices` or with `codeaf devices permit <name> [--watch on|off] [--drive on|off]`.
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 
@@ -168,9 +171,9 @@ When you have two or more devices, home shows one row of them:
 ● This Mac  ● tower  ○ desk (offline)
 ```
 
-The plain repertoire uses a filled green dot `●` for online and a hollow dim dot `○` for offline. ASCII uses `#` and `o`; a patched font uses the same presence slots as `/devices`. Your own computer is filled while the strip is shown. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. A computer counts as online only while it keeps answering: when another computer has not answered for 25 seconds (it is asleep, frozen, switched off or disconnected) its dot goes hollow and reads `(offline)`, within 30 seconds of its last answer, and a frozen computer no longer shows as online for minutes. It is back at once when it answers again. The row changes by itself, with no key to press, when a device comes or goes. As a backstop, home also reads the list again every 5 minutes while it is connected, and every minute while it is not. If the sync service has not answered for 25 seconds, Home cannot tell who is online and hides the strip. A stalled connection is subscribed again, so a late answer cannot keep an old online set alive. The strip returns with fresh presence; it never guesses that a silent service means every computer is offline.
+The plain repertoire uses a filled green dot `●` for online and a hollow dim dot `○` for offline. ASCII uses `#` and `o`; a patched font uses the same presence slots as `/devices`. Your own computer is filled while the strip is shown. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. A computer counts as online only while it keeps answering: when another computer has not answered for 25 seconds (it is asleep, frozen, switched off or disconnected) its dot goes hollow and reads `(offline)`, within 30 seconds of its last answer, and a frozen computer no longer shows as online for minutes. It is back at once when it answers again. The row changes by itself, with no key to press, when a device comes or goes. As a backstop, home also reads the list again every 5 minutes while it is connected, and every minute while it is not. If the relay has not answered for 25 seconds, Home cannot tell who is online and hides the strip. A stalled connection is subscribed again, so a late answer cannot keep an old online set alive. The strip returns with fresh presence; it never guesses that a silent service means every computer is offline.
 
-Under the row, `alt+m bring work here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to bring here`. The page *Continuing a chat on another device* tells what happens next.
+Under the row, `alt+m move here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to move here`. The page *Continuing a chat on another device* tells what happens next.
 
 ## Does the other computer appear on the device list straight after pairing — a just-paired device, devices empty after pairing
 
@@ -190,7 +193,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Type `/devices` to list them:
 
 ```
-sync service: 127.0.0.1:8901 (your own)
+relay: 127.0.0.1:8901 (your own)
   ● This Mac  Mac  this device
 › ● tower  Linux
   ○ desk  Linux  seen 3h ago
@@ -233,7 +236,7 @@ the sync address also drops facts learned from the previous service.
 
 Open `/settings` (or `ctrl+,`) and walk with `←` and `→` to `Devices`, between `Connections` and `Privacy` — or type `devices`, `remove`, `revoke`, `pair` or `add device` in settings search.
 
-While loading, the tab says `looking up your devices…`. Loaded, it begins with the same dim `sync service: 127.0.0.1:8901 (your own)` or `sync service: codeaf.agentfield.ai (hosted)` line as `/devices` and the terminal. It lists this computer even before pairing, with the same platform and presence columns and in the same order and words as `/devices` — `●` online, `○` away (`seen 3h ago`, or `offline`), `this device`, and `removed` — followed by `Add another device`. The open tab refreshes on its own when a computer joins, renames itself or is removed.
+While loading, the tab says `looking up your devices…`. Loaded, it begins with the same dim `relay: 127.0.0.1:8901 (your own)` or `relay: codeaf.agentfield.ai (hosted)` line as `/devices` and the terminal. It lists this computer even before pairing, with the same platform and presence columns and in the same order and words as `/devices` — `●` online, `○` away (`seen 3h ago`, or `offline`), `this device`, and `removed` — followed by `Add another device`. The open tab refreshes on its own when a computer joins, renames itself or is removed.
 
 ## Keys in Settings Devices — add, rename and confirm removal
 
@@ -243,7 +246,9 @@ In `/settings` → Devices, the key line shrinks to what works on the row (`↑�
 - `n rename` on `this device` opens `name this device: ` under the row with `enter save · ctrl+u clear · esc cancel`. While typing, `esc` cancels the edit without closing `/settings`; a second `esc` leaves `/settings`. On another row `n` says `a device renames itself — choose this device's row, or open /devices on the one you mean.`
 - `r remove` (called `codeaf devices revoke <name>` on the CLI) asks `remove desk? it must pair again to come back  ·  y removes  ·  any other key keeps it`. Only `y` removes it, marks its row `removed`, and says `desk was removed — it can no longer reach your chats.` Any other key cancels, keeps the same row selected, and does nothing else. On your own row `r` says `this device cannot remove itself — choose another row.` On `Add another device` or a `removed` row, `r` does nothing.
 
-Where devices cannot work, the tab shows one sentence and no rows: `pairing is not available here` (a chat over `--host` or `--at`), `moving chats needs a newer furrow engine than this build carries`, or the read error. With `CODEAF_SYNC_URL=off` it lists this computer, and `enter add` answers `sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service`, as `/pair` does.
+With remote control on, on `/devices` and here, another computer's row also says what it may do with the chats on THIS computer, `watch and type`, `watch only` or `not shared`, and the key line gains `w watch` and `t type`: `↑↓ choose · n rename · r remove · w watch · t type · esc close`. `w` turns watching on or off (off turns typing off too); `t` turns typing off at once, and on only after `let desk type into chats on this computer? y turns it on, any other key keeps it off`. One line follows: `desk can watch chats on this computer.`, `desk can no longer watch chats on this computer.`, `desk can type into chats on this computer.` or `desk can watch, not type.` A build that cannot change it says `this build cannot change that`. Your own row, `Add another device` and a removed row have none of this, and with remote control off the rows are as above.
+
+Where devices cannot work, the tab shows one sentence and no rows: `pairing is not available here` (a chat over `--host` or `--at`), `moving chats needs a newer furrow engine than this build carries`, or the read error. With `CODEAF_SYNC_URL=off` it lists this computer, and `enter add` answers `sync is off (CODEAF_SYNC_URL=off); pairing needs the relay`, as `/pair` does.
 
 ## A device was removed but refreshing the list failed
 
@@ -263,7 +268,7 @@ this device was removed by another of your devices, so this chat stays here only
 
 ## Can a removed computer rejoin — /devices, pairing again and retained local chats
 
-Pairing again restores device access. On the hosted sync service, sending keys or shared state needs sync storage approval (Settings → Devices → sync storage); chats move by blind pass-through while both computers are running codeaf.
+Pairing again restores device access. On the hosted relay, sending keys or shared state needs relay storage approval (Settings → Devices → relay storage); chats move by blind pass-through while both computers are running codeaf.
 
 `/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal appears immediately in an open window and on Home, and after restarting, once only. Your local chats stay usable while this computer is removed, and no longer follow your other devices.
 
@@ -285,9 +290,9 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 These are the screen's sentences when link pairing stops. Nothing was changed on either device when you read one of them.
 
-- `that is not a codeaf pairing link or code; it looks like https://codeaf.agentfield.ai/p/k7m2q9xd#... or k7m2q9xd.<key>`: what was pasted is neither shape. Paste the whole link or the whole `<code>.<key>` token. Links from your own sync service are accepted too.
+- `that is not a codeaf pairing link or code; it looks like https://codeaf.agentfield.ai/p/k7m2q9xd#... or k7m2q9xd.<key>`: what was pasted is neither shape. Paste the whole link or the whole `<code>.<key>` token. Links from your own relay are accepted too.
 - `the link ran out before anyone approved it; run `codeaf pair` again for a new one`: a link is good for 10 minutes.
-- `that link is not waiting any more; run `codeaf pair` on the new device for a fresh one`: the link’s own sync service said it is gone or expired. A link on a different sync service is refused before any request is sent.
+- `that link is not waiting any more; run `codeaf pair` on the new device for a fresh one`: the link’s own relay said it is gone or expired. A link on a different relay is refused before any request is sent.
 - `that request was already answered`: another of your devices approved or denied it first.
 - `the request was declined on your other device; run `codeaf pair` to ask again`: the new device sees this when you decline.
 - `the check number does not fit that device, so nothing was approved`: the number on the approve screen does not belong to the device that asked. Do not approve; ask again.
@@ -298,9 +303,9 @@ Too many requests from one network are refused too: at most 10 new links in an h
 
 ## I quit on my laptop and opened my desktop after pairing
 
-While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
+While hosted relay storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
 
-After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. By default (**Settings → General → idle handoff** is off), open idle chats keep their hold and selecting a released chat on Home asks **Continue here**. Turn on **idle handoff** in `/settings` (or set `CODEAF_IDLE_HANDOFF=1`) so an idle paired chat lets go about 2 seconds after it goes idle once saved to the sync service, and Enter on Home (or `agents.open` in the app) opens a released chat directly. A lapsed hold on another computer still asks Continue here, including when its holder was working or its last working state is unknown. A laptop that went to sleep or disconnected while still holding the chat needs `alt+c` on Home while its hold is live. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
+After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. By default (**Settings → General → idle handoff** is off), open idle chats keep their hold and selecting a released chat on Home asks **Move here**. Turn on **idle handoff** in `/settings` (or set `CODEAF_IDLE_HANDOFF=1`) so an idle paired chat lets go about 2 seconds after it goes idle once saved to the relay, and Enter on Home (or `agents.open` in the app) opens a released chat directly. A lapsed hold on another computer still asks Move here, including when its holder was working or its last working state is unknown. A laptop that went to sleep or disconnected while still holding the chat needs `alt+c` on Home while its hold is live. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
 Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.
 
@@ -314,13 +319,13 @@ blocks its later requests; it cannot take back bytes the device already received
 
 ## After removal — does this machine keep syncing while its window is open
 
-Once codeaf learns that this machine was removed, it stops asking for chats and stops sending updates. That refusal is remembered across windows and restarts. Your window stays usable for local chats. Home removes its offer to continue a chat from your other devices, its continue chord and the continue action on chat rows. The removal explanation stays visible.
+Once codeaf learns that this machine was removed, it stops asking for chats and stops sending updates. That refusal is remembered across windows and restarts. Your window stays usable for local chats. Home removes its offer to continue a chat from your other devices, its continue chord and the move action on chat rows. The removal explanation stays visible.
 
 Run `codeaf pair` to pair it again. Pairing can still reach the service and gives this machine a new device key. An already open Home then shows your other devices again.
 
-## Terminal device list — sync service, this computer, platform and duplicate names
+## Terminal device list — relay, this computer, platform and duplicate names
 
-`codeaf devices` begins with `sync service: codeaf.agentfield.ai (hosted)` or `sync service: 127.0.0.1:8901 (your own)`. It lists this computer as well as the other paired computers. A known platform and online state or last-seen time appear beside each name; unknown details are omitted. Removed devices come last under `removed`.
+`codeaf devices` begins with `relay: codeaf.agentfield.ai (hosted)` or `relay: 127.0.0.1:8901 (your own)`. It lists this computer as well as the other paired computers. A known platform and online state or last-seen time appear beside each name; unknown details are omitted. Removed devices come last under `removed`.
 
 Duplicate names use the same short suffix as the chat picker, for example `desk-b #8381`. Remove that one with `codeaf devices revoke desk-b#8381` or `codeaf devices revoke "desk-b #8381"`. An ambiguous name lists the choices and an example command. Removal cannot erase anything already on that computer.
 
@@ -332,11 +337,11 @@ creating a conversation. The device list and pairing approval stay over Home.
 
 `/pair` and Settings → Devices → Add another device offer both directions:
 `paste the link the new device shows, or on it run codeaf pair 43-209-648`.
-The command includes `--via` when this computer uses your own sync service.
+The command includes `--via` when this computer uses your own relay.
 The card also shows `> Paste pairing link`: paste or type the link there and
 press Enter. Closing the card cancels its code; submitting a link switches to
 the same approval card as Home, with the same check number and `a` / `d` keys.
-A link for a different sync service is refused before looking it up. Your chat
+A link for a different relay is refused before looking it up. Your chat
 draft stays separate. `c copy code` works until you start editing the link.
 
 
@@ -358,7 +363,7 @@ If this build cannot move chats, the local row is followed by the existing
 remote-access instructions for `codeaf serve` and `codeaf chat --at <name>`;
 it does not recommend unavailable chat pairing.
 With `CODEAF_SYNC_URL=off`, neither the terminal nor the device cards draws a
-`sync service:` line. The local row remains available.
+`relay:` line. The local row remains available.
 
 ## Pair again with the same devices after removal
 
@@ -372,7 +377,7 @@ memories and settings are cleared, and locally saved provider keys remain.
 ## Sync is off — which address should I set
 
 A command that needs sync says
-`sync is off: set CODEAF_SYNC_URL to your sync service's address`.
+`sync is off: set CODEAF_SYNC_URL to your relay's address`.
 Set a service URL to enable syncing again. Device cards omit their service line
 while syncing is explicitly off; their local computer row still appears.
 
@@ -383,9 +388,9 @@ ports omitted (`:443` for HTTPS, `:80` for HTTP) and trailing slashes omitted.
 An actual difference in scheme, port, host or path prefix remains a different
 service. A link for a different service is refused before any lookup there.
 
-## The first /status after pairing — sync storage on your own service
+## The first /status after pairing — relay storage on your own service
 
-Successful pairing asks the sync service for your account's storage permission and saves its answer on this computer. It makes up to three attempts inside about 1.5 seconds, so a temporary startup refusal need not lose the answer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `sync storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no terminal line but its successful answer is saved; an unavailable service leaves the previous saved answer alone.
+Successful pairing asks the relay for your account's storage permission and saves its answer on this computer. It makes up to three attempts inside about 1.5 seconds, so a temporary startup refusal need not lose the answer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `relay storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no terminal line but its successful answer is saved; an unavailable service leaves the previous saved answer alone.
 
 The desktop's pairing receipt confirms that the computers paired. It does not
 promise that chats can continue elsewhere while storage is off. A refusal

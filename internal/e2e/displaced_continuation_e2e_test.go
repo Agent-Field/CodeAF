@@ -155,7 +155,7 @@ func TestDisplacedWindowsContinueWithoutBranchesOrLostDrafts(t *testing.T) {
 	if !selected {
 		t.Fatalf("Home did not list the used chat:\n%s", b.capture())
 	}
-	if screen := b.waitFor(10*time.Second, "Continue this chat here?"); !strings.Contains(screen, "Continue this chat here?") {
+	if screen := b.waitFor(10*time.Second, say(t, "moveAsk")); !strings.Contains(screen, say(t, "moveAsk")) {
 		t.FailNow()
 	}
 	b.keys("1", "Enter")
@@ -173,7 +173,7 @@ func TestDisplacedWindowsContinueWithoutBranchesOrLostDrafts(t *testing.T) {
 		turn.window.lit(turn.draft)
 		before := requests.Load()
 		turn.window.keys("Enter")
-		turn.window.waitFor(10*time.Second, "Continue this chat here?")
+		turn.window.waitFor(10*time.Second, say(t, "moveAsk"))
 		turn.window.keys("1", "Enter")
 		screen := turn.window.waitFor(35*time.Second, "Moved from "+turn.from)
 		if strings.Contains(screen, "were kept as") {

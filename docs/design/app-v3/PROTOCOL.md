@@ -433,6 +433,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.live_keyboard` | `ChatLiveKeyboardParams` | `ChatLiveKeyboardResult` |
+| `chats.open_live` | `ChatOpenLiveParams` | `ChatOpenLiveResult` |
 | `chats.read` | `ChatReadParams` | `ChatReadResult` |
 | `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
@@ -451,6 +453,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `devices.list` | `in.DeviceListParams` | `DevicesResult` |
+| `devices.permit` | `in.DevicePermitParams` | `DevicePermitResult` |
 | `devices.remove` | `in.DeviceRemoveParams` | `DeviceRemoveResult` |
 | `devices.rename` | `in.DeviceRenameParams` | `DeviceRenameResult` |
 
@@ -3200,6 +3203,26 @@ flight finish and are billed. Terminal Build saves an explicit on.
 `cost_note` is the shared `config.MemoryCostNote` disclosure, including the example
 of one small DeepSeek V4.1 Flash job at 39% ($0.0124 of $0.0315).
 
+An engine whose hello carries `settings.remote_control` includes
+`remote_control: bool` in Settings (`settings.get`, `settings.set`, and
+`settings.changed`), always, off as `false`, and `remote_control_pinned_by:
+string` only when an environment variable fixes the value, which makes the
+switch read only. It is the row the terminal's Settings > Devices tab writes, in
+the engine's own profile. `settings.set` takes optional `remote_control: bool`;
+any non-boolean, including null, is `bad_params`, and so is the field sent to an
+engine without the feature (`settings has no field remote_control`), so a window
+draws the switch only when the word is in the hello. A write the environment
+pins is refused whole, before any other field of the patch lands, as
+`bad_params` with `Remote control is set by CODEAF_REMOTE_CONTROL`. ON applies
+to chats opened afterwards: the holder door starts with the next chat the
+desktop opens, and chats already open stay as they were. `chats.live` and
+`devices.permit` are announced in the hello, which is read once when the engine
+starts, so they appear only after the engine restarts; a window that finds the
+switch and `devices.permit` disagreeing says so and offers the restart. OFF
+applies at once: the door stops handing chats out and every view another
+computer has of a chat this desktop holds is ended (that computer reads it as the
+chat closing); the desktop's own chats go on and keep what was said.
+
 An engine whose hello carries the feature `settings.models.auxiliary` adds a
 fourth role to the task models: `roles.auxiliary` in `settings.models.get` (and
 in `settings.changed`'s `task_models`) is `{pin, warning, eligible_count}` like
@@ -3699,6 +3722,58 @@ it, and `agents.take` still moves one member as a single chat.
 Example row: `{"cell":"01M7H89T8KA9W804DZX67NFAAT","title":"Todo CLI in
 Python","here":false,"status":"running","crew":"da48d479ea82","crew_name":"Todo
 crew","crew_manager":true,...}`.
+
+Remote control (a live view). `chats.live` in `hello` says `chats.open_live
+{cell}` and `chats.live_keyboard {agent, take?}` exist and rows may carry
+`can_live:true`. It is absent unless the engine can dial the live door AND the
+person turned Remote control on, so a client that never sees it must never send
+either call. `can_live` is true on a row whose chat another computer holds and
+runs while that computer is online. `chats.open_live` opens that chat WITHOUT
+moving it and answers an `agent`, a local-looking one: its `location` carries
+`here:false`, the chat's `cell`, `holder`, `can_take` and `seen` as for any held
+chat (so `agents.take` still works from it) plus `live`. Everything the app does
+in a chat is the agent's own call: a live send is `agents.send` on that agent,
+never `chats.send`; steer, queue, stop, close and `asks.answer` likewise; older
+messages are `agents.entries {before, limit}`. Opening it again is how a view
+that detached or went offline is repaired, and answers the same agent id. It
+refuses with `not_found` (the chat is not listed), `unreachable` (the computer
+is not on, is not running that chat, or needs a restart, each in its own
+sentence), or `conflict` (that computer does not share its chats with this one,
+or this computer was removed). Every refusal carries the sentence a person
+reads and `detail:{kind:"live_refused", reason}` with the closed reason.
+
+`location.live` is `{state, driver?, road?, seen_at?, permit?}`. `state` is
+`live`, `reconnecting`, `offline`, `idle` (the view detached after ten quiet
+minutes and sent nothing first) or `watching` (the holder allows reading and not
+typing, or its daily allowance is used). `driver` is `{yours?, machine?, here?}`
+and is present only when another window holds the keyboard; `chats.live_keyboard
+{agent, take:true}` asks for it and answers `{driver}`. `road` is `relay`.
+`seen_at` is RFC 3339. `permit` is `{watch, drive, reason?}`; `reason` is the
+finished sentence for why typing is off, shown verbatim. Every change to any of
+these arrives as one `agent.changed` carrying the whole agent; there is no new
+event and no field on `turn.delta` or `turn.thinking`. A live agent is left out
+of `agents.list`.
+
+`location.keyboard` is `{yours?, machine?, here?}`, the same three words as a
+live view's `driver`, on a chat THIS computer holds and runs when another window
+than the one drawing it has the keyboard: another of the person's computers that
+took it, or another window here. It rides on the existing `agent.changed` of
+that agent and nowhere else, with Remote control on (`chats.live` in `hello`);
+absent says the window drawing the chat holds the keyboard, which is every chat
+nobody else has joined, and with Remote control off no agent ever carries it. A
+window that sees it draws who is typing and offers one button, which is
+`chats.live_keyboard {agent, take:true}` on the held agent itself (not a live
+one): it asks the engine for the keyboard and answers `{driver}` as it does for
+a live view. A held agent whose chat is not open to other computers answers
+`conflict` as before.
+
+`devices.permit {id, watch?, drive?}` edits ONLY this computer's own book of what
+a paired computer may do in chats here (`devices.permit` in `hello`, absent while
+Remote control is off); a switch left out keeps what it was. Each device row
+then carries `permit:{watch, drive}` (absent on this computer's own row and on a
+removed one). The answer is `{device?, line?}` and `devices.changed` follows
+with the whole roster. A permit edited by the terminal's `codeaf devices permit`
+arrives the same way.
 
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private

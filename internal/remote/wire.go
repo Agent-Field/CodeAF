@@ -398,6 +398,17 @@ import (
 // Like the other welcome capabilities, absence preserves the existing wire.
 const Version = 22
 
+// DefaultMaxLine is the largest serialised frame line, after decompression, that
+// a remote viewer connection may send or accept. Keeping every line within a
+// fixed ceiling prevents a single oversized tool output or update from pinning a
+// guest link or exhausting viewer memory.
+const DefaultMaxLine = 256 << 10
+
+// GuestWriteDeadline is the longest a remote viewer connection may take to
+// accept one outbound frame before the holder drops it as lagging. It is a
+// variable so tests can exercise a stalled viewer without waiting two seconds.
+var GuestWriteDeadline = 2 * time.Second
+
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
 // are pushes the surface never asks for, and a version-13 surface that does not
@@ -419,7 +430,7 @@ const Version = 22
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
+	// "event", "gap", "closed", "facts", "task", "design", "question", "phase", "lane",
 	// "turn", "driver", "moved", "fatal", "sideAskDelta", "clientToolCall",
 	// "clientToolEnded". The two client-tool kinds answer nothing.
 	//
@@ -614,18 +625,19 @@ const (
 	// project it was in. `/autonomy` printed that sentence on a machine with the
 	// rules sitting in `.codeaf/autonomy.json`, and the settings rows that read
 	// the same door drew nothing at all.
-	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
-	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
-	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
-	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
-	MethodNoteConnected = "NoteConnected"     // ConnectedArgs → nothing
-	MethodTitle         = "Title"             // nothing → string
-	MethodUsage         = "Usage"             // nothing → session.Usage
-	MethodContextTokens = "ContextTokens"     // nothing → int
-	MethodTranscript    = "Transcript"        // nothing → []session.DisplayEntry
-	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
-	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
-	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
+	MethodAutonomy       = "Autonomy"          // nothing → map[AskKind]Policy
+	MethodHarness        = "ResolveHarness"    // HarnessArgs → nothing
+	MethodConnect        = "ResolveConnect"    // ConnectArgs → nothing
+	MethodConnectKey     = "ResolveConnectKey" // ConnectArgs → nothing
+	MethodNoteConnected  = "NoteConnected"     // ConnectedArgs → nothing
+	MethodTitle          = "Title"             // nothing → string
+	MethodUsage          = "Usage"             // nothing → session.Usage
+	MethodContextTokens  = "ContextTokens"     // nothing → int
+	MethodTranscript     = "Transcript"        // nothing → []session.DisplayEntry
+	MethodTranscriptPage = "Transcript.Page"   // TranscriptPageArgs → Page
+	MethodEarlier        = "EarlierHistory"    // nothing → session.EarlierHistory
+	MethodRewindPoints   = "RewindPoints"      // nothing → []session.RewindPoint
+	MethodRewindAt       = "RewindAt"          // int → []session.DisplayEntry
 	// MethodPlanSpend CARRIES THE RUN'S SPEND-BY-SEAT ACROSS THE WIRE, and it
 	// is the spend page's other reading beside the machine's own ledger above.
 	// A conversation that seeded a plan writes its workers' calls into the plan
@@ -1106,12 +1118,37 @@ type Hello struct {
 	// retired while the window is open (cmd/codeaf's chatv3_beside.go). A
 	// headless `--once` is a script and not a window, and says nothing.
 	Window bool `json:"window,omitempty"`
+
+	// Remote carries the peer identity and permissions stamped by the door that
+	// accepted the connection, never trusted from a surface directly.
+	Remote *RemoteViewer `json:"remote,omitempty"`
+}
+
+// RemoteViewer describes a paired remote computer viewing or driving a chat held
+// on this host. It is stamped by the door that carried the connection and is
+// never trusted from a surface.
+type RemoteViewer struct {
+	Device string `json:"device,omitempty"`
+	Label  string `json:"label,omitempty"`
+	Watch  bool   `json:"watch,omitempty"`
+	Drive  bool   `json:"drive,omitempty"`
+	Road   string `json:"road,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
 type StreamCursor struct {
 	Stream uint64 `json:"stream"`
 	Seq    uint64 `json:"seq"`
+}
+
+// Gap reports that a running stream's replay ring evicted events older than
+// First before a surface resuming from Have reattached. It rides a "gap" frame
+// ahead of the retained events so a surface that knows the kind can re-read the
+// transcript tail while an older reader ignores the unknown frame kind.
+type Gap struct {
+	Stream uint64 `json:"stream"`
+	Have   uint64 `json:"have"`
+	First  uint64 `json:"first"`
 }
 
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
@@ -1308,6 +1345,22 @@ type Welcome struct {
 	// asking twice, which is the degradation that costs a keystroke rather than
 	// the one that corrects a worker twice.
 	SteerRepeat bool `json:"steerRepeat,omitempty"`
+
+	// MessageRepeat says this holder RECOGNISES A REMOTE SEND IT HAS ALREADY
+	// TAKEN: a Submit, FollowUp or Steer arriving again under the same
+	// `(Remote.Device, SubmitArgs.ClientID)` answers the original [StreamRef]
+	// (or an empty [StreamRef] after a holder restart when the id is already in
+	// the persisted transcript tail) and delivers nothing to the engine.
+	//
+	// IT IS CARRIED FOR [Welcome.SteerRepeat]'S REASON: a roaming client holding
+	// an unanswered send after a dropped link must know, before it resends on
+	// the new pipe, whether repeating the call could deliver the person's words
+	// twice.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: an older holder ignores
+	// the identity for deduplication, so the client fails the in-flight send
+	// rather than asking a second time.
+	MessageRepeat bool `json:"messageRepeat,omitempty"`
 	// QueuedMarks says this engine keeps a Submit's queued mark
 	// ([SubmitArgs.Queued]) on the message's line. ABSENCE IS AN ENGINE THAT
 	// WOULD DROP IT: the surface then sends the words without the mark and
@@ -1547,6 +1600,10 @@ type Welcome struct {
 	// then says it has no machine to set up rather than showing a plan nobody
 	// can act on.
 	Setup bool `json:"setup,omitempty"`
+
+	// Remote echoes the peer identity and permissions stamped on Hello.Remote by
+	// the door that carried this connection. Absent on local connections.
+	Remote *RemoteViewer `json:"remote,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on
@@ -1647,7 +1704,10 @@ type SubmitArgs struct {
 	Annotation *session.Annotation       `json:"annotation,omitempty"`
 	Queued     bool                      `json:"queued,omitempty"`
 	// ClientID is the door's opaque name for the message
-	// ([session.Submission.ClientID]); correlation only, never idempotency.
+	// ([session.Submission.ClientID]). On a remote viewer connection
+	// ([Hello.Remote]) the holder deduplicates sends by `(Remote.Device,
+	// ClientID)` so a resent message after a dropped link is never applied
+	// twice.
 	ClientID string `json:"clientId,omitempty"`
 	// From names who sent the message on the person's behalf
 	// ([session.Submission.From]).
@@ -2275,3 +2335,37 @@ type PlanRunSummaryResult struct {
 	Summary session.RunPlanSummary `json:"summary"`
 	OK      bool                   `json:"ok"`
 }
+
+// TranscriptPageArgs asks for one bounded page of the conversation's transcript
+// ending before the absolute entry index Before (zero for the tail).
+type TranscriptPageArgs struct {
+	Before   int `json:"before,omitempty"`
+	Limit    int `json:"limit,omitempty"`
+	MaxBytes int `json:"maxBytes,omitempty"`
+}
+
+// Page is one slice of the transcript returned by [MethodTranscriptPage], with
+// the absolute index of its first entry, the transcript's total entry count,
+// and whether older entries remain before Base.
+type Page struct {
+	Entries []session.DisplayEntry `json:"entries,omitempty"`
+	Base    int                    `json:"base,omitempty"`
+	Total   int                    `json:"total,omitempty"`
+	More    bool                   `json:"more,omitempty"`
+}
+
+const (
+	// defaultTranscriptPageLimit is the entry count [MethodTranscriptPage] serves
+	// when the caller leaves [TranscriptPageArgs.Limit] unset, matching the two
+	// screens of scrollback the surface draws per helping.
+	defaultTranscriptPageLimit = 40
+	// maxTranscriptPageLimit caps the number of entries a single transcript page
+	// may return so one read never materialises an unbounded batch over a live link.
+	maxTranscriptPageLimit = 200
+	// maxTranscriptPageBytes caps the byte weight of a single transcript page so
+	// its result frame stays comfortably below [DefaultMaxLine].
+	maxTranscriptPageBytes = 192 << 10
+	// transcriptShortenedMarker is appended to the text of a single transcript
+	// entry that had to be shortened to fit [maxTranscriptPageBytes].
+	transcriptShortenedMarker = " … [shortened for remote control]"
+)

@@ -11,7 +11,7 @@ import { Tenant } from '../src/tenant.js';
 import { RaftBlobTenant } from '../src/raft/effects.js';
 import { sealFrame } from '../src/store.js';
 import { matchRoute } from '../src/routes.js';
-import { PROTOCOL, HEADER_NAME } from '../src/engine/carrier.js';
+import { PROTOCOL, HEADER_NAME, HEADER_DOOR, DOOR_LIVE } from '../src/engine/carrier.js';
 import { Flight } from '../src/flight.js';
 import { NOBODY } from '../src/watch.js';
 import { policyOf } from '../src/rules.js';
@@ -160,6 +160,23 @@ test('R3 pairing and machine tunnel ingress remain available with storage off', 
     assert.equal(response.status,200,await response.text());
   }
   assert.equal(machines,2);
+});
+
+// Contract V5, the Worker's half: a live dial adds no stored object and no field to any record. It reaches the machine's
+// own object with its class intact, and never touches the identity's storage approval or the frames bucket.
+test('R3 a live dial with storage off reaches its machine object with its class and touches neither R2 nor the identity', async () => {
+  const seen = [];
+  const env={CAF_LIMITS:'{"storageOpen":false}',
+    MACHINE:{idFromName:x=>x,get:()=>({fetch:async(request)=>{seen.push(request.headers.get(HEADER_DOOR));return new Response('live',{status:200});}})},
+    MACHINE_DIAL_LIMIT:{limit:async()=>({success:true})},MACHINE_REGISTER_LIMIT:{limit:async()=>({success:true})},
+    FRAMES:new Proxy({}, {get(){throw Error('live access touched R2');}}),
+    IDENTITY:new Proxy({}, {get(){throw Error('live access consulted storage approval');}})};
+  for(const door of [DOOR_LIVE,undefined]) {
+    const headers={upgrade:'websocket','sec-websocket-protocol':PROTOCOL,...(door?{[HEADER_DOOR]:door}:{})};
+    const response=await respond(()=>dispatch(new Request('https://relay.test/v1/dial/amber-forest-42',{headers}),env));
+    assert.equal(response.status,200,await response.text());
+  }
+  assert.deepEqual(seen,[DOOR_LIVE,null],'the class header crosses the front door unchanged, and an unclassified dial has none');
 });
 
 test('S2 a fixed valid signature refuses changed bytes, whitespace and a missing domain label', async () => {

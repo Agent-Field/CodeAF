@@ -208,6 +208,7 @@ var hostedGuestMethods = map[string]string{
 	remote.MethodTeamsTraffic:           hostedGuestOwner,
 	remote.MethodTeamsUpdate:            hostedGuestOwner,
 	remote.MethodTeamsWrapUp:            hostedGuestOwner,
+	remote.MethodTranscriptPage:         hostedGuestOwner,
 	remote.MethodUnobserve:              hostedGuestOwner,
 	remote.MethodUseModelForNow:         hostedGuestOwner,
 }

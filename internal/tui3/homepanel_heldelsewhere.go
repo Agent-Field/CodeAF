@@ -26,14 +26,14 @@ import (
 // A message typed into a chat whose lease another machine holds would not reach
 // the chat: it would make a branch nobody asked for. So enter shows the door
 // instead: home, with the chat's row from that machine under the cursor and the
-// `Continue here` card up. The words stay in the box.
+// `Move here` card up. The words stay in the box.
 //
 // Local authority lets an ordinary message send without a relay request. A copy
 // without that authority asks once off the loop before choosing its door.
 
 // heldElsewhere is the row of the chat on screen when another machine holds it.
 func (a *app) heldElsewhere() (chatlist.Row, bool) {
-	if a.file == "" || a.hosted() {
+	if a.file == "" || a.hosted() || a.liveFront() != nil {
 		return chatlist.Row{}, false
 	}
 	cell := filepath.Base(session.DirOf(a.file))
@@ -121,6 +121,12 @@ func (a *app) needsOwnershipRead() bool {
 }
 
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
+	if a.liveFront() != nil {
+		if resume != nil {
+			return resume()
+		}
+		return nil
+	}
 	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
 	// A read that only ran out of time does not show the connection is down,
 	// so the next Enter asks again rather than replaying the cached failure.
@@ -465,6 +471,17 @@ func (a *app) blockDisplacedSend(text string) {
 	if a.file == "" || !strings.HasSuffix(text, displacedSendSuffix) {
 		return
 	}
+	// A LIVE VIEW HAS NO SEND HOLD OF ITS OWN TO BLOCK. It shows the host's chat
+	// and sends through the host, so its words need no ownership check, and the
+	// displaced sentence it carries ([app.takeLinkNotice]) is the host's, said
+	// about the host's chat. It matters in the moment after this window moved the
+	// chat here: the host's sentence (the chat was moved, and by this very
+	// computer) can still arrive while the live view is the front, and keyed by
+	// the chat's id it blocked the hold the move had just made. The words typed
+	// next were then refused with a Move card for a chat that was already here.
+	if a.liveFront() != nil {
+		return
+	}
 	if a.machineRead.sendHolds == nil {
 		a.machineRead.sendHolds = map[string]sendHold{}
 	}
@@ -546,7 +563,7 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		// that request's error reads as an unreachable relay.
 		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
 	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
-		return continueUnreachable
+		return moveUnreachable
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		return directory.ErrConditionalTake.Error()
 	case errors.Is(msg.err, directory.ErrRevoked):
@@ -556,18 +573,18 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		var busy *cellstore.StoreBusyError
 		if errors.As(msg.err, &busy) {
 			if who := busy.Holder.Describe(); who != "" {
-				return continueFails + " because the engine store is busy (held by " + who + ")"
+				return moveFails + " because the engine store is busy (held by " + who + ")"
 			}
 		}
-		return continueStoreBusy
+		return moveStoreBusy
 	case strings.Contains(msg.err.Error(), "rewind cancelled"), strings.Contains(msg.err.Error(), "changed during rewind"):
-		return continueFails + " because the folder changed during the move; your words are still in the box"
+		return moveFails + " because the folder changed during the move; your words are still in the box"
 	case errors.As(msg.err, new(*continueCheckError)):
 		log.Printf("continue chat %s: could not check this computer's copy: %v", msg.row.Cell, msg.err)
-		return continueCheckFails
+		return moveCheckFails
 	default:
 		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
-		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try continue here again."
+		return moveFails + " because the chat could not be put in this folder; your words are still in the box. Try move here again."
 	}
 }
 

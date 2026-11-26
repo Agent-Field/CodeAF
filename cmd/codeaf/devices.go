@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
@@ -79,10 +80,12 @@ func runDevices(args []string) error {
 		return stopDevice(kinds, args[1:])
 	case len(args) > 0 && args[0] == "rename":
 		return runDevicesRename(args[1:])
+	case len(args) > 0 && args[0] == "permit":
+		return runDevicesPermit(kinds, args[1:])
 	case askedForHelp(args):
 		return commandHelp("devices")
 	case len(args) > 0:
-		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all] | rename <name>]")
+		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all] | rename <name> | permit <name> [--watch on|off] [--drive on|off]]")
 	}
 	if !cell.Available() {
 		paired, err := pair.DeviceBook().Devices()
@@ -218,6 +221,66 @@ func stopDevice(kinds []deviceKind, args []string) error {
 		fmt.Println(said)
 	}
 	return err
+}
+
+func runDevicesPermit(kinds []deviceKind, args []string) error {
+	flags := commandFlags("devices permit")
+	watchRaw := flags.String("watch", "", "allow or stop watching this computer's running chats (on or off)")
+	driveRaw := flags.String("drive", "", "allow or stop typing into this computer's running chats (on or off)")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
+		return err
+	}
+	if flags.NArg() != 1 {
+		return errors.New("usage: codeaf devices permit <name> [--watch on|off] [--drive on|off] — `codeaf devices` lists the names")
+	}
+	var watch, drive *bool
+	if strings.TrimSpace(*watchRaw) != "" {
+		v, err := parsePermitToggle("--watch", *watchRaw)
+		if err != nil {
+			return err
+		}
+		watch = &v
+	}
+	if strings.TrimSpace(*driveRaw) != "" {
+		v, err := parsePermitToggle("--drive", *driveRaw)
+		if err != nil {
+			return err
+		}
+		drive = &v
+	}
+	line, err := permitDevice(kinds, flags.Arg(0), watch, drive)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(os.Stdout, line)
+	return err
+}
+
+func parsePermitToggle(flagName, raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s takes on or off", flagName)
+	}
+}
+
+func permitDevice(kinds []deviceKind, name string, watch, drive *bool) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", errors.New("usage: codeaf devices permit <name> [--watch on|off] [--drive on|off] — `codeaf devices` lists the names")
+	}
+	for _, k := range kinds {
+		if c, ok := k.(chatsKind); ok {
+			return c.permit(name, watch, drive)
+		}
+	}
+	if err := checkRevokeRosters(kinds); err != nil {
+		return "", err
+	}
+	return "", unknownDevice(name)
 }
 
 // stopByName finds the one kind that has the name and stops it there. With
@@ -399,10 +462,11 @@ func countCalled[T any](items []T, name string, label func(T) string) int {
 // their identity in the relay's directory. Nothing is cached, so a listing and a
 // stop each see the directory as it is now.
 type chatsKind struct {
-	dir   directory.Client
-	key   []byte // opens the sealed names
-	self  string // this computer's device id
-	relay string // named when the relay cannot be reached
+	dir      directory.Client
+	key      []byte // opens the sealed names
+	self     string // this computer's device id
+	relay    string // named when the relay cannot be reached
+	identity string // identity id for this computer's permit book
 }
 
 // openChatsKind is the kind for this machine, and false when it has none: sync
@@ -416,7 +480,9 @@ func openChatsKind() (chatsKind, bool) {
 	if err != nil || !ok {
 		return chatsKind{}, false
 	}
-	return chatsKindOf(s.Dir, s.Identity.CellKey(), s.Device.ID(), s.Relay), true
+	c := chatsKindOf(s.Dir, s.Identity.CellKey(), s.Device.ID(), s.Relay)
+	c.identity = s.Identity.ID()
+	return c, true
 }
 
 func chatsKindOf(dir directory.Client, cellKey []byte, self, relay string) chatsKind {
@@ -559,7 +625,60 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if err := c.dir.Revoke(ctx, row.id); err != nil {
 		return "", c.explain(err)
 	}
+	livedoor.NotifyRemoved(home.Dir(), row.id)
+	_ = pair.Permits().Forget(row.id)
+	forgetViewed(home.Dir(), row.id)
 	return pair.ChatsRevokedLine(row.Name), nil
+}
+
+func (c chatsKind) identityID() string {
+	if c.identity != "" {
+		return c.identity
+	}
+	if id, err := identity.Load(home.Dir()); err == nil && id.ID() != "" {
+		return id.ID()
+	}
+	return "local"
+}
+
+func (c chatsKind) permit(name string, watch, drive *bool) (string, error) {
+	rows, err := c.called(name)
+	switch {
+	case err != nil:
+		return "", err
+	case len(rows) > 1:
+		return "", ambiguousChatDevices(name, rows)
+	case len(rows) == 0:
+		return "", unknownDevice(name)
+	}
+	row := rows[0]
+	id := c.identityID()
+	book := pair.Permits()
+	if watch != nil || drive != nil {
+		if err := book.Set(id, row.id, watch, drive, "person"); err != nil {
+			return "", err
+		}
+	}
+	p, class := book.For(id, row.id)
+	return fmt.Sprintf("%s: watch %s, type %s (%s)", row.Name, permitWord(p.Watch), permitWord(p.Drive), permitClassWord(class)), nil
+}
+
+func permitWord(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+func permitClassWord(class pair.PermitClass) string {
+	switch class {
+	case pair.ClassExplicit:
+		return "set here"
+	case pair.ClassNew:
+		return "new"
+	default:
+		return "legacy"
+	}
 }
 
 // explain turns the directory's errors into the sentence a person reads.

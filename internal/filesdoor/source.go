@@ -2,6 +2,7 @@ package filesdoor
 
 import (
 	"context"
+	"crypto/ecdh"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -710,7 +711,7 @@ func (s *Source) handshake(ctx context.Context) (*pair.Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	stream, err := relay.Dial(attempt, s.cfg.Service, relay.NameFor(theirs.PublicKey().Bytes()))
+	stream, err := relay.DialDoor(attempt, s.cfg.Service, relay.NameFor(theirs.PublicKey().Bytes()), relay.DoorMove)
 	if err != nil {
 		return nil, err
 	}
@@ -759,31 +760,88 @@ func (s *Source) handshake(ctx context.Context) (*pair.Tunnel, error) {
 // and is final; an answer from some other computer, or one that is not a hello
 // at all, is a door that cannot be trusted with the request.
 func (s *Source) checkAnswer(tunnel *pair.Tunnel, typ byte, body []byte) error {
-	switch typ {
-	case typeRefused:
-		var no refusal
-		if json.Unmarshal(body, &no) != nil || no.Reason == "" {
-			no.Reason = couldNotConfirm
+	return checkAnswer(s.cfg.Identity, tunnel, s.cfg.TargetID, s.person(), typ, body)
+}
+
+// DialLive opens an authenticated live-view tunnel to host on its files-door
+// registration using the live dial class, intent and prologue.
+func DialLive(ctx context.Context, service string, id identity.Identity, dev identity.Dev, host string) (io.ReadWriteCloser, error) {
+	attempt, cancel := context.WithTimeout(ctx, dialWithin)
+	defer cancel()
+	keys, err := liveKeys(id, dev, host)
+	if err != nil {
+		return nil, err
+	}
+	name, err := DoorName(id, host)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := relay.DialDoor(attempt, service, name, relay.DoorLive)
+	if err != nil {
+		return nil, err
+	}
+	return sayLive(attempt, stream, id, dev, host, keys, pair.IntentLive, LiveTunnelPrologue)
+}
+
+// DialDirect finishes a live-view tunnel over a stream that already exists: the
+// byte stream of an open peer-to-peer data channel. It is DialLive for a
+// carrier the caller built, with the direct intent and prologue, the same
+// door-key handshake against the host's pinned key and the same device hello,
+// and it returns a READY tunnel, which is the contract a link's Dial has. The
+// stream is closed when the handshake fails, and the dial ends with
+// [dialWithin].
+func DialDirect(ctx context.Context, stream io.ReadWriteCloser, id identity.Identity, dev identity.Dev, host string) (io.ReadWriteCloser, error) {
+	attempt, cancel := context.WithTimeout(ctx, dialWithin)
+	defer cancel()
+	keys, err := liveKeys(id, dev, host)
+	if err != nil {
+		_ = stream.Close()
+		return nil, err
+	}
+	return sayLive(attempt, stream, id, dev, host, keys, pair.IntentDirect, DirectTunnelPrologue)
+}
+
+// liveKeysOf are the two door keys a live dial uses: this device's own, and the
+// host's, whose public half the handshake pins.
+type liveKeysOf struct{ mine, theirs *ecdh.PrivateKey }
+
+func liveKeys(id identity.Identity, dev identity.Dev, host string) (liveKeysOf, error) {
+	mine, err := DoorKey(id, dev.ID())
+	if err != nil {
+		return liveKeysOf{}, err
+	}
+	theirs, err := DoorKey(id, host)
+	if err != nil {
+		return liveKeysOf{}, err
+	}
+	return liveKeysOf{mine: mine, theirs: theirs}, nil
+}
+
+// sayLive is the handshake and hello every live dial runs over a stream it has
+// been handed, whichever road made the stream. It takes the stream's ownership:
+// a failed or timed-out dial closes it.
+func sayLive(attempt context.Context, stream io.ReadWriteCloser, id identity.Identity, dev identity.Dev, host string, keys liveKeysOf, intent byte, prologue string) (io.ReadWriteCloser, error) {
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = stream.Close()
 		}
-		return &RefusedError{Reason: no.Reason}
-	case typeHello:
-	default:
-		return protocolf("a first answer of type %d", typ)
+	}()
+	stop := context.AfterFunc(attempt, func() { _ = stream.Close() })
+	defer stop()
+
+	tunnel, err := pair.ConnectWithKeyIntent(stream, keys.theirs.PublicKey().Bytes(), keys.mine, intent, prologue)
+	if err != nil {
+		return nil, err
 	}
-	var h hello
-	if err := json.Unmarshal(body, &h); err != nil {
-		return protocolf("a hello that is not readable")
+	if err := SayHello(tunnel, id, dev, host); err != nil {
+		return nil, err
 	}
-	switch {
-	case h.V != Version:
-		return &RefusedError{Reason: differentVersion}
-	case h.Cert.DeviceID() != s.cfg.TargetID:
-		return &RefusedError{Reason: "could not confirm this is " + s.person()}
+	if !stop() || attempt.Err() != nil {
+		return nil, errors.New("filesdoor: the dial ran out of time")
 	}
-	if err := checkHello(s.cfg.Identity, tunnel, h); err != nil {
-		return &RefusedError{Reason: "could not confirm this is " + s.person()}
-	}
-	return nil
+	succeeded = true
+	return tunnel, nil
 }
 
 func (s *Source) person() string {

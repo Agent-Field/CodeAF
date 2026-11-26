@@ -27,14 +27,14 @@ import (
 
 // appNoteWords are the sentences a refused message says, in the person's words.
 var appNoteWords = map[error]string{
-	syncsetup.ErrNotesUnsupported: "This sync service can't carry a message to another computer yet. Bring the chat here to write to it.",
+	syncsetup.ErrNotesUnsupported: "This relay can't carry a message to another computer yet. Move the chat here to write to it.",
 	syncsetup.ErrOutboxFull:       appNoteSpelled(directory.MaxNotes) + " messages sent from this computer, in this chat or others, haven't been delivered yet. Send this one once some of them are.",
 	syncsetup.ErrNoteEmpty:        "The message is empty.",
 	syncsetup.ErrNoteLong:         "Messages to another computer are limited to 2000 characters.",
 	syncsetup.ErrNoOwnRecord:      "This computer isn't listed by sync yet. Try again in a moment.",
 	// The verb is not offered while storage is off, so this answers only a
 	// client that sent anyway or one connected before storage was switched off.
-	syncwords.ErrNotesWaitForStorage: "Sync storage is off for this account, so a message can't wait for another computer. Bring the chat here to write to it.",
+	syncwords.ErrNotesWaitForStorage: "Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.",
 }
 
 // appNoteUnreachable is a message this computer could not leave because its

@@ -645,6 +645,11 @@ type Answer struct {
 	// asked reads that nothing was decided ([consentDismissed]) rather than that
 	// the person said no, and no decision is recorded, because none was.
 	Dismissed bool `json:"dismissed,omitempty"`
+	// Remote is set only by the door that carried the answer from another
+	// computer (internal/remote stamps it, overwriting whatever the surface
+	// sent), never trusted; it is why this answer may not settle a question
+	// only the host may settle.
+	Remote bool `json:"remote,omitempty"`
 }
 
 // Keys is what was picked, however the answer spelled it: [Answer.Picked] where
@@ -731,6 +736,9 @@ func deliverAnswer(sessionDir string, answer Answer) error {
 	if dir == "" {
 		return errNoSessionFolder
 	}
+	// The doorstep file on disk never persists the transient wire stamp from
+	// another computer.
+	answer.Remote = false
 	line, err := json.Marshal(answer)
 	if err != nil {
 		return err

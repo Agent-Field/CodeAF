@@ -21,7 +21,7 @@ func TestClusterStatusDistinguishesDeadlinesFromUnreachableNetworks(t *testing.T
 		cause error
 		want  string
 	}{
-		{"deadline", context.DeadlineExceeded, "the sync service at http://relay.invalid did not answer in time — try again"},
+		{"deadline", context.DeadlineExceeded, "the relay at http://relay.invalid did not answer in time — try again"},
 		{"refused", syscall.ECONNREFUSED, syncwords.Unreachable("http://relay.invalid")},
 		{"route", syscall.ENETUNREACH, syncwords.Unreachable("http://relay.invalid")},
 		{"dns", &net.DNSError{Err: "no such host", Name: "relay.invalid", IsNotFound: true}, syncwords.Unreachable("http://relay.invalid")},

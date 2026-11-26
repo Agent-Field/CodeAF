@@ -139,7 +139,7 @@ func TestAlreadyHereRecoveryRetriesOnlyOnceAndKeepsTheDraft(t *testing.T) {
 		cmd = tea.Batch(next...)
 	}
 	q, ok := a.homeAsking()
-	if len(f.seen) != 2 || !ok || q.question.Reason != continueFails || q.question.Options[0].Label != continueRetry || !reflect.DeepEqual(a.mainComposer(), want) {
+	if len(f.seen) != 2 || !ok || q.question.Reason != moveFails || q.question.Options[0].Label != moveRetry || !reflect.DeepEqual(a.mainComposer(), want) {
 		t.Fatalf("already-here disagreement: attempts=%d card=%+v draft=%+v", len(f.seen), q, a.mainComposer())
 	}
 	for _, seen := range f.seen {

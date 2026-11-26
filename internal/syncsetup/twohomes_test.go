@@ -791,7 +791,7 @@ func TestTwoHomesTakeARunningChatAtOnce(t *testing.T) {
 
 	row, ok := rowOf(t, h.b, h.cell.ID)
 	if !ok || row.Status != chatlist.Running || chatlist.OfferFor(row).Kind != chatlist.ContinueHere {
-		t.Fatalf("B's row = %+v, %v; want a running chat that offers continue here", row, ok)
+		t.Fatalf("B's row = %+v, %v; want a running chat that offers move here", row, ok)
 	}
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
 		t.Fatalf("Take of a running chat = %v; want it taken at once", err)
@@ -811,8 +811,8 @@ func TestTwoHomesTakeARunningChatAtOnce(t *testing.T) {
 	}
 }
 
-// TestTakeSideContinueHere is the whole of `continue here` from the home's
-// side: A goes quiet, its row on B offers `continue here`, B takes the chat and
+// TestTakeSideContinueHere is the whole of `move here` from the home's
+// side: A goes quiet, its row on B offers `move here`, B takes the chat and
 // drives it, and A's row says where the chat is now.
 func TestTakeSideContinueHere(t *testing.T) {
 	h := newTwoHomes(t)
@@ -825,7 +825,7 @@ func TestTakeSideContinueHere(t *testing.T) {
 
 	row, ok := rowOf(t, h.b, h.cell.ID)
 	if !ok || row.Status != chatlist.Off || chatlist.OfferFor(row).Kind != chatlist.ContinueHere {
-		t.Fatalf("B's row = %+v, %v; want %s off, offering continue here", row, ok, nameA)
+		t.Fatalf("B's row = %+v, %v; want %s off, offering move here", row, ok, nameA)
 	}
 	took, err := h.continuerB().Take(ctx, h.cell.ID)
 	if err != nil {
