@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -142,6 +143,7 @@ type recordMeta struct {
 	Maker          string                             `json:"maker,omitempty"`
 	LastTransition string                             `json:"last_transition,omitempty"`
 	Checklists     map[string]map[string]checkReceipt `json:"checklists,omitempty"`
+	Sources        map[string]ExternalKey             `json:"sources,omitempty"`
 	By             map[string]string                  `json:"by,omitempty"`
 	Reverses       string                             `json:"reverses,omitempty"`
 	ReversedBy     string                             `json:"reversed_by,omitempty"`
@@ -199,6 +201,7 @@ func (t *Type) decode(stored map[string]any) (data, unknown map[string]any) {
 // encodeMeta and decodeMeta do the same for the meta's field names.
 func (t *Type) encodeMeta(m recordMeta) recordMeta {
 	out := m
+	out.Sources = nil
 	if len(m.By) > 0 {
 		out.By = map[string]string{}
 		for name, kind := range m.By {
@@ -207,15 +210,43 @@ func (t *Type) encodeMeta(m recordMeta) recordMeta {
 			}
 		}
 	}
+	for name, key := range m.Sources {
+		if f := t.Fields[name]; f != nil {
+			if out.Sources == nil {
+				out.Sources = map[string]ExternalKey{}
+			}
+			out.Sources[f.ID] = key
+		}
+	}
 	return out
+}
+
+func (m *recordMeta) copySource(name string, from recordMeta) {
+	if key, ok := from.Sources[name]; ok {
+		if m.Sources == nil {
+			m.Sources = map[string]ExternalKey{}
+		}
+		m.Sources[name] = key
+	} else {
+		delete(m.Sources, name)
+	}
 }
 
 func (t *Type) decodeMeta(m recordMeta) recordMeta {
 	out := m
+	out.Sources = nil
 	out.By = map[string]string{}
 	for id, kind := range m.By {
 		if f := t.byID[id]; f != nil {
 			out.By[f.Name] = kind
+		}
+	}
+	for name, key := range m.Sources {
+		if f := t.byID[name]; f != nil {
+			if out.Sources == nil {
+				out.Sources = map[string]ExternalKey{}
+			}
+			out.Sources[f.Name] = key
 		}
 	}
 	return out
@@ -258,6 +289,7 @@ func (r *record) clone() *record {
 	for k, v := range r.Data {
 		c.Data[k] = v
 	}
+	c.Meta.Sources = maps.Clone(r.Meta.Sources)
 	c.Meta.By = map[string]string{}
 	for k, v := range r.Meta.By {
 		c.Meta.By[k] = v
@@ -636,6 +668,13 @@ func applySet(r *record, set map[string]any, sc Scope, op string) (held []string
 			r.Data[name] = v
 		}
 		r.Meta.By[name] = kind
+		delete(r.Meta.Sources, name)
+		if sc.sourceKey != (ExternalKey{}) {
+			if r.Meta.Sources == nil {
+				r.Meta.Sources = map[string]ExternalKey{}
+			}
+			r.Meta.Sources[name] = sc.sourceKey
+		}
 	}
 	return held
 }
@@ -711,7 +750,7 @@ func (w *writeTx) checkRefs(f *Field, v any) error {
 	}
 	for _, id := range ids {
 		var n int
-		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = ? AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
+		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = `+identityRefSQL(target, "?")+` AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n == 0 {
@@ -1238,6 +1277,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 		}
 		if undone.Valid {
 			return errorf(CodeStale, "that change was already undone")
+		}
+		if op == OpIdentityMerge || op == OpIdentitySplit {
+			return errorf(CodeNotAllowed, "use the identity commands to reverse a merge")
 		}
 		if op == OpTransition && typeID == "" {
 			return errorf(CodeLifecycle, "undoing this would move lifecycle states; fire a transition back instead")
