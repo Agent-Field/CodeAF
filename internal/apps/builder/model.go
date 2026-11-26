@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -23,23 +26,25 @@ type Completer interface {
 	CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error)
 }
 
-const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
-at a time in the scoped executor. Report progress during long tool sequences.
+const (
+	planFirstPass      = 150 * time.Second
+	planCorrectionPass = 110 * time.Second
+	// PlanWait allows both model passes and time to persist the result.
+	PlanWait = planFirstPass + planCorrectionPass + 35*time.Second
+)
 
-Start with codeaf app context for the manifest, plan, file names and Check
-findings. Get an external shape with context {"type":"contact"} and a file
-with context {"file":"screens/deals.json"}. Reuse replies for unchanged files.
-Fetch needed kit descriptors together with parts {"select":["add-view/board","RecordList"]}.
-Use the examples below first. If needed, use reference {"schema":"app-2.json"}
-for types and settings, process-2.json for lifecycle, and run-2.json or
-{"example":"crm","file":"runs/follow-up.yaml"} for automations.
+const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
+at a time in the scoped executor. Finish when the requested edits are saved.
+
+Use the supplied manifest, plan, file names, types, parts and Check findings.
+Read additional files and types together with context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}.
+Batch missing kit descriptors with parts {"select":["add-view/board","RecordList"]}.
+Read reference {"schema":"app-2.json"} for app settings, process-2.json for lifecycle or run-2.json for automations.
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
-writes the outline and starts the manifest. Each plan line has id and line.
-Use data for type ids, screens for screen ids, and automation for each
-planned run id. In data, use "create":true for types people add. Put manual
-actions in "actions" by command or run id. Keep these declarations when
-revising the plan. Reuse the plan ids in the compiled definitions.
+writes the outline. Use the actual type, screen and automation ids in the plan.
+Mark creatable types with "create":true and list manual actions by command or run id.
+Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}].
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
@@ -53,23 +58,21 @@ configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
-compiles a collection. For ordinary collections use as "table" or "list"
-and fields, for example companies and contacts in a CRM. The recipe id is
-the screen id. If asked, use add-form or add-detail for a separate screen.
-Use add-chart with group and aggregate
-(e.g. "sum:amount") for grouped totals. For composed screens, use markup
-{"screen":"deals","title":"Deals","markup":"<...>"} with the kit parts as
-elements and label, id, prop-name, bind-name and on-event attributes.
+compiles a collection. Use as "table" or "list" for ordinary collections.
+Use add-chart with group and aggregate (e.g. "sum:amount") for grouped totals.
+For a composed screen, write markup {"screen":"deals","title":"Deals","markup":"<...>"}
+with kit elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
-Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
+Use action-verb ids. Record commands pass a ref parameter by id, with no default.
+Use refs with a query default for scheduled loops. Read ids with $params.post.id.
 Agent steps return text at $steps.<id>.output. For lists and approvals, copy
 reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
-Use the screen_controls guide from context for commands, Add buttons and approvals.
+Use the supplied screen_controls guide for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
@@ -90,9 +93,9 @@ For a shared type this app's Actions create or edit, use this shape:
 add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
 Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
-Fill the visible fields in your examples so Check can measure bound columns.
-Keep screen and node ids. Claim marked nodes and preserve the rest of that
-screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
+Fill visible sample fields. Claim marked nodes and preserve existing ids.
+Your data already imports CSV into editable record types. For CSV import,
+match field ids to the headers and use the built-in import, with no run.`
 
 func systemPrompt() string {
 	return skill + "\n\n" + instructions
@@ -136,24 +139,27 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
-	Headless   bool
-	Editing    bool
-	Marks      []Mark
-	Stage      string
-	Request    string
-	Target     *Target
-	Types      []modelType
-	Using      []string
-	Definition map[string]string
-	Report     *schema.Report
+	Headless           bool
+	Editing            bool
+	Marks              []Mark
+	Stage              string
+	Request            string
+	Target             *Target
+	Types              []modelType
+	Using              []string
+	Definition         map[string]string
+	Report             *schema.Report
+	Continued          bool
+	OwnerNameAvailable bool
 }
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
 {"fields":{"salary":"hide","tax_id":"mask"}}. To show a person's own rows,
-include policy.row {"field":"owner","attribute":"id"}. Keep the existing
-field definitions when editing the type with add-type. For any new or changed
-field, suggest a class of public, internal, confidential, restricted, or pii
-according to its intended data and any classification the person asked for.`
+include policy.row {"field":"owner","attribute":"id"}. Preserve existing
+classifications and apply any handling the person asked for. A restricted or
+pii field is masked even for the owner. For ordinary titles the owner needs
+to read and edit in Personal, use internal or confidential. Reserve restricted
+and pii for fields whose purpose calls for that protection.`
 
 const screenControlsGuide = `A new record should be creatable with its title and the essential input
 the person supplied. Keep the person's field names as ids: a book's title
@@ -166,34 +172,77 @@ Use a plain enum for status unless the request needs guarded transitions.
 Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
 "transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
 
-Put the controls on the screen where the person works. Use a Button with
-on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
-or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
-button, set the list id and selection mode and show the button when a row
-is selected. A local save requiring approval puts gate: {approval: proof}
+Declare record commands with "for":"deal" and params {"deal":"$record.id"}
+so record views can show them with the current record. For an app-wide
+action without a record parameter, use a Button with on-click='[{"runs.start":"review"}]'. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
-Use a Button labelled "Add <record>" with on-click to open a Sheet
-containing a RecordForm, or use a Button with an asked records.create
+For a follow-up draft written on the person's behalf, address the bound
+contact and sign with the available owner name. Write the greeting and
+signature into the draft using {{params.deal.contact.name}} and {{owner.name}},
+using the actual declared relation and title field ids. Don't leave
+bracketed placeholders in draft prompts, template values or example replies.
+A collection recipe adds the creation control for a planned type with
+"create":true and write access. For a screen composed by hand, use a Button
+labelled "Add <record>" with on-click to open a Sheet
+containing a Form, or use a Button with an asked records.create
 action. Supply every required field with no default through the form, or
 through records.create.set and ask, for example name: $input.name with
-ask: {name: text}. A bare collection recipe does not add a create button. A Check
-finding for a missing control means implement the control in this round.`
+ask: {name: text}. A Check finding for a missing control means add it in
+this round. Record creation needs no run file unless the request calls for
+an automation.`
 
 const contextFilePage = 6 << 10
 
 var schemaName = regexp.MustCompile(`^[a-z0-9-]+\.json$`)
 
 type contextRequest struct {
-	File   string
-	Offset int
-	Type   string
+	File   string `json:"file,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+	Type   string `json:"type,omitempty"`
 }
 
+const maxContextSelectors = 6
+
 func (in modelInput) context(files map[string]string, reads map[contextRequest]string, args json.RawMessage) (string, error) {
-	var opts contextRequest
-	if json.Unmarshal(args, &opts) != nil {
+	var request struct {
+		contextRequest
+		Select []contextRequest
+	}
+	if json.Unmarshal(args, &request) != nil {
 		return "", errors.New("choose a definition file or existing type by name")
+	}
+	opts := request.contextRequest
+	if request.Select != nil {
+		if opts != (contextRequest{}) || len(request.Select) == 0 || len(request.Select) > maxContextSelectors {
+			return "", fmt.Errorf("choose one file or type, or between 1 and %d context selectors", maxContextSelectors)
+		}
+		type item struct {
+			contextRequest
+			Result  json.RawMessage `json:"result,omitempty"`
+			Problem string          `json:"problem,omitempty"`
+		}
+		items := make([]item, 0, len(request.Select))
+		for _, selector := range request.Select {
+			result := item{contextRequest: selector}
+			if (selector.File == "") == (selector.Type == "") {
+				result.Problem = "choose one definition file or existing type"
+			} else {
+				raw, _ := json.Marshal(selector)
+				text, err := in.context(files, reads, raw)
+				switch {
+				case err != nil:
+					result.Problem = err.Error()
+				case json.Valid([]byte(text)):
+					result.Result = json.RawMessage(text)
+				default:
+					result.Result, _ = json.Marshal(text)
+				}
+			}
+			items = append(items, result)
+		}
+		raw, err := json.Marshal(map[string][]item{"items": items})
+		return string(raw), err
 	}
 	if opts.Type != "" {
 		for _, typ := range in.Types {
@@ -312,22 +361,50 @@ func briefText(text string, limit int) string {
 
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
-func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, preflight func(map[string]string) schema.Report, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, error) {
-	raw, err := json.Marshal(struct {
-		Request string  `json:"request"`
-		Target  *Target `json:"target,omitempty"`
-	}{in.Request, in.Target})
+func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
 	if err != nil {
-		return nil, "", err
+		return nil, "", BuildCalls{}, err
+	}
+	// Share the vocabulary without copying every external type into a large
+	// workspace's prompt. The same shapes are still available by name.
+	typeShapes, err := json.Marshal(in.Types)
+	if err != nil {
+		return nil, "", BuildCalls{}, err
+	}
+	if len(typeShapes) > contextFilePage {
+		typeShapes = nil
+	}
+	var catalog string
+	if in.Stage != Planning {
+		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "add-chart", "Form", "RecordPage", "Button", "Sheet"})
+		if err != nil {
+			return nil, "", BuildCalls{}, err
+		}
+	}
+	raw, err := json.Marshal(struct {
+		Request        string          `json:"request"`
+		Target         *Target         `json:"target,omitempty"`
+		Context        json.RawMessage `json:"context"`
+		Parts          json.RawMessage `json:"parts,omitempty"`
+		ExistingShapes json.RawMessage `json:"existing_shapes,omitempty"`
+	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes})
+	if err != nil {
+		return nil, "", BuildCalls{}, err
 	}
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
+	var planSaved bool
+	var planErr error
 	execute := func(ctx context.Context, command string) (result string, err error) {
 		verb, args, err := appcmd.Parse(command)
 		if err != nil {
+			mu.Lock()
+			planErr = err
+			mu.Unlock()
 			return "", err
 		}
 		mu.Lock()
@@ -390,15 +467,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			}
 			return compact.String(), nil
 		case "check":
-			report := preflight(files)
-			status := "definition_only"
-			if slices.Contains(report.Codes(), "choose_reuse") {
-				status = NeedsYou
-			}
-			out, err := json.Marshal(struct {
-				Status string `json:"status"`
-				*modelReport
-			}{status, briefReport(&report)})
+			report := check.Definition(definition(files), types)
+			out, err := json.Marshal(briefReport(&report))
 			return string(out), err
 		case "look":
 			if look == nil {
@@ -433,6 +503,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		default:
 			next, err := author.edit(ctx, verb, files, types, args)
 			if err != nil {
+				if verb == "plan" {
+					planErr = err
+				}
 				if errors.Is(err, errCompilerUnavailable) {
 					compilerErr = err
 				}
@@ -442,6 +515,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 				return "", err
 			}
 			files = next
+			if verb == "plan" {
+				planSaved = true
+			}
 			return "Saved the definition change.", nil
 		}
 	}
@@ -455,34 +531,104 @@ with their exact ids, and remove extras with remove-screen {"id":"extra"}.
 For a layout finding, replace only the affected screen with markup
 {"screen":"...","replace":true,"markup":"..."}, keeping existing node ids.
 Keep everything unaffected. Fix the reported locations using the commands
-shown above, then run check once to confirm and finish.`
+shown above, then finish. The engine checks the draft automatically.`
 	default:
 		if in.Editing {
 			prompt += `Apply only the requested change. If it adds an optional field,
 use add-field with just {"type":"number"} for an optional number. Keep the
-plan, screens and samples when the request leaves them alone. Then run check once and finish.`
+plan, screens and samples when the request leaves them alone. Then finish so the engine can check the draft.`
 			break
 		}
 		prompt += `Keep planned types and common keys. Edit types only as requested or to bind types from using.
-Set record permissions, compile each missing screen with its planned id,
-and implement each planned run and entry point. Keep existing screens unless
-asked to edit them. Use markup when recipes cannot make the requested screen.
-Write samples, run check once and finish on success. The engine then tries the
-samples and Desk Look.`
+Complete the planned screens and samples before making refinements.
+Set record permissions and compile one recipe for each missing plan screen,
+using its exact screen id. Implement each planned run and its requested
+entry point before Check. Keep existing screens unless asked to edit them.
+Use markup only for a composition the request needs and recipes cannot do.
+Write the sample rows and finish with a short summary. The engine runs Check,
+tries the sample data and asks Desk to draw the screens after this turn.`
 	}
-	prompt += "\nThe check command reports preliminary definition findings or a reuse question (needs_you). Only the engine's Check after this turn can confirm the result. Leave reuse decisions to the person and describe the changes you made."
+	if in.Continued {
+		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
+	}
+	if in.Stage != Planning {
+		if in.OwnerNameAvailable {
+			prompt += "\nThe owner's name is available to run templates as {{owner.name}}."
+		} else {
+			prompt += "\nNo owner name is available. Omit the owner sign-off from drafts."
+		}
+	}
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
 	}
 	if in.Headless {
 		prompt += "\nHeadless build: propose matching types from using. Continue to Check. Apply confirms reuse."
 	}
-	bounded := &boundedModel{model: model, limit: in.callBudget()}
-	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
-	if bounded.exhausted() {
+	limit := in.callBudget()
+	bounded := &boundedModel{model: model, stage: in.Stage, stopAt: limit, stats: BuildCalls{Limit: limit}}
+	run := func(prompt string, allowance time.Duration) (string, error) {
+		pass := ctx
+		if allowance > 0 {
+			var cancel context.CancelFunc
+			pass, cancel = context.WithTimeout(ctx, allowance)
+			defer cancel()
+			bounded.stopPass = cancel
+		}
+		reply, err := session.ScopedCommandTurn(pass, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
+		if allowance > 0 && (bounded.timedOut || errors.Is(pass.Err(), context.DeadlineExceeded)) {
+			err = context.DeadlineExceeded
+		}
+		return reply, err
+	}
+	var allowance time.Duration
+	if in.Stage == Planning {
+		// Leave time for one correction before the synchronous plan request expires.
+		allowance = planFirstPass
+	}
+	reply, err := run(prompt, allowance)
+	if in.Stage == Planning {
+		// The saved plan is the reply. Some providers end after the last tool
+		// call or omit the closing text, even though the plan was written.
+		timedOut := errors.Is(err, context.DeadlineExceeded)
+		if planSaved && (err == nil || bounded.hit || bounded.incomplete || timedOut) {
+			err = nil
+		} else if !planSaved && ctx.Err() == nil && (err == nil || bounded.incomplete || timedOut) && !bounded.hit {
+			reason := "the reply did not save a plan object"
+			if planErr != nil {
+				reason = planErr.Error()
+			} else if timedOut {
+				reason = "the model did not finish in time"
+			} else if bounded.incomplete {
+				reason = "the model returned an empty or truncated reply"
+			}
+			bounded.incomplete = false
+			bounded.timedOut = false
+			bounded.stopAt = min(bounded.stats.Limit, bounded.stats.Total+4)
+			reply, err = run(prompt+"\nThe previous plan failed: "+reason+
+				". Save the plan with codeaf app plan. If tool calls are unavailable, return the same {\"name\",\"plan\"} arguments as a single JSON object.", planCorrectionPass)
+			if !planSaved && err == nil {
+				fallback := strings.TrimSpace(reply)
+				if body, ok := strings.CutPrefix(fallback, "```json"); ok {
+					fallback = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body), "```"))
+				}
+				if _, parseErr := execute(ctx, "codeaf app plan "+fallback); parseErr == nil {
+					reply = "I outlined the app for review."
+				} else {
+					err = fmt.Errorf("the corrected reply did not contain a usable plan: %w", parseErr)
+				}
+			}
+			if planSaved && (bounded.incomplete || bounded.hit || errors.Is(err, context.DeadlineExceeded)) {
+				err = nil
+			}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errors.New("the model did not finish in time")
+		}
+	}
+	if bounded.hit && !(in.Stage == Planning && planSaved && err == nil) {
 		err = errModelCallLimit
 	}
-	return files, reply, errors.Join(err, compilerErr)
+	return files, reply, bounded.stats, errors.Join(err, compilerErr)
 }
 
 func builderModelID(model Completer) string {
@@ -493,12 +639,14 @@ func builderModelID(model Completer) string {
 }
 
 const (
-	planCallBudget = 20
-	buildCallBase  = 12
-	callsPerType   = 2
-	callsPerScreen = 3
-	callsPerRun    = 5
-	maxBuildCalls  = 64
+	planCallBudget    = 20
+	buildCallBase     = 14
+	callsPerType      = 2
+	callsPerScreen    = 3
+	callsPerRun       = 5
+	callsPerExtension = 8
+	revisionCalls     = 8
+	maxBuildCalls     = 80
 )
 
 // Planning starts before the outline exists. Writing and repair budget for
@@ -508,36 +656,95 @@ func (in modelInput) callBudget() int {
 		return planCallBudget
 	}
 	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
-	return min(maxBuildCalls, buildCallBase+
-		len(plan.Data)*callsPerType+len(plan.Screens)*callsPerScreen+len(plan.Automation)*callsPerRun)
+	calls := buildCallBase + len(plan.Data)*callsPerType + len(plan.Screens)*callsPerScreen +
+		len(plan.Automation)*callsPerRun + len(plan.Extensions)*callsPerExtension
+	if in.Editing {
+		// Revisions can add work that was absent from the kept plan.
+		calls += revisionCalls
+	}
+	return min(maxBuildCalls, calls)
+}
+
+// BuildCalls counts each submitted completion once, using the work it returned.
+type BuildCalls struct {
+	Limit     int `json:"limit"`
+	Total     int `json:"total"`
+	Planning  int `json:"planning"`
+	Lookups   int `json:"lookups"`
+	Authoring int `json:"authoring"`
+	Repairs   int `json:"repairs"`
+	Other     int `json:"other"`
 }
 
 type boundedModel struct {
-	model Completer
-	mu    sync.Mutex
-	limit int
-	calls int
-	hit   bool
+	model      Completer
+	stats      BuildCalls
+	mu         sync.Mutex
+	stage      string
+	stopAt     int
+	hit        bool
+	incomplete bool
+	timedOut   bool
+	stopPass   context.CancelFunc
 }
 
 var errModelCallLimit = errors.New("the Builder reached its model call limit")
 
-func (b *boundedModel) exhausted() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.hit
-}
-
 func (b *boundedModel) CompleteWithMessages(ctx context.Context, messages []ai.Message, opts ...ai.Option) (*ai.Response, error) {
 	b.mu.Lock()
-	if b.calls >= b.limit {
+	if b.stats.Total >= b.stopAt {
 		b.hit = true
 		b.mu.Unlock()
 		return nil, errModelCallLimit
 	}
-	b.calls++
+	b.stats.Total++
 	b.mu.Unlock()
-	return b.model.CompleteWithMessages(ctx, messages, append(opts, ai.WithMaxTokens(12000))...)
+	resp, err := b.model.CompleteWithMessages(ctx, messages, append(opts, ai.WithMaxTokens(12000))...)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopPass != nil && errors.Is(err, context.DeadlineExceeded) {
+		// A planning timeout gets one clean correction pass. End this turn so
+		// the generic session retry ladder cannot spend the correction time.
+		b.timedOut = true
+		b.stopPass()
+	}
+	category := &b.stats.Other
+	if resp != nil && len(resp.Choices) > 0 {
+		choice := resp.Choices[0]
+		b.incomplete = b.incomplete || choice.FinishReason == "length" || len(choice.Message.Content) == 0 && len(choice.Message.ToolCalls) == 0
+		for _, call := range choice.Message.ToolCalls {
+			var args struct{ Command string }
+			if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
+				b.incomplete = true
+				continue
+			}
+			verb, _, err := appcmd.Parse(args.Command)
+			if err != nil {
+				continue
+			}
+			switch verb {
+			case "context", "common_types", "parts", "kit", "reference", "mark", "presence":
+				if category == &b.stats.Other {
+					category = &b.stats.Lookups
+				}
+			default:
+				// A batch containing both reads and edits counts as editing work.
+				switch b.stage {
+				case Planning:
+					category = &b.stats.Planning
+				case "repair":
+					category = &b.stats.Repairs
+				default:
+					category = &b.stats.Authoring
+				}
+			}
+		}
+	} else if err == nil {
+		b.incomplete = true
+	}
+	*category++
+	return resp, err
 }
 
 func definition(files map[string]string) schema.Definition {

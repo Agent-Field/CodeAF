@@ -333,13 +333,20 @@ type Budget struct {
 
 // Plan is plan.json, what the plan card draws.
 type Plan struct {
-	Ask        string     `json:"ask"`
-	Data       []PlanLine `json:"data"`
-	Automation []PlanLine `json:"automation,omitempty"`
-	Actions    []PlanLine `json:"actions,omitempty"`
-	Screens    []PlanLine `json:"screens"`
-	Agent      *PlanAgent `json:"agent,omitempty"`
-	Needs      string     `json:"needs,omitempty"`
+	Ask        string          `json:"ask"`
+	Data       []PlanLine      `json:"data"`
+	Automation []PlanLine      `json:"automation,omitempty"`
+	Extensions []PlanExtension `json:"extensions,omitempty"`
+	Actions    []PlanLine      `json:"actions,omitempty"`
+	Screens    []PlanLine      `json:"screens"`
+	Agent      *PlanAgent      `json:"agent,omitempty"`
+	Needs      string          `json:"needs,omitempty"`
+}
+
+// PlanExtension names an extension the Builder needs to author and why.
+type PlanExtension struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 // PlanLine is one editable line of the plan card, naming the id it describes.

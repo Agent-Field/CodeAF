@@ -89,10 +89,10 @@ func TestAppChangeCardSurvivesEngineRestart(t *testing.T) {
 			})
 			if card.App != app.ID || (opened.Draft != "" && card.Draft != opened.Draft) || card.ID == "" ||
 				card.Source != source || card.BaseVersion != 1 || card.Checkpoint == "" ||
-				!strings.Contains(strings.Join(card.SummaryLines, " "), "renewal") {
+				card.Display == nil || !strings.Contains(strings.ToLower(card.Display.After), "renewal") {
 				t.Fatalf("proposal = %+v", card)
 			}
-			if source == "marked" && (card.Target == nil || card.Target.Node != "deals" || !strings.Contains(card.SummaryLines[1], "Before:")) {
+			if source == "marked" && (card.Target == nil || card.Target.Node != "deals" || card.Display.Before == "") {
 				t.Fatalf("the proposal lost the marked part: %+v", card)
 			}
 			if err := b.Close(); err != nil {

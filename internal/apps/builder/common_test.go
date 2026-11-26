@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
@@ -132,10 +132,15 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 			definitions := store.NewAt(home, func(string) (schema.TypeSet, error) {
 				return schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}}, nil
 			})
+			var checked atomic.Int32
 			var deskReady atomic.Bool
 			deskReady.Store(desk)
 			opts := builder.Options{
 				Home: home, Store: definitions, CanLook: deskReady.Load,
+				Check: func(_ context.Context, _ string, def schema.Definition, types schema.TypeSet) schema.Report {
+					checked.Add(1)
+					return check.Definition(def, types)
+				},
 				Catalog: func(app string) (builder.Catalog, error) {
 					if !test.existing {
 						return builder.Catalog{}, nil
@@ -175,22 +180,7 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 							return toolCalls(command("markup", map[string]string{"screen": "contacts"})), nil
 						case 3:
 							return toolCalls(command("add-type", map[string]any{"name": "customer", "definition": map[string]any{"uses": !planning, "common": "person", "fields": map[string]any{}}})), nil
-						case 4:
-							if !planning {
-								return toolCalls(command("check", nil)), nil
-							}
-							fallthrough
 						default:
-							if desk && !planning {
-								last := messages[len(messages)-1]
-								expected := "choose_reuse"
-								if !test.existing {
-									expected = schema.CodeUsesUnknown
-								}
-								if !strings.Contains(last.Content[0].Text, expected) {
-									t.Errorf("the Builder's preliminary report did not contain %s", expected)
-								}
-							}
 							if planning {
 								return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I outlined Contacts."}}}, nil
 							}
@@ -220,13 +210,13 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 				state := waitState(t, jobs, plan.Draft, builder.NeedsYou)
 				event := state.Progress[len(state.Progress)-1]
 				if !test.existing {
-					if event.Report == nil || !slices.Contains(event.Report.Codes(), schema.CodeUsesUnknown) ||
+					if checked.Load() == 0 || event.Report == nil || !slices.Contains(event.Report.Codes(), schema.CodeUsesUnknown) ||
 						slices.Contains(event.Report.Codes(), "choose_reuse") {
 						t.Fatalf("a missing reuse source should be a definition finding: %+v", event)
 					}
 					return
 				}
-				if event.OK != nil || event.Report == nil || !slices.Contains(event.Report.Codes(), "choose_reuse") {
+				if checked.Load() != 0 || event.OK != nil || event.Report == nil || !slices.Contains(event.Report.Codes(), "choose_reuse") {
 					t.Fatalf("expected a consent question before Check: %+v", event)
 				}
 				if slices.ContainsFunc(state.Transcript, func(message builder.Message) bool { return message.Text == "Contacts are ready." }) {

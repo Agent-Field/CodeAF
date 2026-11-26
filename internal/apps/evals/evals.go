@@ -73,6 +73,13 @@ type BuildState struct {
 	Rounds     int
 	Checked    bool
 	RecipeGaps []string
+	Passes     []BuildPass
+}
+
+type BuildPass struct {
+	Stage string          `json:"stage"`
+	Round int             `json:"round"`
+	Calls json.RawMessage `json:"calls"`
 }
 
 type Result struct {
@@ -80,6 +87,7 @@ type Result struct {
 	Complete    bool           `json:"complete"`
 	Pass        bool           `json:"pass"`
 	Rounds      int            `json:"rounds"`
+	Passes      []BuildPass    `json:"build_passes,omitempty"`
 	Usage       *Usage         `json:"usage"`
 	RecipeGaps  []string       `json:"recipe_gaps,omitempty"`
 	Failures    []string       `json:"failures,omitempty"`
@@ -182,7 +190,7 @@ func Run(ctx context.Context, app Adapter, c Case, variables ...map[string]any) 
 		result.Failures = append(result.Failures, checkReply(state.Plan, c.Plan)...)
 		return nil
 	})
-	result.Rounds, result.RecipeGaps = build.Rounds, build.RecipeGaps
+	result.Rounds, result.RecipeGaps, result.Passes = build.Rounds, build.RecipeGaps, build.Passes
 	if len(c.Plan) > 0 && !sawPlan {
 		result.Failures = append(result.Failures, "the planning reply was missing")
 	}

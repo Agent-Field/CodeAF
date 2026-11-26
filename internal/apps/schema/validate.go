@@ -545,6 +545,7 @@ type actionCtx struct {
 	rowType       string
 	selectionType string            // what a bare $selection.ids means (commands)
 	lists         map[string]string // RecordList id → type, on a screen
+	sheets        map[string]bool
 }
 
 var verbs = []string{"open", "records.update", "records.create", "records.delete", "runs.start", "approve", "tools.call", "ai.sort", "toast"}
@@ -735,7 +736,12 @@ func isOutbound(tool string) bool {
 
 // ---------- screens ----------
 
+var displayRecordID = regexp.MustCompile(`(?i)\b[0-7][0-9A-HJKMNP-TV-Z]{25}\b`)
+
 func (c *checker) checkScreen(file string, s Screen) {
+	if c.kit.Kit == 2 && displayRecordID.MatchString(s.Title) {
+		c.add(file, "/title", "display_record_id", "Use the record title in the screen instead of a record id.")
+	}
 	id := FileID(file)
 	if s.Screen != id {
 		c.add(file, "/screen", CodeScreenIDMismatch, "The screen calls itself %q but its file is %s; the file name is the screen's id.", s.Screen, file)
@@ -744,7 +750,7 @@ func (c *checker) checkScreen(file string, s Screen) {
 	for _, p := range s.Params {
 		declared[p] = true
 	}
-	ctx := actionCtx{file: file, lists: map[string]string{}, views: s.Views}
+	ctx := actionCtx{file: file, lists: map[string]string{}, sheets: map[string]bool{}, views: s.Views}
 	if c.kit.Kit == 2 {
 		for _, id := range sortedKeys(s.Views) {
 			c.checkQuery(file, "/views/"+id, s.Views[id])
@@ -766,6 +772,9 @@ func (c *checker) checkScreen(file string, s Screen) {
 				c.add(file, at+"/id", CodeDuplicateID, "Two parts on this screen are called %q.", n.ID)
 			}
 			ids[n.ID] = true
+			if n.Part == "Sheet" {
+				ctx.sheets[n.ID] = true
+			}
 			if part.Selection && n.Bind != nil && n.Bind.Records != "" {
 				ctx.lists[n.ID] = n.Bind.Records
 			}
@@ -821,6 +830,16 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 	if propsSchema == nil {
 		c.add(ctx.file, at+"/part", CodePartUnknown, "%q is not registered for this screen. First-party parts: %s.", n.Part, strings.Join(c.kit.Names(), ", "))
 		return
+	}
+	if c.kit.Kit == 2 {
+		if displayRecordID.MatchString(n.Label) {
+			c.add(ctx.file, at+"/label", "display_record_id", "Use a readable label or a link to the record title.")
+		}
+		for _, key := range []string{"title", "text", "empty"} {
+			if value, ok := n.Props[key].(string); ok && displayRecordID.MatchString(value) {
+				c.add(ctx.file, at+"/props/"+key, "display_record_id", "Use a readable value or a link to the record title.")
+			}
+		}
 	}
 	props := n.Props
 	if props == nil {
