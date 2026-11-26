@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -77,18 +76,14 @@ func (s Service) checkGraphGrant(ctx context.Context, c registration) error {
 	return nil
 }
 
-// A tenant-wide denial differs from an individual meeting being inaccessible.
-// Remember only the provider's exact tenant-wide denial for the current grant.
-var blockedGraphTranscripts sync.Map
-
-func graphTranscriptBlock(c registration) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(c.graphGrant)))
-}
-
 func (s Service) graphAvailable(c registration, summary *Summary) {
 	grant, available, err := s.graphGrant(context.Background(), c)
-	c.graphGrant = grant
-	_, blocked := blockedGraphTranscripts.Load(graphTranscriptBlock(c))
+	blocked := false
+	if err == nil && !c.GraphFixture && s.Microsoft != nil {
+		if manager, err := s.Microsoft(); err == nil {
+			blocked = manager.MicrosoftTranscriptBlocked(grant)
+		}
+	}
 	for _, name := range slices.Clone(summary.Reads) {
 		if c.Reads[name].Table != "transcripts" || available && !blocked {
 			continue
@@ -143,8 +138,8 @@ func (s Service) graphRows(ctx context.Context, graph graphSource, c registratio
 		}
 	}
 	p, err := graph.rows(ctx, read, cursor, key, args, q.Limit, false)
-	if errors.Is(err, errTeamsDisabled) {
-		blockedGraphTranscripts.Store(graphTranscriptBlock(c), true)
+	if read.Table == "transcripts" {
+		s.rememberGraphTranscriptStatus(c, err, len(p.rows) > 0)
 	}
 	if err != nil {
 		return graphPage{}, err
@@ -160,6 +155,15 @@ func (s Service) graphRows(ctx context.Context, graph graphSource, c registratio
 	p.next = sealGraphCursor(c.graphGrant, cursorKey, p.next)
 	p.checkpoint = sealGraphCursor(c.graphGrant, cursorKey, p.checkpoint)
 	return p, nil
+}
+
+func (s Service) rememberGraphTranscriptStatus(c registration, err error, accessible bool) {
+	blocked := errors.Is(err, errTeamsDisabled)
+	if !c.GraphFixture && s.Microsoft != nil && (blocked || accessible) {
+		if manager, err := s.Microsoft(); err == nil {
+			manager.SetMicrosoftTranscriptBlocked(c.graphGrant, blocked)
+		}
+	}
 }
 
 func sealGraphCursor(grant, scope, address string) string {
@@ -277,6 +281,9 @@ func (s Service) ReadGraphContent(ctx context.Context, q Query, id string, audie
 		}
 	}
 	page, err := g.point(ctx, read, key, true)
+	if read.Table == "transcripts" {
+		s.rememberGraphTranscriptStatus(c, err, len(page.rows) > 0)
+	}
 	if err != nil {
 		return SourceContent{}, err
 	}

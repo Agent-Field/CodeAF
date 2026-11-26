@@ -257,7 +257,7 @@ steps:
 
 func TestGraphBriefPackage(t *testing.T) {
 	files := map[string]string{}
-	for _, name := range []string{"app.json", "screens/brief.json", "runs/brief.yaml", "runs/draft.yaml", "runs/create-event.yaml", "runs/update-event.yaml"} {
+	for _, name := range []string{"app.json", "plan.json", "screens/brief.json", "runs/brief.yaml", "runs/draft.yaml", "runs/create-event.yaml", "runs/update-event.yaml"} {
 		src := name
 		if name == "screens/brief.json" {
 			src = "brief.json"
@@ -267,6 +267,13 @@ func TestGraphBriefPackage(t *testing.T) {
 			t.Fatal(err)
 		}
 		files[name] = string(raw)
+	}
+	definition := schema.Definition{Files: map[string][]byte{}}
+	for name, raw := range files {
+		definition.Files[name] = []byte(raw)
+	}
+	if report := schema.Validate(definition, nil); !report.OK() {
+		t.Fatal(report.String())
 	}
 	pkg, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "Daily brief fixture"})
 	if err != nil {

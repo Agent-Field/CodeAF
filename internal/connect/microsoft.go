@@ -132,3 +132,25 @@ func MicrosoftRequestError(err error) error {
 	}
 	return nil
 }
+
+// MicrosoftTranscriptBlocked reports a tenant-wide refusal under the current
+// sign-in. Reconnecting starts with a fresh status.
+func (m *Manager) MicrosoftTranscriptBlocked(grant string) bool {
+	entry, ok, err := m.store.get(Microsoft365)
+	return err == nil && ok && grant != "" && entry.GrantID == grant && entry.GraphTranscriptBlocked
+}
+
+// SetMicrosoftTranscriptBlocked keeps diagnostics readable across CLI calls.
+// The update cannot carry a tenant decision into a replaced authorization.
+func (m *Manager) SetMicrosoftTranscriptBlocked(grant string, blocked bool) {
+	entry, ok, err := m.store.get(Microsoft365)
+	if err != nil || !ok || grant == "" || entry.GrantID != grant || entry.GraphTranscriptBlocked == blocked {
+		return
+	}
+	_ = m.store.replace(Microsoft365, func(entries map[string]stored) {
+		if current, ok := entries[Microsoft365]; ok && current.GrantID == grant {
+			current.GraphTranscriptBlocked = blocked
+			entries[Microsoft365] = current
+		}
+	})
+}
