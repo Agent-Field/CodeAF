@@ -15,6 +15,28 @@ type AppDefinitions interface {
 	AppDefinitions() *store.Store
 }
 
+// AppRecordSchemas reads presentation schemas from the same scope as the rows.
+type AppRecordSchemas interface {
+	ResolvedAppRecords(DataScope, map[string]schema.RecordType) (map[string]schema.RecordType, error)
+}
+
+func resolveAppRecords(e Engine, raw json.RawMessage, draft string) (map[string]schema.RecordType, error) {
+	reader, ok := e.(AppRecordSchemas)
+	if !ok {
+		return nil, nil
+	}
+	app, err := schema.ParseApp(raw)
+	if err != nil {
+		return nil, Errorf(CodeEngine, "This app definition could not be opened.")
+	}
+	for _, record := range app.Records {
+		if record.Uses {
+			return reader.ResolvedAppRecords(DataScope{App: app.ID, Draft: draft}, app.Records)
+		}
+	}
+	return nil, nil
+}
+
 type (
 	appKitParams struct {
 		Kit *int `json:"kit,omitempty"`
@@ -75,8 +97,16 @@ var appMethods = map[string]method{
 		}
 		return result, nil
 	}),
-	"apps.get": appCall(func(s *store.Store, p appParams) (*store.Definition, error) {
-		d, err := s.Get(p.App)
+	"apps.get": typed(func(e Engine, p appParams) (*store.Definition, error) {
+		apps, ok := e.(AppDefinitions)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve app definitions")
+		}
+		d, err := apps.AppDefinitions().Get(p.App)
+		if err != nil {
+			return nil, appDefinitionError(err)
+		}
+		d.ResolvedRecords, err = resolveAppRecords(e, d.App, "")
 		return &d, err
 	}),
 	"apps.screen": typed(func(e Engine, p appScreenParams) (*appScreenResult, error) {
@@ -134,21 +164,25 @@ func appCall[P, R any](call func(*store.Store, P) (*R, error)) method {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve app definitions")
 		}
 		r, err := call(apps.AppDefinitions(), p)
-		switch {
-		case err == nil:
-			return r, nil
-		case errors.Is(err, store.ErrBadInput):
-			return nil, Errorf(CodeBadParams, "The app, screen or version is invalid.")
-		case errors.Is(err, store.ErrNotFound):
-			return nil, Errorf(CodeNotFound, "The app, screen or version could not be found.")
-		case errors.Is(err, store.ErrConflict):
-			return nil, Errorf(CodeConflict, "This app changed since the draft was opened.")
-		case errors.Is(err, store.ErrInvalid):
-			return nil, Errorf(CodeEngine, "This app definition could not be opened. Fix it or revert to a working version.")
-		case errors.Is(err, store.ErrCorrupt):
-			return nil, Errorf(CodeEngine, "This app's metadata could not be read.")
-		default:
-			return nil, Errorf(CodeEngine, "App definitions could not be accessed.")
-		}
+		return r, appDefinitionError(err)
 	})
+}
+
+func appDefinitionError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, store.ErrBadInput):
+		return Errorf(CodeBadParams, "The app, screen or version is invalid.")
+	case errors.Is(err, store.ErrNotFound):
+		return Errorf(CodeNotFound, "The app, screen or version could not be found.")
+	case errors.Is(err, store.ErrConflict):
+		return Errorf(CodeConflict, "This app changed since the draft was opened.")
+	case errors.Is(err, store.ErrInvalid):
+		return Errorf(CodeEngine, "This app definition could not be opened. Fix it or revert to a working version.")
+	case errors.Is(err, store.ErrCorrupt):
+		return Errorf(CodeEngine, "This app's metadata could not be read.")
+	default:
+		return Errorf(CodeEngine, "App definitions could not be accessed.")
+	}
 }

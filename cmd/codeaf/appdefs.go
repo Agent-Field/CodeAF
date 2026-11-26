@@ -2,7 +2,9 @@ package main
 
 import (
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
+	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -23,4 +25,14 @@ func (b *appBackend) dataRoot() string {
 		return b.data.home
 	}
 	return home.Dir()
+}
+
+// ResolvedAppRecords reads the shared types under the app's local aliases and
+// grants so the Desk can use the same schema as its scoped record queries.
+func (b *appBackend) ResolvedAppRecords(scope appwire.DataScope, records map[string]schema.RecordType) (map[string]schema.RecordType, error) {
+	s, err := b.dataStore(scope.Draft)
+	if err != nil {
+		return nil, err
+	}
+	return s.SharedRecordShapes(dataScope(scope), records), nil
 }
