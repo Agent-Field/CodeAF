@@ -17,7 +17,7 @@ import (
 
 // Main is the relay program, shared by cmd/relay and `codeaf relay`:
 //
-//	relay --listen :8787 [--store /var/lib/codeaf] [--quiet] [--status=false] [--trust-proxy]
+//	relay --listen :8787 [--store /var/lib/codeaf [--storage off]] [--quiet] [--status=false] [--trust-proxy]
 //
 // It runs until SIGINT or SIGTERM and then lets in-flight requests finish.
 // In front of it in production goes whatever already terminates TLS; pass --trust-proxy
@@ -27,6 +27,7 @@ func Main(args []string) error {
 	flags.Usage = func() { RelayHelp(flags.Output()) }
 	listen := flags.String("listen", ":8787", "address to listen on")
 	store := flags.String("store", "", "directory that keeps the directory and blob stores; empty runs the blind pipe only")
+	storage := flags.String("storage", "on", "on keeps the chats' sealed content under --store; off keeps only the device list and refuses uploads, as the hosted relay does for an account it has not approved")
 	quiet := flags.Bool("quiet", false, "do not log arrivals, departures and requests")
 	status := flags.Bool("status", true, "answer GET /status with what is connected right now")
 	trust := flags.Bool("trust-proxy", false, "count the first X-Forwarded-For address for registration, dial and pairing limits; required behind a proxy that sets it")
@@ -39,7 +40,10 @@ func Main(args []string) error {
 		}
 		return err
 	}
-	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery, MaxWatchers: *watchers}
+	if *storage != "on" && *storage != "off" {
+		return fmt.Errorf("--storage is on or off, not %q", *storage)
+	}
+	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery, MaxWatchers: *watchers, StorageOff: *storage == "off"}
 	if *minGrace > 0 {
 		cfg.Grace = directory.DefaultGraceBounds
 		cfg.Grace.Min = *minGrace
@@ -72,12 +76,13 @@ func Main(args []string) error {
 
 // RelayHelp hides test-only switches while keeping the ordinary subcommand shape.
 func RelayHelp(out io.Writer) {
-	fmt.Fprintln(out, `usage: codeaf relay [--listen host:port] [--store path]
+	fmt.Fprintln(out, `usage: codeaf relay [--listen host:port] [--store path] [--storage on|off]
 
 Run your own relay.
 
   --listen host:port  address to listen on (default :8787)
   --store path        keep your devices and saved chats here; empty connects machines only
+  --storage on|off    off keeps the device list and refuses chat uploads (default on)
   --quiet             do not log arrivals, departures or requests
   --status=false      turn off the service status endpoint
   --trust-proxy       use the caller address supplied by a trusted proxy`)
