@@ -242,6 +242,50 @@ With the app engine running, use
 `codeaf app data-aggregate '{"app":"APP","type":"account","aggregate":[{"fn":"count"}]}'`.
 `codeaf app data-types` shows each field's declared class and visibility.
 
+## Add a custom part or install one from my Kit
+
+In a kit 2 editing session, use a built-in part if it meets the request.
+When it cannot, tell the person which requirement is missing.
+`codeaf app set-custom-part` takes an ID, a manifest and restricted markup
+source. The manifest names the missing requirement, field inputs, button
+events, themes and sizes. Bind it to a declared query or one record and map each event to
+one registered Action. Labels, text, display values, Braille dot cells and
+buttons draw from the query's policy-filtered rows. The markup accepts up to 12 direct elements,
+240 bytes per label and 8 KiB of source. The query must return at most 24
+rows. Braille dot cells take Unicode Braille. The iframe can emit the
+declared button intents. It has no ambient network, storage or parent DOM
+access. Check renders the screen in Dark, Black and Light at 800 and 1120 px
+when the desktop is connected. The frame reports when it has drawn. If
+its deadline passes, Check names the part in a layout finding.
+
+`codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
+into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
+session uses `codeaf app use-kit-part` with the part's ID and version, then
+binds it to its own query and Actions. The imported copy retains the source
+app, version and content hash. Local edits to an imported copy require a new
+extension.
+
+## Author or call a custom automation step
+
+When built-in steps cannot express a computation, give the reason and use
+`codeaf app set-custom-step` in a kit 2 editing session. Its manifest
+declares typed inputs, one integer or boolean result, timeout in
+milliseconds, and memory in 64 KiB pages. The source is WebAssembly text.
+It exports `run`, uses i64 arguments and result, and declares
+`"effects":[]`. Imports, tables, and a start function are refused.
+Dates are UTC day numbers since 1970-01-01. Date lists are passed as a
+byte offset and length into exported memory, with little-endian i64 days.
+
+Grant the exact `custom.NAME` under `capabilities.tools`. Use it as a
+`tool` step in run YAML with matching `args`. Check tries the actual
+function on the run's examples. An authorized app agent can find it
+through its `show` command and call `custom_tool` with `tool` and
+`args`. Grant the tool's exact name in the app agent's Actions.
+
+Promote a kept function with `codeaf app promote-step '{"app":"APP","id":"NAME"}'`.
+`codeaf app kit-steps` lists the versions. In an editing session,
+`codeaf app use-kit-step` imports the exact version and retains its lineage.
+
 ## Pack an app, export a template to the Kit
 
 With the desk engine open, run `codeaf app pack <app> [file]`. Use the saved app

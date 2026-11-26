@@ -11,7 +11,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
 // Compiler is supplied by the manifest lane. It accepts intent or markup and
@@ -31,6 +33,7 @@ type CompiledChange struct {
 type authoring struct {
 	compiler      Compiler
 	validateTypes func([]byte) error
+	store         *store.Store
 }
 
 type fileCommand struct {
@@ -110,6 +113,68 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 			}
 			text := string(result.Screen)
 			edits = append(edits, DefinitionEdit{Path: "screens/" + result.ScreenID + ".json", Text: &text})
+		}
+		return applyEdits(files, edits)
+	case "set_custom_step":
+		var args struct {
+			ID         string
+			Definition json.RawMessage
+		}
+		if json.Unmarshal(raw, &args) != nil {
+			return nil, errors.New("Supply the custom step's ID and definition.")
+		}
+		if _, ok := extensions.ToolID("custom." + args.ID); !ok {
+			return nil, errors.New("Give the custom step a valid ID.")
+		}
+		step, err := extensions.Parse(args.Definition)
+		if err != nil {
+			return nil, err
+		}
+		if step.Origin != nil {
+			return nil, errors.New("Choose a Kit revision with use-kit-step to import its lineage.")
+		}
+		text := string(args.Definition)
+		edit = DefinitionEdit{Path: "custom/" + args.ID + ".step", Text: &text}
+	case "set_custom_part":
+		var args struct {
+			ID       string
+			Manifest json.RawMessage
+			Source   string
+		}
+		if json.Unmarshal(raw, &args) != nil {
+			return nil, errors.New("Supply the custom part's ID, manifest and source.")
+		}
+		part, err := schema.CustomPartBundle(args.ID, args.Manifest, []byte(args.Source))
+		if err != nil {
+			return nil, err
+		}
+		if part.Manifest.Origin != nil {
+			return nil, errors.New("Choose a Kit revision with use-kit-part to import its lineage.")
+		}
+		text := string(args.Manifest)
+		return applyEdits(files, []DefinitionEdit{{Path: part.Manifest.Name + ".json", Text: &text}, {Path: part.Manifest.Source, Text: &args.Source}})
+	case "use_kit_part", "use_kit_step":
+		var args struct {
+			ID      string
+			Version int
+		}
+		if json.Unmarshal(raw, &args) != nil || a.store == nil {
+			return nil, errors.New("Choose an extension ID and version from your Kit.")
+		}
+		copyExtension := a.store.CopyKitPart
+		if verb == "use_kit_step" {
+			copyExtension = a.store.CopyKitStep
+		}
+		bundle, err := copyExtension(args.ID, args.Version)
+		if err != nil {
+			return nil, err
+		}
+		var edits []DefinitionEdit
+		for path, text := range bundle {
+			if old := files[path]; old != "" && old != text {
+				return nil, errors.New("A different revision of that extension already exists in this app.")
+			}
+			edits = append(edits, DefinitionEdit{Path: path, Text: &text})
 		}
 		return applyEdits(files, edits)
 	case "set_run", "set_agent", "set_sample":

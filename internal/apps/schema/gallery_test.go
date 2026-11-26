@@ -89,9 +89,10 @@ func TestGalleryRepoWorkspaceDoesNotLeakToSibling(t *testing.T) {
 
 func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 	def := load(t, "testdata/inventory-po")
-	def.Files["custom/summary.tsx"] = []byte("export default function Summary() { return <p>Low stock</p> }")
+	def.Files["custom/summary.tsx"] = []byte("<part><title text=\"Low stock\"/><button text=\"Review stock\" event=\"pick\"/></part>")
 	def.Files["custom/summary.json"] = []byte(`{
 		"name":"custom/summary","version":1,"summary":"A labelled stock summary.",
+		"inputs":[],"binding_required":true,"capabilities":"r","reason":"The catalog has no tactile stock proof.","sizes":[800,1120],"themes":["dark","black","light"],
 		"source":"custom/summary.tsx","example":{"tone":"neutral"},
 		"children":"none","interactive":true,"bindings":["records"],"events":["pick"],
 		"props":{"type":"object","required":["tone"],"additionalProperties":false,"properties":{"tone":{"enum":["neutral","critical"]}}}
@@ -105,6 +106,20 @@ func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 		t.Fatal(r.String())
 	}
 
+	source := def.Files["custom/summary.tsx"]
+	for _, bad := range []string{
+		`<part><img src="https://example.invalid"/></part>`,
+		`<part><text text="Proof" onclick="localStorage.clear()"/></part>`,
+		`<part><script>parent.document.title = "changed"</script></part>`,
+		`<part><button text="Send" event="send"/></part>`,
+	} {
+		def.Files["custom/summary.tsx"] = []byte(bad)
+		if r := Validate(def, nil); !hasCode(r, CodeManifest) {
+			t.Fatalf("custom source %q passed Check: %s", bad, r)
+		}
+	}
+	def.Files["custom/summary.tsx"] = source
+
 	textEdit("screens/stock.json", `"critical"`, `"blue"`)(t, def.Files)
 	textEdit("screens/stock.json", `"pick"`, `"hover"`)(t, def.Files)
 	textEdit("screens/stock.json", `"records":"sku","view":"stock"`, `"runs":"missing"`)(t, def.Files)
@@ -117,6 +132,7 @@ func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 
 	def.Files["custom/summary.json"] = []byte(`{
 		"name":"custom/summary","version":1,"summary":"A labelled stock summary.",
+		"inputs":[],"binding_required":true,"capabilities":"r","reason":"The catalog has no tactile stock proof.","sizes":[800,1120],"themes":["dark","black","light"],
 		"source":"custom/summary.tsx","example":{},
 		"children":"none","interactive":true,"bindings":["records"],"events":["pick"],
 		"props":{"$ref":"https://example.org/remote.json"}

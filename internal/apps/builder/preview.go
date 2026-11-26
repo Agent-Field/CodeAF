@@ -132,19 +132,25 @@ func (p previewScope) result(id string) (Preview, error) {
 
 // Screen reads the exact definition used to create an isolated preview scope.
 func (s *Jobs) Screen(draft, screen string) (json.RawMessage, error) {
-	path := "screens/" + screen + ".json"
-	if !definitionPath.MatchString(path) {
-		return nil, store.ErrBadInput
+	raw, _, err := s.ScreenWithParts(draft, screen)
+	return raw, err
+}
+
+// ScreenWithParts reads the screen and its compiled parts from one snapshot.
+func (s *Jobs) ScreenWithParts(draft, screen string) (json.RawMessage, map[string]schema.PartProgram, error) {
+	if !definitionPath.MatchString("screens/" + screen + ".json") {
+		return nil, nil, store.ErrBadInput
 	}
 	files, err := s.previewFiles(draft)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	raw := json.RawMessage(files[path])
+	raw := json.RawMessage(files["screens/"+screen+".json"])
 	if !json.Valid(raw) {
-		return nil, store.ErrNotFound
+		return nil, nil, store.ErrNotFound
 	}
-	return raw, nil
+	parts, err := schema.ScreenParts(definition(files), raw)
+	return raw, parts, err
 }
 
 // ViewScreen ties a draft query to the app and screen that declared it.

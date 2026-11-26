@@ -58,7 +58,8 @@ type (
 		Builds []builder.Summary `json:"builds"`
 	}
 	appScreenResult struct {
-		Screen json.RawMessage `json:"screen"`
+		Screen      json.RawMessage               `json:"screen"`
+		CustomParts map[string]schema.PartProgram `json:"custom_parts,omitempty"`
 	}
 	appVersionsResult struct {
 		Versions []store.Version `json:"versions"`
@@ -115,15 +116,23 @@ var appMethods = map[string]method{
 			if err != nil {
 				return nil, err
 			}
-			raw, err := b.Screen(p.Draft, p.Screen)
-			return &appScreenResult{Screen: raw}, buildError(err)
+			raw, parts, err := b.ScreenWithParts(p.Draft, p.Screen)
+			return &appScreenResult{Screen: raw, CustomParts: parts}, buildError(err)
 		}
 		defs, ok := e.(AppDefinitions)
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
 		}
-		raw, err := defs.AppDefinitions().Screen(p.App, p.Screen)
-		return &appScreenResult{Screen: raw}, buildError(err)
+		d, err := defs.AppDefinitions().Get(p.App)
+		if err != nil {
+			return nil, buildError(err)
+		}
+		raw, ok := d.Screen(p.Screen)
+		if !ok {
+			return nil, buildError(store.ErrNotFound)
+		}
+		parts, err := d.ScreenParts(raw)
+		return &appScreenResult{Screen: raw, CustomParts: parts}, buildError(err)
 	}),
 	"apps.versions": appCall(func(s *store.Store, p appParams) (*appVersionsResult, error) {
 		versions, err := s.Versions(p.App)
@@ -141,8 +150,37 @@ var appMethods = map[string]method{
 		_, err := s.Delete(p.App)
 		return done(err)
 	}),
+	"apps.promote_part": appCall(func(s *store.Store, p struct {
+		App string `json:"app"`
+		ID  string `json:"id"`
+	}) (*schema.Part, error) {
+		part, err := s.PromotePart(p.App, p.ID)
+		return &part, err
+	}),
+	"apps.kit_parts": appCall(func(s *store.Store, _ Empty) (*[]schema.Part, error) {
+		parts, err := s.KitParts()
+		if parts == nil {
+			parts = []schema.Part{}
+		}
+		return &parts, err
+	}),
+	"apps.promote_step": appCall(func(s *store.Store, p struct {
+		App string `json:"app"`
+		ID  string `json:"id"`
+	}) (*store.KitStep, error) {
+		step, err := s.PromoteStep(p.App, p.ID)
+		return &step, err
+	}),
+	"apps.kit_steps": appCall(func(s *store.Store, _ Empty) (*[]store.KitStep, error) {
+		steps, err := s.KitSteps()
+		if steps == nil {
+			steps = []store.KitStep{}
+		}
+		return &steps, err
+	}),
 	"apps.kit": typed(func(e Engine, p appKitParams) (*json.RawMessage, error) {
-		if _, ok := e.(AppDefinitions); !ok {
+		defs, ok := e.(AppDefinitions)
+		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve app definitions")
 		}
 		version := 2
@@ -152,6 +190,36 @@ var appMethods = map[string]method{
 		raw := json.RawMessage(schema.KitJSONFor(version))
 		if raw == nil {
 			return nil, Errorf(CodeBadParams, "unknown app kit version %d", version)
+		}
+		if version == 2 {
+			// The base catalog stays available even if a local Kit receipt
+			// is damaged. The explicit listing returns that receipt error.
+			store := defs.AppDefinitions()
+			parts, _ := store.KitParts()
+			steps, _ := store.KitSteps()
+			if len(parts) != 0 || len(steps) != 0 {
+				var catalog map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &catalog); err != nil {
+					return nil, err
+				}
+				var err error
+				if len(parts) > 0 {
+					catalog["custom_parts"], err = json.Marshal(parts)
+					if err != nil {
+						return nil, err
+					}
+				}
+				if len(steps) > 0 {
+					catalog["custom_steps"], err = json.Marshal(steps)
+					if err != nil {
+						return nil, err
+					}
+				}
+				raw, err = json.Marshal(catalog)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 		return &raw, nil
 	}),

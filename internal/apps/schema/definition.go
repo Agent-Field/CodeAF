@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"gopkg.in/yaml.v3"
 )
 
@@ -429,6 +430,8 @@ type Run struct {
 	Budget *RunBudget          `json:"budget,omitempty"`
 	Params map[string]RunParam `json:"params,omitempty"`
 	Steps  []Step              `json:"steps"`
+	// CustomTools is pinned into the run journal after loading the version.
+	CustomTools map[string]extensions.Step `json:"custom_tools,omitempty"`
 }
 
 // RunBudget is the most one run may spend.

@@ -147,6 +147,10 @@ func saveAppLook(scope string, viewport *appwire.AppLookViewport, capture appwir
 	if capture.Problem != "" {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop could not draw this screen.")
 	}
+	// A renderer that cannot draw a part can still report the layout finding.
+	if capture.PNG == "" && len(capture.Problems) != 0 {
+		return appwire.AppLookPage{Problems: capture.Problems}, nil
+	}
 	picture, err := base64.StdEncoding.DecodeString(capture.PNG)
 	if err != nil {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop returned an invalid app preview image.")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"maps"
 	"slices"
 	"strings"
@@ -126,7 +127,8 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 			return e.ask(c, step.Gate.Approval, who)
 		}
-		if step.Tool != "" && e.cfg.CheckTool != nil {
+		_, custom := extensions.ToolID(step.Tool)
+		if step.Tool != "" && !custom && e.cfg.CheckTool != nil {
 			needsGate, err := e.cfg.CheckTool(ctx, c.Action.Call)
 			if err != nil {
 				if err := e.stepFailed(c, step, err); err != nil || c.State != Running {
@@ -512,6 +514,14 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			reply, err = e.completeStep(ctx, c, step, a, budget)
 		}
 	default:
+		if _, local := extensions.ToolID(step.Tool); local {
+			if tool, ok := c.Definition.CustomTools[step.Tool]; ok {
+				reply.Output, err = tool.Run(ctx, a.Args)
+			} else {
+				err = errors.New("That custom step is unavailable in this version.")
+			}
+			break
+		}
 		if e.cfg.Connector == nil {
 			err = errors.New("connectors are unavailable")
 		} else {
