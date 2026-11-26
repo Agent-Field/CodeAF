@@ -95,8 +95,8 @@ to 12 selectors. The batch returns each match and lists misses in
 `app look` uses the open desktop to draw the selected screen on example
 records. When the desktop renderer is connected, Check draws every screen
 in Dark and Light at 800 and 1120 pixels. Clipping, overlap, truncation,
-empty bound columns, contrast problems and competing primary actions must
-be fixed before a step can be kept. If the connected renderer times out,
+empty bound columns, lists that have records but no visible fields, contrast
+problems and competing primary actions must be fixed before a step can be kept. If the connected renderer times out,
 try Check again.
 
 With the CLI alone, Check still validates the app. The Check result and
