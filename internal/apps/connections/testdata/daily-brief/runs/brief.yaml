@@ -1,0 +1,5 @@
+run: brief
+title: Note a Daily brief item
+steps:
+  - id: ready
+    finish: "Source item $input.id is ready to review."

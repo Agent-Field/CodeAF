@@ -1,0 +1,16 @@
+{
+  "id":"m365","kind":"microsoft-365","app":"daily-brief","credential_mode":"person","graph_fixture":true,
+  "reads":{
+    "mail":{"type":"message","table":"outlook","key":"id","version":"version","fields":{"subject":"subject","sender":"from","received":"date","to":"to","body":"body"}},
+    "calendar":{"type":"meeting","table":"calendar","key":"id","version":"version","graph_start":"2026-11-26T00:00:00Z","graph_end":"2026-11-27T00:00:00Z","match":{"from":"from","to":"to"},"fields":{"title":"title","start":"start","end":"end","location":"location"}},
+    "files":{"type":"document","table":"drive","key":"id","version":"version","fields":{"title":"title","modified":"modified","kind":"mime_type","text":"text"}},
+    "transcripts":{"type":"document","table":"transcripts","key":"id","version":"version","graph_meeting_read":"calendar","match":{"meeting":"meeting"},"fields":{"title":"title","modified":"modified","kind":"mime_type","text":"text","meeting":"meeting"}},
+    "person":{"type":"person","table":"person","key":"id","match":{"email":"email"},"fields":{"name":"name","email":"email","upn":"upn","domain":"domain"}},
+    "company":{"type":"company","table":"company","key":"id","match":{"domain":"domain"},"fields":{"name":"name","domain":"domain"}}
+  },
+  "writes":{
+    "create-draft":{"read":"mail","fields":["to","subject","body"]},
+    "create-event":{"read":"calendar","fields":["title","start","end","location"]},
+    "update-event":{"read":"calendar","fields":["title","start","end","location"]}
+  }
+}

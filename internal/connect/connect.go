@@ -42,7 +42,9 @@ type ClientCredential struct {
 	// Public says the application proves itself with a proof key made for
 	// each connection instead of a secret. For one of these, the id alone is
 	// the whole credential.
-	Public bool
+	Public      bool
+	Tenant      string
+	Transcripts bool
 }
 
 // ok reports whether the credential is complete enough to attempt a
@@ -278,6 +280,15 @@ func NewManager(profileDir string, creds map[string]ClientCredential) (*Manager,
 	for id, c := range creds {
 		m.creds[id] = c
 	}
+	if c, ok := creds[Microsoft365]; ok {
+		p, err := microsoftRegistration(c)
+		if err != nil {
+			return nil, err
+		}
+		m.creds[Microsoft365] = ClientCredential{ID: p.app, Public: true}
+		m.plugs = append(m.plugs, p)
+		sortPlugs(m.plugs)
+	}
 	return m, nil
 }
 
@@ -306,7 +317,7 @@ func (m *Manager) Services() []Status {
 			continue
 		}
 		status := Status{Service: service}
-		if record, ok := entries[service.ID]; ok && record.usable() && record.covers(service.Scopes) {
+		if record, ok := entries[service.ID]; ok && m.usableGrant(p, record) {
 			status.Connected = true
 			status.Account = record.Account
 			status.KeyEnv = record.KeyEnv
@@ -356,10 +367,18 @@ func (m *Manager) standing(p Plug) (stored, bool) {
 		return stored{}, false
 	}
 	record, ok, err := m.store.get(service.ID)
-	if err != nil || !ok || !record.usable() || !record.covers(service.Scopes) {
+	if err != nil || !ok || !m.usableGrant(p, record) {
 		return stored{}, false
 	}
 	return record, true
+}
+
+func (m *Manager) usableGrant(p Plug, record stored) bool {
+	if graph, ok := p.(microsoft); ok {
+		return record.usable() && record.covers((microsoft{}).Service().Scopes) &&
+			record.GrantID != "" && record.RegistrationID == graph.registrationID()
+	}
+	return record.usable() && record.covers(p.Service().Scopes)
 }
 
 // Disconnect forgets a service: the stored keys go, the client credential and

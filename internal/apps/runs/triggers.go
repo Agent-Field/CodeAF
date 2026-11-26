@@ -1,25 +1,30 @@
 package runs
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 type Trigger struct {
-	Since     time.Time `json:"-"`
-	App       string    `json:"-"`
-	ID        string    `json:"id"`
-	On        string    `json:"on"`
-	Run       string    `json:"run"`
-	Cron      string    `json:"cron"`
-	Type      string    `json:"type"`
-	When      string    `json:"when"`
+	Since     time.Time      `json:"-"`
+	App       string         `json:"-"`
+	ID        string         `json:"id"`
+	On        string         `json:"on"`
+	Run       string         `json:"run"`
+	Cron      string         `json:"cron"`
+	Type      string         `json:"type"`
+	When      string         `json:"when"`
+	Connector string         `json:"connector,omitempty"`
+	Event     string         `json:"event,omitempty"`
+	Match     map[string]any `json:"match,omitempty"`
 	fieldFill bool
 }
 
@@ -67,7 +72,7 @@ type scheduleClock struct {
 	Next time.Time `json:"next"`
 }
 
-func (e *Engine) schedules() error {
+func (e *Engine) schedules(ctx context.Context) error {
 	if e.cfg.Triggers == nil {
 		return nil
 	}
@@ -77,6 +82,10 @@ func (e *Engine) schedules() error {
 		if t.On == "schedule" {
 			if fireErr := e.fire(t, now); fireErr != nil {
 				err = errors.Join(err, fmt.Errorf("%s schedule %s: %w", t.App, t.ID, fireErr))
+			}
+		} else if t.On == "connector" && e.cfg.SourceTriggers != nil && schema.GraphSourceTrigger(t.Connector, t.Event) {
+			if pollErr := e.pollSource(ctx, t, now); pollErr != nil {
+				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", t.App, t.ID, pollErr))
 			}
 		}
 	}

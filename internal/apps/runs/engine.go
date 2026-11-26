@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -76,14 +77,15 @@ type ChangeEvent struct {
 
 type Config struct {
 	// OwnerName supplies the name only when a run template binds owner.name.
-	OwnerName     string
-	ResolveParams func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
-	RecordInput   func(app string, change Change) (Change, error)
-	ReadRecords   func(app string, recordType string) ([]any, error)
-	Root          string
-	Now           func() time.Time
-	Load          func(app, run string) (Definition, error)
-	Triggers      func() ([]Trigger, error)
+	OwnerName      string
+	ResolveParams  func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
+	RecordInput    func(app string, change Change) (Change, error)
+	ReadRecords    func(app string, recordType string) ([]any, error)
+	Root           string
+	Now            func() time.Time
+	Load           func(app, run string) (Definition, error)
+	Triggers       func() ([]Trigger, error)
+	SourceTriggers func(context.Context, connections.SourceTrigger) (connections.SourceTriggerBatch, error)
 	// Records applies local writes. The live and sample engines use Data.Write,
 	// which commits a receipt for each declared write's stable Call.Key.
 	Records    func(context.Context, RecordCall) (Reply, error)
@@ -618,7 +620,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 	if err := e.lifetime.Err(); err != nil {
 		return nil, err
 	}
-	err := e.schedules()
+	err := e.schedules(ctx)
 	list := e.activeRuns()
 	return slices.DeleteFunc(list, func(r Run) bool { return !r.ready(e.cfg.Now()) }), err
 }

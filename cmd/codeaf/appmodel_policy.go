@@ -68,7 +68,16 @@ func (b *appBackend) appModelAuthorizer(app string) func(context.Context, provid
 			if err != nil {
 				return nil, err
 			}
-			return s.ModelDataClasses(app), nil
+			classes, err := b.appConnections().PersonalSourceClasses(app)
+			if err != nil {
+				return nil, err
+			}
+			for _, class := range s.ModelDataClasses(app) {
+				if !slices.Contains(classes, class) {
+					classes = append(classes, class)
+				}
+			}
+			return classes, nil
 		},
 		personal: func(destination provider.ModelDestination) bool {
 			// A connected app can carry source data in its prior step results.

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "brief",
+  "title": "Daily brief",
+  "body": {
+    "part": "Stack",
+    "props": {"gap":3},
+    "children": [
+      {"part":"Heading","props":{"text":"Daily brief","level":1}},
+      {"part":"RecordList","id":"mail","label":"Outlook inbox","bind":{"records":"message","query":"sort:-received"},"props":{"views":["list"],"columns":["subject","sender","received"]}},
+      {"part":"RecordList","id":"meetings","label":"Outlook calendar","bind":{"records":"meeting","query":"sort:start"},"props":{"views":["list"],"columns":["title","start","location"]}},
+      {"part":"RecordList","id":"docs","label":"OneDrive and Teams","bind":{"records":"document","query":"sort:-modified"},"props":{"views":["list"],"columns":["title","kind","modified"]}}
+    ]
+  }
+}
