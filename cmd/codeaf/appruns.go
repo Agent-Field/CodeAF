@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,6 +91,18 @@ func hasAppRunWork() bool {
 	return false
 }
 
+// Use the display name portion of the local account, excluding contact information.
+func (b *appBackend) appOwnerDisplayName() string {
+	if name := config.AppOwnerNameAt(b.localProfile()); name != "" {
+		return name
+	}
+	if person, err := user.Current(); err == nil {
+		name, _, _ := strings.Cut(person.Name, ",")
+		return strings.TrimSpace(name)
+	}
+	return ""
+}
+
 func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	files := runs.Files(home.Join("apps"))
 	_, err := b.appData()
@@ -114,7 +127,8 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		return harnesses.Run(ctx, call)
 	}
 	e, err := runs.Open(runs.Config{
-		Root: home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
+		OwnerName: b.appOwnerDisplayName(),
+		Root:      home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: agent,
 		CheckAI: harnesses.Check, AppVersion: files.Version, Render: b.renderRunOutput,
 		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
@@ -449,9 +463,16 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 		detail = "Enter a new budget in dollars to continue."
 		options = []appwire.AskOption{{ID: appwire.OptionRaise, Label: "Raise budget"}, {ID: appwire.OptionStop, Label: "Stop"}}
 	}
+	path := []string{"App"}
+	if app, err := b.AppDefinitions().Get(r.App); err == nil && app.Meta.Name != "" {
+		path[0] = app.Meta.Name
+	}
+	if r.Title != "" {
+		path = append(path, r.Title)
+	}
 	b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: appwire.Ask{
 		ID: id, Agent: appRunAskAgent, Kind: "approval", Subkind: kind,
-		Title: title, Detail: detail, Asked: gate.AskedAt, Path: []string{r.App, r.DefinitionID, r.Step}, Blocking: &blocking,
+		Title: title, Detail: detail, Asked: gate.AskedAt, Path: path, Blocking: &blocking,
 		Irreversible: gate.Kind == "send",
 		Options:      options,
 	}})

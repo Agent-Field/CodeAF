@@ -20,7 +20,7 @@ var reference = regexp.MustCompile(`^\$[A-Za-z_][A-Za-z_0-9]*(\.[A-Za-z_0-9-]+)*
 
 func reservedVariable(name string) bool {
 	switch name {
-	case "me", "params", "input", "record", "steps", "now":
+	case "me", "owner", "params", "input", "record", "steps", "now":
 		return true
 	default:
 		return false

@@ -13,7 +13,10 @@ var idShape = regexp.MustCompile(`^[0-7][0-9A-HJKMNP-TV-Z]{25}$`)
 
 // validID reports whether id has the shape of a ULID. A record id that comes
 // from a call is checked with it before it is used anywhere.
-func validID(id string) bool { return idShape.MatchString(id) }
+func validID(id string) bool { return ValidRecordID(id) }
+
+// ValidRecordID reports whether an app reference has the required record ID shape.
+func ValidRecordID(id string) bool { return idShape.MatchString(id) }
 
 // idGen makes ULIDs that also sort in the order they were made within one
 // millisecond: the random part of a second id in the same millisecond is the
