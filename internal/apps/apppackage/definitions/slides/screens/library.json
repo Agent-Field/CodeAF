@@ -1,0 +1,84 @@
+{
+  "screen": "library",
+  "title": "Slides",
+  "views": {
+    "listed": {
+      "type": "slide"
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "id": "library",
+    "children": [
+      {
+        "part": "Row",
+        "id": "library-actions",
+        "children": [
+          {
+            "part": "Button",
+            "id": "new",
+            "label": "New slide",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "slide",
+                    "set": {
+                      "title": "$input.title"
+                    }
+                  },
+                  "ask": {
+                    "title": "text"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "export-pptx",
+            "label": "Export PPTX",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "render": {
+                    "output": "pptx"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "id": "records",
+        "label": "Slides",
+        "bind": {
+          "records": "slide",
+          "view": "listed"
+        },
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "empty": "Create a slide to get started."
+        },
+        "on": {
+          "open": [
+            {
+              "open": "open",
+              "id": "$row.id"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

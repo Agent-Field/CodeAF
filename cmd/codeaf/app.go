@@ -188,6 +188,9 @@ func runApp(args []string) error {
 			fmt.Fprintln(os.Stderr, "app skill:", err)
 		}
 	}
+	if err := backend.AppDefinitions().InstallBuiltins(); err != nil {
+		fmt.Fprintln(os.Stderr, "first-party apps:", err)
+	}
 	if closeCommands, err := backend.serveAppCommands(); err == nil {
 		defer closeCommands()
 	} else {

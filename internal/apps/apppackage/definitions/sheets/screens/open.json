@@ -1,0 +1,92 @@
+{
+  "screen": "open",
+  "title": "Worksheet",
+  "params": [
+    "id"
+  ],
+  "body": {
+    "part": "Stack",
+    "id": "open",
+    "children": [
+      {
+        "part": "Row",
+        "id": "navigation",
+        "children": [
+          {
+            "part": "Button",
+            "id": "back",
+            "label": "Sheets",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "library"
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "export-csv",
+            "label": "Export CSV",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "render": {
+                    "output": "csv",
+                    "record": "$params.id"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "custom/worksheet-body",
+        "id": "body",
+        "label": "Worksheet",
+        "bind": {
+          "record": "$params.id",
+          "type": "worksheet"
+        },
+        "on": {
+          "edit": [
+            {
+              "records.update": {
+                "type": "worksheet",
+                "id": "$record.id",
+                "set": {
+                  "body": "$input.value"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "part": "RecordPage",
+        "id": "details",
+        "label": "Worksheet details",
+        "bind": {
+          "record": "$params.id",
+          "type": "worksheet"
+        },
+        "props": {
+          "fields": [
+            "title"
+          ],
+          "history": true,
+          "actions": [
+            "rename"
+          ]
+        }
+      }
+    ]
+  }
+}

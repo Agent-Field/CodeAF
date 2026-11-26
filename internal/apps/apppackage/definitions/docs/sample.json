@@ -1,0 +1,11 @@
+{
+  "records": {
+    "document": [
+      {
+        "id": "00000000000000000000000001",
+        "title": "Project brief",
+        "body": "## Purpose\n\nGive the team one place to make decisions.\n\n## Review\n\n- Confirm the scope.\n- Agree on the first milestone."
+      }
+    ]
+  }
+}

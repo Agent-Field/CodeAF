@@ -1,0 +1,101 @@
+{
+  "id": "01KAVYH000C0DEAF0000000002",
+  "name": "Sheets",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "worksheet": {
+      "label": "Worksheet",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext",
+          "label": "Cells"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "worksheet": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New worksheet",
+      "do": [
+        {
+          "records.create": {
+            "type": "worksheet",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "worksheet",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "worksheet"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "worksheet",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "worksheet"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "worksheet",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "csv": {
+      "label": "Export CSV",
+      "format": "csv",
+      "record": "worksheet",
+      "table": "body"
+    }
+  }
+}

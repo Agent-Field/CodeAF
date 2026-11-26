@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -197,28 +198,37 @@ var appMethods = map[string]method{
 			store := defs.AppDefinitions()
 			parts, _ := store.KitParts()
 			steps, _ := store.KitSteps()
-			if len(parts) != 0 || len(steps) != 0 {
-				var catalog map[string]json.RawMessage
-				if err := json.Unmarshal(raw, &catalog); err != nil {
-					return nil, err
-				}
-				var err error
-				if len(parts) > 0 {
-					catalog["custom_parts"], err = json.Marshal(parts)
-					if err != nil {
-						return nil, err
-					}
-				}
-				if len(steps) > 0 {
-					catalog["custom_steps"], err = json.Marshal(steps)
-					if err != nil {
-						return nil, err
-					}
-				}
-				raw, err = json.Marshal(catalog)
+			archives, err := apppackage.Builtins()
+			if err != nil {
+				return nil, err
+			}
+			templates := make([]apppackage.Manifest, 0, len(archives))
+			for _, archive := range archives {
+				templates = append(templates, archive.Manifest)
+			}
+			var catalog map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &catalog); err != nil {
+				return nil, err
+			}
+			catalog["app_templates"], err = json.Marshal(templates)
+			if err != nil {
+				return nil, err
+			}
+			if len(parts) > 0 {
+				catalog["custom_parts"], err = json.Marshal(parts)
 				if err != nil {
 					return nil, err
 				}
+			}
+			if len(steps) > 0 {
+				catalog["custom_steps"], err = json.Marshal(steps)
+				if err != nil {
+					return nil, err
+				}
+			}
+			raw, err = json.Marshal(catalog)
+			if err != nil {
+				return nil, err
 			}
 		}
 		return &raw, nil

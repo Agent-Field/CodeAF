@@ -1,0 +1,35 @@
+{
+  "name": "custom/document-body",
+  "version": 1,
+  "summary": "Displays the body of a document record.",
+  "reason": "The body needs a record-bound rendering with its edit Action beside the content.",
+  "example": {},
+  "props": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "children": "none",
+  "interactive": true,
+  "bindings": [
+    "record"
+  ],
+  "events": [
+    "edit"
+  ],
+  "binding_required": true,
+  "capabilities": "r",
+  "source": "custom/document-body.tsx",
+  "sizes": [
+    800,
+    1120
+  ],
+  "themes": [
+    "dark",
+    "black",
+    "light"
+  ],
+  "inputs": [
+    "title",
+    "body"
+  ]
+}

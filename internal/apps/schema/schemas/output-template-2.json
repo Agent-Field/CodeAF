@@ -136,6 +136,10 @@
           "value"
         ]
       }
+    },
+    "table": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
     }
   },
   "required": [
@@ -162,8 +166,24 @@
     }
   },
   "then": {
-    "required": [
-      "columns"
+    "oneOf": [
+      {
+        "required": [
+          "columns"
+        ],
+        "properties": {
+          "table": false
+        }
+      },
+      {
+        "required": [
+          "record",
+          "table"
+        ],
+        "properties": {
+          "columns": false
+        }
+      }
     ],
     "properties": {
       "body": false
@@ -174,7 +194,8 @@
       "body"
     ],
     "properties": {
-      "columns": false
+      "columns": false,
+      "table": false
     }
   }
 }

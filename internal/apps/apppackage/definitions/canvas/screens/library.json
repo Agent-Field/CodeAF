@@ -1,0 +1,82 @@
+{
+  "screen": "library",
+  "title": "Canvas",
+  "views": {
+    "listed": {
+      "type": "board"
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "id": "library",
+    "children": [
+      {
+        "part": "Row",
+        "id": "library-actions",
+        "children": [
+          {
+            "part": "Button",
+            "id": "new",
+            "label": "New board",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "board",
+                    "set": {
+                      "title": "$input.title"
+                    }
+                  },
+                  "ask": {
+                    "title": "text"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "existing-canvases",
+            "label": "Existing canvases",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "desk:canvases"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "id": "records",
+        "label": "Canvas",
+        "bind": {
+          "records": "board",
+          "view": "listed"
+        },
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "empty": "Create a board to get started."
+        },
+        "on": {
+          "open": [
+            {
+              "open": "open",
+              "id": "$row.id"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

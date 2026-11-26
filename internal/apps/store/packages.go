@@ -1,8 +1,13 @@
 package store
 
 import (
+	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"io/fs"
+	"time"
 )
 
 type Lineage struct {
@@ -44,4 +49,44 @@ func (s *Store) PackageBase(app string, version int) (map[string]string, error) 
 		return nil, ErrNotFound
 	}
 	return receipt.PackageBase, nil
+}
+
+// InstallBuiltins publishes missing bundled apps. An existing publication
+// always wins, including an archived or deleted app. New releases go through
+// the same update card as any other package.
+func (s *Store) InstallBuiltins() error {
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		return err
+	}
+	unlock, err := s.lock(true, true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	for _, archive := range archives {
+		source := archive.Manifest.Source
+		if !cell.ValidID(source.ID) {
+			return fmt.Errorf("the release package %s needs a stable app ID", source.Name)
+		}
+		if _, err := s.readMeta(source.ID); err == nil {
+			continue
+		} else if !errors.Is(err, ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		baseline, _, err := archive.Bind(nil, source.ID, false)
+		if err != nil {
+			return err
+		}
+		m := Meta{ID: source.ID, CreatedAt: time.Now().UTC()}
+		pkg := PackagePublication{Lineage: Lineage{Source: &source}, Baseline: baseline}
+		snapshot := make(files, len(baseline))
+		for name, content := range baseline {
+			snapshot[name] = []byte(content)
+		}
+		if _, err := s.publish(m, snapshot, "Install "+source.Name, source.Name, nil, false, &pkg); err != nil {
+			return fmt.Errorf("install %s: %w", source.Name, err)
+		}
+	}
+	return nil
 }

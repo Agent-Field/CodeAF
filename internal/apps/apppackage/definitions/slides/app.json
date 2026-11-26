@@ -1,0 +1,123 @@
+{
+  "id": "01KAVYH000C0DEAF0000000003",
+  "name": "Slides",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "slide": {
+      "label": "Slide",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "slide": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New slide",
+      "do": [
+        {
+          "records.create": {
+            "type": "slide",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "slide",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "slide"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "slide",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "slide"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "slide",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "pptx": {
+      "label": "Export PPTX",
+      "format": "pptx",
+      "query": {
+        "type": "slide",
+        "select": [
+          "title",
+          "body"
+        ],
+        "window": {
+          "order_by": [
+            "created_at"
+          ]
+        }
+      },
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "pdf": {
+      "label": "Export PDF",
+      "format": "pdf",
+      "record": "slide",
+      "body": "{{title}}\n\n{{body}}"
+    }
+  }
+}

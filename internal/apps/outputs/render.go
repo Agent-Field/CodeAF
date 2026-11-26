@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"unicode"
@@ -53,6 +54,13 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	if t.Format == "csv" {
+		if t.Table != "" {
+			if len(rows) != 1 {
+				return nil, errors.New("choose a worksheet to export")
+			}
+			table, _ := rows[0][t.Table].(string)
+			return renderWorksheet(table)
+		}
 		if len(t.Columns) == 0 {
 			return nil, errors.New("CSV output needs columns")
 		}
@@ -100,6 +108,37 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 		err = fmt.Errorf("unknown output format %q", t.Format)
 	}
 	return checkedFile(&buf, err)
+}
+
+// A worksheet uses tab-separated cells internally. Export requires the
+// same spreadsheet escaping as merge fields and preserves quoted cells.
+func renderWorksheet(table string) ([]byte, error) {
+	if len(table) > maxTextBytes {
+		return nil, errors.New("worksheet exceeds the text limit")
+	}
+	r := csv.NewReader(strings.NewReader(table))
+	r.Comma, r.FieldsPerRecord = '\t', -1
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	for n := 0; ; n++ {
+		row, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			w.Flush()
+			return checkedFile(&buf, w.Error())
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read worksheet: %w", err)
+		}
+		if n >= schema.OutputRowsMax || len(row) > 32 {
+			return nil, errors.New("a worksheet export takes up to 500 rows and 32 columns")
+		}
+		for i, value := range row {
+			row[i] = csvCell(value)
+		}
+		if err := w.Write(row); err != nil {
+			return nil, err
+		}
+	}
 }
 
 func checkedFile(buf *bytes.Buffer, err error) ([]byte, error) {

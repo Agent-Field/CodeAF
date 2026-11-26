@@ -1,0 +1,34 @@
+{
+  "name": "custom/worksheet-body",
+  "version": 1,
+  "summary": "Displays the body of a worksheet record.",
+  "reason": "The worksheet uses an editable grid with formulas, clipboard ranges and record revisions.",
+  "example": {},
+  "props": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "children": "none",
+  "interactive": true,
+  "bindings": [
+    "record"
+  ],
+  "events": [
+    "edit"
+  ],
+  "binding_required": true,
+  "capabilities": "r",
+  "source": "custom/worksheet-body.tsx",
+  "sizes": [
+    800,
+    1120
+  ],
+  "themes": [
+    "dark",
+    "black",
+    "light"
+  ],
+  "inputs": [
+    "body"
+  ]
+}

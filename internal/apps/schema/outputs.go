@@ -14,6 +14,7 @@ type OutputTemplate struct {
 	Query   *QueryIR       `json:"query,omitempty"`
 	Body    string         `json:"body,omitempty"`
 	Columns []OutputColumn `json:"columns,omitempty"`
+	Table   string         `json:"table,omitempty"`
 }
 
 type OutputColumn struct {
@@ -127,6 +128,9 @@ func (c *checker) checkOutput(at string, t OutputTemplate) {
 		if err != nil {
 			c.add(AppFile, path, CodeFieldUnknown, "%s.", err)
 		}
+	}
+	if t.Table != "" && (!names[t.Table] || fields[t.Table].Type != "longtext") {
+		c.add(AppFile, at+"/table", CodeFieldUnknown, "A worksheet output needs a visible longtext field.")
 	}
 	check(at+"/body", t.Body)
 	for i, column := range t.Columns {

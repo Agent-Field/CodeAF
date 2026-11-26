@@ -1,0 +1,25 @@
+{
+  "automation": [
+    {
+      "id": "duplicate",
+      "line": "Duplicate a slide."
+    }
+  ],
+  "ask": "Open Slides and work with slide records.",
+  "data": [
+    {
+      "id": "slide",
+      "line": "Each slide is a versioned record."
+    }
+  ],
+  "screens": [
+    {
+      "id": "library",
+      "line": "Browse and create slide records."
+    },
+    {
+      "id": "open",
+      "line": "Open a slide, edit it and export it."
+    }
+  ]
+}

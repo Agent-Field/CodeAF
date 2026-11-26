@@ -1,0 +1,67 @@
+{
+  "screen": "library",
+  "title": "Sheets",
+  "views": {
+    "listed": {
+      "type": "worksheet"
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "id": "library",
+    "children": [
+      {
+        "part": "Row",
+        "id": "library-actions",
+        "children": [
+          {
+            "part": "Button",
+            "id": "new",
+            "label": "New worksheet",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "worksheet",
+                    "set": {
+                      "title": "$input.title"
+                    }
+                  },
+                  "ask": {
+                    "title": "text"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "id": "records",
+        "label": "Sheets",
+        "bind": {
+          "records": "worksheet",
+          "view": "listed"
+        },
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "empty": "Create a worksheet to get started."
+        },
+        "on": {
+          "open": [
+            {
+              "open": "open",
+              "id": "$row.id"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

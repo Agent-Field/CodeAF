@@ -1,0 +1,106 @@
+{
+  "id": "01KAVYH000C0DEAF0000000004",
+  "name": "Canvas",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "board": {
+      "label": "Board",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "board": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New board",
+      "do": [
+        {
+          "records.create": {
+            "type": "board",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "board",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "board"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "board",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "board"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "board",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "pdf": {
+      "label": "Export PDF",
+      "format": "pdf",
+      "record": "board",
+      "body": "{{title}}\n\n{{body}}"
+    }
+  }
+}

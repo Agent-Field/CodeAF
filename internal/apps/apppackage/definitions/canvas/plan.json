@@ -1,0 +1,25 @@
+{
+  "automation": [
+    {
+      "id": "duplicate",
+      "line": "Duplicate a board."
+    }
+  ],
+  "ask": "Open Canvas and work with board records.",
+  "data": [
+    {
+      "id": "board",
+      "line": "Each board is a versioned record."
+    }
+  ],
+  "screens": [
+    {
+      "id": "library",
+      "line": "Browse and create board records."
+    },
+    {
+      "id": "open",
+      "line": "Open a board, edit it and export it."
+    }
+  ]
+}

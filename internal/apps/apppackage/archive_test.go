@@ -2,7 +2,9 @@ package apppackage_test
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -98,6 +100,34 @@ func TestPackageUpdatesFollowSemVerPrecedence(t *testing.T) {
 	} {
 		if got := apppackage.Newer(source(tc.update), source(tc.previous)); got != tc.newer {
 			t.Errorf("Newer(%q, %q) = %v, want %v", tc.update, tc.previous, got, tc.newer)
+		}
+	}
+}
+
+func TestUnsignedPublisherCannotClaimCodeafIdentity(t *testing.T) {
+	app := `{"id":"docs","name":"Docs","version":1,"records":{"document":{"fields":{"title":{"type":"text"}}}}}`
+	files := map[string]string{"app.json": app}
+	if _, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "codeaf"}); err == nil {
+		t.Fatal("ordinary pack can impersonate the built-in publisher")
+	}
+}
+
+func TestReleaseSignatureAuthenticatesTheArchive(t *testing.T) {
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range archives {
+		if len(a.Signature) != ed25519.SignatureSize {
+			t.Fatalf("%s has no release signature", a.Manifest.Name)
+		}
+		a.Signature[0] ^= 1
+		raw, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := apppackage.Read(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "release signature") {
+			t.Fatalf("tampered %s signature: %v", a.Manifest.Name, err)
 		}
 	}
 }
