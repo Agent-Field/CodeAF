@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,13 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 	// A row view carries the grouping keys so the surface can put individual
 	// records in sections or lanes. Aggregate views use the metric door.
 	ir.Group = nil
+	if len(ir.Select) > 0 {
+		for _, field := range view.Group {
+			if !slices.Contains(ir.Select, field) {
+				ir.Select = append(ir.Select, field)
+			}
+		}
+	}
 	if p.Query != "" {
 		lens, err := queryIR(view.Type, p.Query, nil)
 		if err != nil {

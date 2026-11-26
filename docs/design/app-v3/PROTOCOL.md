@@ -396,7 +396,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
 | `data.unsubscribe` | `{sub}` | `Empty` |
 | `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
-| `data.view.query` | `{app?,draft?,screen,view,args?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. The data policy and field masks apply to the returned rows. |
+| `data.view.query` | `{app,draft?,screen,view,args?,query?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. Optional lens tokens add filters or change the order before the view's window limit. Grouped row views include their grouping fields. Data policy and field masks apply to all returned fields. |
 | `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
 | `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
 | `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
@@ -3221,6 +3221,7 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.list` | `{}` | `{apps:[{id,name,icon,version,updated_at,status}]}`. Status is `active`, `archived`, or `broken`. Deleted apps are omitted. |
 | `apps.get` | `{app}` | `{meta,app,plan,screens:[ids],runs:[ids],agent_md}` for the same checked version. Falls back to the newest valid saved version when needed. |
 | `apps.screen` | `{app,screen}` | `{screen}` containing the screen JSON from the live checked version. |
+| `apps.content.read` | `{app,draft?,ref}` | `{text}` for a saved `docs/*.md` or `plan/*.json` file in the checked app or its draft. |
 | `apps.versions` | `{app}` | `{versions:[{n,at,request,summary}]}`, newest first. |
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
