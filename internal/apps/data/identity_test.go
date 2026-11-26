@@ -145,6 +145,19 @@ func TestIdentityMappedSourcesReviewAndProvenance(t *testing.T) {
 	if scoped, err := s.WorkItems(Scope{App: "crm"}, WorkFilter{}); err != nil || len(scoped) != 0 {
 		t.Fatalf("app saw owner review: %+v, %v", scoped, err)
 	}
+	stale := items[0].ID
+	if _, err := s.Update(person, "contact", []string{right}, map[string]any{"title": "Director"}, UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.DecideIdentityMatch(person, stale, false, "")
+	wantCode(t, err, CodeStale)
+	if err := s.ScanIdentity(person, "contact", right, IdentityFields{}); err != nil {
+		t.Fatal(err)
+	}
+	items, err = s.WorkItems(person, WorkFilter{Status: WorkOpen})
+	if err != nil || len(items) != 1 || items[0].ID == stale || items[0].Identity == nil {
+		t.Fatalf("scan did not replace the stale review: %+v, %v", items, err)
+	}
 	if _, err := s.CompleteWorkItem(person, items[0].ID, map[string]any{"decision": "keep separate"}); err != nil {
 		t.Fatal(err)
 	}

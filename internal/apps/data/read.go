@@ -19,9 +19,8 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if reveal && sc.Agent {
 		return nil, &Error{Code: CodeNotAllowed, Need: "reveal", Message: "an agent cannot reveal a masked value"}
 	}
-	r, err := scanRecord(sch, s.rdb.QueryRow(`WITH RECURSIVE chain(member) AS (
-		VALUES(?) UNION ALL SELECT canonical FROM identity_aliases JOIN chain ON alias = member
-	) SELECT `+recordColumns+` FROM records WHERE id IN chain AND deleted_at IS NULL`, id).Scan)
+	r, err := scanRecord(sch, s.rdb.QueryRow(`SELECT `+recordColumns+` FROM records
+		WHERE id = `+identityRefSQL(t, "?")+` AND deleted_at IS NULL`, id).Scan)
 	if err == sql.ErrNoRows {
 		err = nil
 	}

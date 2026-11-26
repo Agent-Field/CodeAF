@@ -314,12 +314,12 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value}, sc, now); err != nil {
 		return err
 	}
-	sub := "SELECT x.id FROM records x WHERE " + inner.base() + " AND " + strings.Join(inner.where, " AND ")
+	sub := identityMembersSQL(target, "SELECT x.id FROM records x WHERE "+inner.base()+" AND "+strings.Join(inner.where, " AND "))
 	if f.Type == TypeRef {
-		c.add(identityRefSQL(target, c.col(f))+" IN ("+sub+")", cond.Neg, inner.args...)
+		c.add(c.col(f)+" IN ("+sub+")", cond.Neg, inner.args...)
 		return nil
 	}
-	c.add("EXISTS (SELECT 1 FROM "+c.eachOf(f)+" j WHERE "+identityRefSQL(target, "j.value")+" IN ("+sub+"))", cond.Neg, inner.args...)
+	c.add("EXISTS (SELECT 1 FROM "+c.eachOf(f)+" j WHERE j.value IN ("+sub+"))", cond.Neg, inner.args...)
 	return nil
 }
 
@@ -601,12 +601,15 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		if c.related != nil {
 			c.related[target.ID] = true
 		}
-		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", target.Fields[title].ID) + ", '') LIKE ? ESCAPE '\\'"
+		byTitle = identityMembersSQL(target, titles+"COALESCE("+jsonPath("t.data_json", target.Fields[title].ID)+", '') LIKE ? ESCAPE '\\'")
 	}
 	pattern := wildcard(v)
+	byID := " = ?"
+	if target != nil && target.identifiable() {
+		byID = " IN (" + identityMembersSQL(target, "SELECT "+identityRefSQL(target, "?")) + ")"
+	}
 	if f.Type == TypeRef {
-		col = identityRefSQL(target, col)
-		cond := col + " = " + identityRefSQL(target, "?")
+		cond := col + byID
 		args = append(args, v)
 		if byTitle != "" {
 			cond += " OR " + col + " IN (" + byTitle + ")"
@@ -614,11 +617,10 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		}
 		return cond, args, nil
 	}
-	value := identityRefSQL(target, "j.value")
-	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE " + value + " = " + identityRefSQL(target, "?")
+	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value" + byID
 	args = append(args, v)
 	if byTitle != "" {
-		each += " OR " + value + " IN (" + byTitle + ")"
+		each += " OR j.value IN (" + byTitle + ")"
 		args = append(args, target.ID, pattern)
 	}
 	return "EXISTS (" + each + ")", args, nil

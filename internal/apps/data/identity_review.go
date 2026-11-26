@@ -73,7 +73,7 @@ func (s *Store) ScanIdentity(sc Scope, typ, id string, fields IdentityFields) er
 		if err != nil {
 			return err
 		}
-		if t.Common != CommonPerson && t.Common != CommonOrganization {
+		if !t.identifiable() {
 			return errorf(CodeInvalid, "choose a type bound to Person or Organization")
 		}
 		if fields == (IdentityFields{}) {
@@ -128,6 +128,9 @@ type candidateScore struct {
 // matchIdentity considers every live record before applying a unique high
 // score. Only a native source observation may automatically join records.
 func (w *writeTx) matchIdentity(sc Scope, t *Type, anchor *record, fields IdentityFields, auto bool) (string, error) {
+	if err := w.retireIdentityReviews(sc, t, anchor.ID, ""); err != nil {
+		return "", err
+	}
 	subject, err := w.matchingSubject(t, anchor, fields)
 	if !auto && subject.Namespace == "" {
 		subject.Namespace = fields.Namespace
@@ -190,7 +193,7 @@ func (w *writeTx) matchIdentity(sc Scope, t *Type, anchor *record, fields Identi
 			}
 			w.change.Items = append(original.Items, w.change.Items...)
 		}
-		return merge.Canonical, nil
+		return merge.Canonical, w.retireIdentityReviews(sc, t, merge.Canonical, merge.Alias)
 	}
 	epochs, err := readEpochs(w.tx, t.ID)
 	if err != nil {
@@ -217,11 +220,12 @@ func (w *writeTx) queueIdentityReview(sc Scope, t *Type, a, b *record, evidence 
 	if t.Common == CommonOrganization {
 		title = "Are these the same organization?"
 	}
-	item, err := w.createWorkItem(sc, t, WorkItem{Title: title, Record: a.ID, Form: identityReviewForm})
+	evidence.Decision = MatchReview
+	review := &IdentityCandidate{Left: a.ID, Right: b.ID, LeftRev: a.Rev, RightRev: b.Rev, Evidence: evidence}
+	item, err := w.createWorkItem(sc, t, WorkItem{Title: title, Record: a.ID, Form: identityReviewForm, Identity: review})
 	if err != nil {
 		return err
 	}
-	evidence.Decision = MatchReview
 	_, err = w.tx.Exec(`INSERT INTO identity_matches(id,type_id,left_id,right_id,left_rev,right_rev,evidence,mapping_epoch)
 		VALUES(?,?,?,?,?,?,?,?)`, item.ID, t.ID, a.ID, b.ID, a.Rev, b.Rev, canonicalJSON(evidence), epoch)
 	return err
@@ -316,11 +320,17 @@ func (w *writeTx) decideIdentityMatch(sc Scope, id string, separate bool, surviv
 	if err := w.finishIdentityWorkItem(sc, item, c.typeID, decision, savedMerge); err != nil {
 		return nil, err
 	}
-	return result, nil
+	if result != nil {
+		return result, w.retireIdentityReviews(sc, w.schema.byID[c.typeID], result.Canonical, result.Alias)
+	}
+	return nil, nil
 }
 
 func (w *writeTx) finishIdentityWorkItem(sc Scope, item *WorkItem, typeID, decision, merge string) error {
 	item.Status, item.UpdatedAt = WorkDone, w.now.UTC().Format(stamp)
+	if decision == "superseded" {
+		item.Status = WorkCancelled
+	}
 	item.Outcome = map[string]any{"decision": decision}
 	if merge != "" {
 		item.Outcome.(map[string]any)["merge"] = merge
@@ -334,8 +344,8 @@ func (w *writeTx) finishIdentityWorkItem(sc Scope, item *WorkItem, typeID, decis
 }
 
 func (w *writeTx) completeIdentityWorkItem(sc Scope, item *WorkItem, outcome any) (*WorkItem, error) {
-	if err := allowIdentity(sc, w.s.draft != ""); err != nil {
-		return nil, err
+	if item.Status != WorkOpen {
+		return nil, errorf(CodeStale, "this work item is %s", item.Status)
 	}
 	values, _ := outcome.(map[string]any)
 	decision, _ := values["decision"].(string)
@@ -356,4 +366,40 @@ func (w *writeTx) completeIdentityWorkItem(sc Scope, item *WorkItem, outcome any
 	}
 	out, _, err := loadWorkItem(w.tx, w.schema, item.ID)
 	return out, err
+}
+
+// retireIdentityReviews closes changed pairs before a fresh scan creates a
+// new work item. A client holding the old ID cannot accept new evidence.
+func (w *writeTx) retireIdentityReviews(sc Scope, t *Type, aID, bID string) error {
+	var ids []string
+	err := eachRow(w.tx, `SELECT m.id FROM identity_matches m
+		LEFT JOIN records a ON a.id = m.left_id LEFT JOIN records b ON b.id = m.right_id
+		LEFT JOIN type_epochs e ON e.type_id = m.type_id
+		WHERE m.type_id = ? AND m.decision = '' AND (m.left_id IN (?, ?) OR m.right_id IN (?, ?))
+		AND (a.id IS NULL OR b.id IS NULL OR a.deleted_at IS NOT NULL OR b.deleted_at IS NOT NULL
+			OR a.rev <> m.left_rev OR b.rev <> m.right_rev OR COALESCE(e.mapping, 0) <> m.mapping_epoch)`,
+		[]any{t.ID, aID, bID, aID, bID}, func(scan func(...any) error) error {
+			var id string
+			if err := scan(&id); err != nil {
+				return err
+			}
+			ids = append(ids, id)
+			return nil
+		})
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		item, _, err := loadWorkItem(w.tx, w.schema, id)
+		if err != nil {
+			return err
+		}
+		if _, err := w.tx.Exec(`UPDATE identity_matches SET decision = 'superseded' WHERE id = ?`, id); err != nil {
+			return err
+		}
+		if err := w.finishIdentityWorkItem(sc, item, t.ID, "superseded", ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }

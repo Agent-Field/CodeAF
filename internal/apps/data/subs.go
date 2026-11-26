@@ -491,7 +491,7 @@ func (s *Store) tableDiff(sub *subscription, c *Change) (Diff, bool) {
 			typeID = t.ID
 		}
 		if !sch.seen(sub.sc, it.App, typeID) || !sch.canReadSource(sub.sc, it.sourceType) ||
-			it.Table == TableWorkItems && it.Row["form"] == identityReviewForm && allowIdentity(sub.sc, s.draft != "") != nil {
+			it.Table == TableWorkItems && it.Row["identity_match"] != nil && !identityOwner(sub.sc) {
 			continue
 		}
 		d.Upserts = append(d.Upserts, Row(it.Row))

@@ -168,7 +168,7 @@ func (w *writeTx) observeSource(o SourceObservation) (string, bool, error) {
 			if err := w.refreshIdentityAlias(t, sc, origin, values); err != nil {
 				return "", false, err
 			}
-			if err := w.keepSurvivorSource(id, origin, values); err != nil {
+			if err := w.filterAliasProjection(id, origin, values); err != nil {
 				return "", false, err
 			}
 		}

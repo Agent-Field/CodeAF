@@ -749,9 +749,7 @@ func (w *writeTx) checkRefs(f *Field, v any) error {
 	}
 	for _, id := range ids {
 		var n int
-		if err := w.tx.QueryRow(`WITH RECURSIVE chain(id) AS (
-			VALUES(?) UNION ALL SELECT canonical FROM identity_aliases JOIN chain ON alias = id
-		) SELECT count(*) FROM records WHERE id IN chain AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
+		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = `+identityRefSQL(target, "?")+` AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n == 0 {

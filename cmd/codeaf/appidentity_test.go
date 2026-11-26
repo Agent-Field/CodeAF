@@ -75,6 +75,10 @@ func TestIdentityReviewsWireCLIParity(t *testing.T) {
 	if len(item.Items) != 1 || item.Items[0]["title"] != "Are these the same person?" {
 		t.Fatalf("work item = %+v", item)
 	}
+	evidence, ok := item.Items[0]["identity_match"].(map[string]any)
+	if !ok || evidence["left"] != left || evidence["right"] != right || evidence["evidence"] == nil {
+		t.Fatalf("My Work did not show the records and match evidence: %+v", item.Items[0])
+	}
 	var cliResult, wireResult appwire.IdentityDecisionResult
 	wire.must("apps.match_accept", p[0], &wireResult)
 	cli("match-accept", p[0], &cliResult)

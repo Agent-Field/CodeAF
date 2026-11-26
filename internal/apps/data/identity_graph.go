@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"slices"
 )
 
 const (
@@ -29,7 +28,7 @@ func identityRoot(q querier, id string) (string, error) {
 // identityRefSQL follows redirects without rewriting stored references. The
 // expression comes from the query compiler or a bound parameter.
 func identityRefSQL(target *Type, value string) string {
-	if target != nil && target.Common != CommonPerson && target.Common != CommonOrganization {
+	if target != nil && !target.identifiable() {
 		return value
 	}
 	return `(WITH RECURSIVE chain(member) AS (
@@ -37,8 +36,30 @@ func identityRefSQL(target *Type, value string) string {
 	) SELECT member FROM chain WHERE NOT EXISTS (SELECT 1 FROM identity_aliases WHERE alias = chain.member))`
 }
 
+func (t *Type) identifiable() bool {
+	return t.Common == CommonPerson || t.Common == CommonOrganization
+}
+
+// identityMembersSQL expands known canonical IDs to their stored aliases once
+// per filter, keeping recursive lookups off the outer query's row loop.
+func identityMembersSQL(target *Type, roots string) string {
+	if target != nil && !target.identifiable() {
+		return roots
+	}
+	return "WITH RECURSIVE " + identityMembersCTE("matches", roots) + " SELECT member FROM matches"
+}
+
+func identityMembersCTE(name, roots string) string {
+	return name + "(member) AS (" + roots + " UNION ALL SELECT a.alias FROM " + name +
+		" m JOIN identity_aliases a ON a.canonical = m.member)"
+}
+
+func identityOwner(sc Scope) bool {
+	return sc.App == "" && !sc.below() && !sc.Flow
+}
+
 func allowIdentity(sc Scope, draft bool) error {
-	if draft || sc.App != "" || sc.below() || sc.Flow {
+	if draft || !identityOwner(sc) {
 		return errorf(CodeNotAllowed, "identity decisions require the published space's owner")
 	}
 	return nil
@@ -57,7 +78,10 @@ func (s *Store) MergeIdentity(sc Scope, canonical, alias string, canonicalRev, a
 			return err
 		}
 		result, err = w.mergeIdentity(sc, t, a, b, MatchEvidence{Signals: []string{"owner selected both records"}})
-		return err
+		if err != nil {
+			return err
+		}
+		return w.retireIdentityReviews(sc, t, a.ID, b.ID)
 	})
 	return result, err
 }
@@ -78,7 +102,7 @@ func (w *writeTx) identityPair(left, right string, leftRev, rightRev int64) (*Ty
 		return nil, nil, nil, errorf(CodeStale, "both records must still be live and of the same type")
 	}
 	t := w.schema.typeNamed(a.Type)
-	if t.Common != CommonPerson && t.Common != CommonOrganization || t.Ledger {
+	if !t.identifiable() || t.Ledger {
 		return nil, nil, nil, errorf(CodeInvalid, "choose records bound to Person or Organization")
 	}
 	if a.Rev != leftRev || b.Rev != rightRev {
@@ -97,6 +121,8 @@ func (w *writeTx) mergeIdentity(sc Scope, t *Type, a, b *record, evidence MatchE
 		aKind, bKind := a.Meta.By[name], b.Meta.By[name]
 		bValue, present := b.Data[name]
 		_, aPresent := a.Data[name]
+		// The survivor's person-entered value or clear wins. The alias can
+		// supply a person's value ahead of a source, or fill a missing field.
 		if personValue(aKind) || (!present && bKind == "") || (aPresent || aKind != "") && !personValue(bKind) {
 			continue
 		}
@@ -275,10 +301,8 @@ func sourceBelongsToAlias(q querier, key ExternalKey, alias string) (bool, error
 		return false, nil
 	}
 	var found bool
-	err := q.QueryRow(`WITH RECURSIVE members(id) AS (
-		VALUES(?) UNION ALL SELECT a.alias FROM members m JOIN identity_aliases a ON a.canonical = m.id
-	) SELECT EXISTS(SELECT 1 FROM external_keys WHERE binding = ? AND object = ? AND key = ?
-		AND generation = ? AND entity_id IN members)`, append([]any{alias}, key.args()...)...).Scan(&found)
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM external_keys WHERE binding = ? AND object = ? AND key = ?
+		AND generation = ? AND entity_id IN (`+identityMembersSQL(nil, "SELECT ?")+`))`, append(key.args(), alias)...).Scan(&found)
 	return found, err
 }
 
@@ -290,9 +314,7 @@ func sameIdentityField(name string, a map[string]any, am recordMeta, b map[strin
 // reunite two records the owner already told us to keep separate.
 func rejectedIdentity(q querier, a, b string) (bool, error) {
 	var rejected bool
-	err := q.QueryRow(`WITH RECURSIVE
-		left_group(id) AS (VALUES(?) UNION ALL SELECT alias FROM identity_aliases JOIN left_group ON canonical = id),
-		right_group(id) AS (VALUES(?) UNION ALL SELECT alias FROM identity_aliases JOIN right_group ON canonical = id)
+	err := q.QueryRow(`WITH RECURSIVE `+identityMembersCTE("left_group", "SELECT ?")+", "+identityMembersCTE("right_group", "SELECT ?")+`
 		SELECT EXISTS(SELECT 1 FROM identity_matches WHERE decision = 'separate' AND
 			((left_id IN left_group AND right_id IN right_group) OR (right_id IN left_group AND left_id IN right_group)))`,
 		a, b).Scan(&rejected)
@@ -301,14 +323,9 @@ func rejectedIdentity(q querier, a, b string) (bool, error) {
 
 func (s *Store) groupExternalKeys(id string) ([]ExternalKey, error) {
 	out := []ExternalKey{}
-	err := eachRow(s.rdb, `WITH RECURSIVE
-		chain(id) AS (VALUES(?) UNION ALL SELECT canonical FROM identity_aliases JOIN chain ON alias = id),
-		members(id) AS (
-			SELECT id FROM chain WHERE NOT EXISTS (SELECT 1 FROM identity_aliases WHERE alias = chain.id)
-			UNION ALL SELECT alias FROM identity_aliases JOIN members ON canonical = id
-		)
-		SELECT binding, object, key, generation FROM external_keys
-		WHERE entity_id IN members ORDER BY binding, object, key, generation`, []any{id}, func(scan func(...any) error) error {
+	members := identityMembersSQL(nil, "SELECT "+identityRefSQL(nil, "?"))
+	err := eachRow(s.rdb, `SELECT binding, object, key, generation FROM external_keys
+		WHERE entity_id IN (`+members+`) ORDER BY binding, object, key, generation`, []any{id}, func(scan func(...any) error) error {
 		var key ExternalKey
 		if err := scan(&key.Binding, &key.Object, &key.Key, &key.Generation); err != nil {
 			return err
@@ -317,12 +334,6 @@ func (s *Store) groupExternalKeys(id string) ([]ExternalKey, error) {
 		return nil
 	})
 	return out, err
-}
-
-func orderedPair(a, b string) (string, string) {
-	pair := []string{a, b}
-	slices.Sort(pair)
-	return pair[0], pair[1]
 }
 
 // refreshIdentityAlias keeps native source edits on their original side of a
@@ -345,9 +356,9 @@ func (w *writeTx) refreshIdentityAlias(t *Type, sc Scope, id string, values map[
 	return err
 }
 
-// keepSurvivorSource keeps the existing source winner on overlapping fields.
+// filterAliasProjection keeps the existing source winner on overlapping fields.
 // An alias can still refresh its own contributions and fill missing fields.
-func (w *writeTx) keepSurvivorSource(id, origin string, values map[string]any) error {
+func (w *writeTx) filterAliasProjection(id, origin string, values map[string]any) error {
 	r, err := loadRecord(w.tx, w.schema, id)
 	if err != nil {
 		return err

@@ -87,6 +87,10 @@ func ScoreIdentity(common CommonTypeKey, left, right MatchSubject) MatchEvidence
 		out.Method = "work_email"
 		add(100, "verified work email")
 	default:
+		samePhone := equalPresent(normalizedPhone(left.Phone, ""), normalizedPhone(right.Phone, ""))
+		if !sameOrg && !samePhone && !(common == CommonPerson && sameEmail) {
+			return out
+		}
 		if common == CommonPerson && sameEmail {
 			add(matchReviewThreshold, "same email")
 		}
@@ -98,7 +102,7 @@ func ScoreIdentity(common CommonTypeKey, left, right MatchSubject) MatchEvidence
 		if sameOrg {
 			add(30, "same organization")
 		}
-		if equalPresent(normalizedPhone(left.Phone, ""), normalizedPhone(right.Phone, "")) {
+		if samePhone {
 			add(30, "same phone")
 		}
 	}

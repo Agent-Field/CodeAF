@@ -364,7 +364,7 @@ func (s *Store) ObserveMappedSource(input MappedSourceObservation) (string, erro
 		if canonical, _, err = w.observeSource(o); err != nil {
 			return err
 		}
-		if !o.NativeValues || m.Match == (IdentityFields{}) || m.Common != CommonPerson && m.Common != CommonOrganization {
+		if !o.NativeValues || m.Match == (IdentityFields{}) || !t.identifiable() {
 			return nil
 		}
 		after, err := loadRecord(w.tx, w.schema, id)
