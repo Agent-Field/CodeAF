@@ -115,7 +115,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: agent,
-		CheckAI: harnesses.Check, AppVersion: files.Version,
+		CheckAI: harnesses.Check, AppVersion: files.Version, Render: b.renderRunOutput,
 		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) {
 			b.emit.Emit(appwire.EventRunsChanged, event)
@@ -280,7 +280,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			TaskCap:  call.Remaining, TaskAction: "per-run budget reached",
 		}
 		const name = "app run"
-		ctx, recorded := factoryAIAccounting(provider.WithCallTag(ctx, name), settings, model, name, nil)
+		ctx = provider.WithCallTag(ctx, name)
 		prompt := call.Prompt
 		if len(call.Steps) != 0 {
 			outputs, err := json.Marshal(call.Steps)
@@ -302,6 +302,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			}
 			defer os.RemoveAll(workspace)
 			scope := appwire.AppContentScope{App: call.App, Conversation: call.ID, Principal: data.AgentPrincipal{ID: call.App}, Profile: b.localProfile(), Version: def.Meta.Version}
+			spend.Task = &session.SpendTask{}
 			answer, err := session.ScopedCommandTurn(ctx, workspace, model, system, prompt, spend.Wrap(model, client), func(ctx context.Context, line string) (string, error) {
 				verb, params, err := appcmd.Parse(line)
 				if err != nil {
@@ -310,16 +311,30 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 				result, err := appwire.RunScopedAppCommand(ctx, b, scope, verb, params, call.Key, nil)
 				return string(result), err
 			})
-			return runs.Reply{Output: answer, Cost: recorded(nil)}, err
+			if stopped, ok := errors.AsType[session.ErrSpendStopped](err); ok && stopped.TaskLimit {
+				err = runs.ErrBudget
+			}
+			return runs.Reply{Output: answer, Cost: spend.Task.Total()}, err
 		}
 		attachments, err := b.appRunIntakeParts(call)
 		if err != nil {
 			return runs.Reply{}, err
 		}
-		reply, err := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt, attachments...)
-		result := runs.Reply{Cost: recorded(reply)}
-		if reply != nil {
-			result.Output = reply.Text()
+		app, err := b.outputApp(call.App)
+		if err != nil {
+			return runs.Reply{}, err
+		}
+		var result runs.Reply
+		if app.Kit == 2 && len(app.Outputs) > 0 {
+			result, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, client, spend, attachments...)
+		} else {
+			ctx, recorded := factoryAIAccounting(ctx, settings, model, name, nil)
+			reply, callErr := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt, attachments...)
+			err = callErr
+			result.Cost = recorded(reply)
+			if reply != nil {
+				result.Output = reply.Text()
+			}
 		}
 		var policy *provider.ModelDestinationDenied
 		if errors.As(err, &policy) {

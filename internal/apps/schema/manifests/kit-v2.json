@@ -4474,6 +4474,52 @@
       }
     },
     "action_kinds": {
+      "render": {
+        "id": "render",
+        "version": 2,
+        "doc": "Render a declared output. Set inbox for a query digest. A record template needs a record ID.",
+        "example": {
+          "render": {
+            "output": "weekly-pipeline",
+            "inbox": true
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "render": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "output": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "record": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "inbox": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "output"
+              ]
+            }
+          },
+          "required": [
+            "render"
+          ]
+        },
+        "rules": [
+          {
+            "check": "output-ref",
+            "path": "render"
+          }
+        ]
+      },
       "open": {
         "id": "open",
         "version": 1,
@@ -5478,6 +5524,52 @@
         "rules": [],
         "modifiers": [],
         "auxiliary": false
+      },
+      "render": {
+        "id": "render",
+        "version": 2,
+        "doc": "Render a declared output. Set inbox for a query digest. A record template needs a record ID.",
+        "example": {
+          "render": {
+            "output": "weekly-pipeline",
+            "inbox": true
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "render": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "output": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "record": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "inbox": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "output"
+              ]
+            }
+          },
+          "required": [
+            "render"
+          ]
+        },
+        "rules": [
+          {
+            "check": "output-ref",
+            "path": "render"
+          }
+        ]
       },
       "agent": {
         "id": "agent",
@@ -7101,6 +7193,35 @@
       }
     },
     "app_declarations": {
+      "output-template": {
+        "id": "output-template",
+        "version": 2,
+        "doc": "Declare a named render Action. Merge visible projected fields into a PDF, Word document, PowerPoint deck or CSV. Select a record type or declare a query. A digest uses a run and a schedule.",
+        "example": {
+          "label": "Weekly pipeline",
+          "format": "pdf",
+          "query": {
+            "type": "deal",
+            "group": [
+              "stage"
+            ],
+            "aggregate": [
+              {
+                "op": "count",
+                "as": "count"
+              }
+            ]
+          },
+          "body": "{{stage}}: {{count}} deals"
+        },
+        "schema": { "$ref": "https://codeaf.dev/schema/output-template-2.json" },
+        "rules": [
+          {
+            "check": "output-template",
+            "path": ""
+          }
+        ]
+      },
       "role": {
         "id": "role",
         "version": 1,

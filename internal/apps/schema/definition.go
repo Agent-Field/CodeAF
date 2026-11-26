@@ -217,6 +217,8 @@ type App struct {
 	Triggers     []Trigger              `json:"triggers,omitempty"`
 	Commands     []Command              `json:"commands,omitempty"`
 	Budget       *Budget                `json:"budget,omitempty"`
+
+	Outputs map[string]OutputTemplate `json:"outputs,omitempty"`
 }
 
 // AgentRef names the app's own agent and the Markdown file that instructs it.
@@ -420,6 +422,7 @@ type RunParam struct {
 // RecordsCreate, Wait, Loop or Gate it sets; a Gate may also sit on a Tool step,
 // where it holds the tool until the person approves.
 type Step struct {
+	Render        *RenderAction  `json:"render,omitempty"`
 	ID            string         `json:"id"`
 	Title         string         `json:"title,omitempty"`
 	If            string         `json:"if,omitempty"`
