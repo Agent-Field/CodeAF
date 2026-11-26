@@ -26,7 +26,7 @@ func (c *checkpoint) stepDetails(steps []Step) []StepDetail {
 		state := "planned"
 		if step.ID == c.Step {
 			state = c.State
-		} else if _, completed := c.Outputs[step.ID]; completed {
+		} else if _, completed := c.Outputs[step.ID]; completed || c.CompletedGates[step.ID] {
 			state = Done
 		}
 		details = append(details, StepDetail{
