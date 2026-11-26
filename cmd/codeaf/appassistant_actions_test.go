@@ -35,7 +35,10 @@ func TestAppAssistantGrantsBuilderRunThroughCLIAndGrantPanel(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The Builder can produce the Mark Won button and run without a separate command.
-	delete(app, "commands")
+	app["commands"] = json.RawMessage(`[{"id":"set-amount","label":"Set deal amount","for":"deal","do":[
+		{"records.update":{"ids":"$selection.ids","set":{"amount":"$input.amount"}},"ask":{"amount":"money"}},
+		{"toast":"Amount updated"}
+	]}]`)
 	raw, err = json.Marshal(app)
 	if err != nil {
 		t.Fatal(err)
@@ -164,4 +167,31 @@ steps:
 			t.Fatalf("deal %d = %+v, %v, want stage %s", i, row, err, want)
 		}
 	}
+
+	// A legacy command can keep its prompted input and still expose the
+	// same typed write to a granted agent.
+	for _, action := range catalog.Actions {
+		if action.ID != "set-amount" {
+			continue
+		}
+		if !action.Revision || action.Args["amount"].Type != "money" {
+			t.Fatalf("command did not expose its typed input: %+v", action)
+		}
+		if _, err := call("agent_grant", appwire.AppAgentGrant{App: meta.ID, Agent: meta.ID, Group: "actions", ID: action.ID, Allowed: true}); err != nil {
+			t.Fatal(err)
+		}
+		value := map[string]any{"app": meta.ID, "params": map[string]any{
+			"action": action.ID, "expected_rev": 1,
+			"args": map[string]any{"record": deals.Rows[1].ID(), "amount": 12000},
+		}}
+		if _, err := call("invoke", value); err != nil {
+			t.Fatal(err)
+		}
+		row, err := db.Get(person, "deal", deals.Rows[1].ID(), false)
+		if err != nil || row["stage"] != "Lead" || row["amount"] != float64(12000) {
+			t.Fatalf("prompted update returned %+v, %v", row, err)
+		}
+		return
+	}
+	t.Fatal("Set deal amount is missing from Show")
 }

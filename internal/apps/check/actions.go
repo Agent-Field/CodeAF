@@ -26,7 +26,8 @@ func missingActions(def schema.Definition) []schema.Problem {
 		if registered[command.ID] {
 			continue
 		}
-		if slices.ContainsFunc(command.Do, writesRecords) {
+		declared := slices.ContainsFunc(plan.Actions, func(line schema.PlanLine) bool { return line.ID == command.ID })
+		if declared && slices.ContainsFunc(command.Do, commandWritesRecords) {
 			issues = append(issues, problem(schema.AppFile, "command_action_missing",
 				fmt.Sprintf("Make %q grantable. Bind its command to a run with typed parameters and record steps.", command.Label)))
 		}
@@ -42,7 +43,7 @@ func missingActions(def schema.Definition) []schema.Problem {
 	return issues
 }
 
-func writesRecords(action schema.Action) bool {
+func commandWritesRecords(action schema.Action) bool {
 	for key := range action {
 		if strings.HasPrefix(key, "records.") || key == "runs.start" {
 			return true

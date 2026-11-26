@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -238,20 +239,20 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		}
 		args[key] = value
 	}
-	if action.Run != nil {
-		for name, value := range args {
-			parameter, declared := action.Args[name]
-			if !declared || !appRunArgument(parameter.Type, value) {
-				return nil, appwire.Errorf(appwire.CodeBadParams, "Invalid automation argument %q.", name)
-			}
+	for name, value := range args {
+		parameter, declared := action.Args[name]
+		if !declared || !appRunArgument(parameter.Type, value) {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "Invalid action argument %q.", name)
 		}
+	}
+	for name, parameter := range action.Args {
+		if _, ok := args[name]; !ok && parameter.Default == nil {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "Supply action argument %q.", name)
+		}
+	}
+	if action.Run != nil {
 		for name, value := range action.Fixed {
 			args[name] = value
-		}
-		for name, parameter := range action.Args {
-			if _, ok := args[name]; !ok && parameter.Default == nil {
-				return nil, appwire.Errorf(appwire.CodeBadParams, "Supply automation argument %q.", name)
-			}
 		}
 		if runs.AgentConversation(action.Run.Run) {
 			return nil, appwire.Errorf(appwire.CodeForbidden, "Use the app agent entry point.")
@@ -265,16 +266,34 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		}
 		return marshalAppContent(engine.StartAgentAction(sc.App, action.Run.Run, args, runs.AgentActionOrigin{Principal: sc.Principal, Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
 	}
-	if action.Set != nil {
-		id, _ := args["record"].(string)
-		if len(args) != 1 || id == "" || intent.ExpectedRev == nil || *intent.ExpectedRev == 0 || *intent.ExpectedRev > 1<<63-1 {
-			return nil, appwire.Errorf(appwire.CodeBadParams, "This action takes args.record with one record ID and expected_rev with that row's _rev.")
+	if action.Write != "" {
+		var id string
+		var revision int64
+		if action.Revision {
+			id, _ = args["record"].(string)
+			if id == "" || intent.ExpectedRev == nil || *intent.ExpectedRev == 0 || *intent.ExpectedRev > 1<<63-1 {
+				return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs one record ID and its displayed revision.")
+			}
+			revision = int64(*intent.ExpectedRev)
 		}
 		db, err := b.dataStore("")
 		if err != nil {
 			return nil, err
 		}
-		result, err := db.Update(sc, action.Record, []string{id}, action.Set, data.UpdateOptions{Rev: int64(*intent.ExpectedRev)})
+		set := make(map[string]any, len(action.Set))
+		maps.Copy(set, action.Set)
+		for field, input := range action.Inputs {
+			set[field] = args[input]
+		}
+		var result *data.WriteResult
+		switch action.Write {
+		case "records.create":
+			result, err = db.Create(sc, action.Record, []map[string]any{set})
+		case "records.update":
+			result, err = db.Update(sc, action.Record, []string{id}, set, data.UpdateOptions{Rev: revision})
+		case "records.delete":
+			result, err = db.Delete(sc, action.Record, []string{id}, data.UpdateOptions{Rev: revision})
+		}
 		return marshalAppContent(result, appDataError(err))
 	}
 	return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs a supported app process or automation.")

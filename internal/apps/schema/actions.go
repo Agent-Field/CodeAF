@@ -15,7 +15,9 @@ type RegisteredAction struct {
 	Revision bool                `json:"requires_expected_rev,omitempty"`
 	Run      *Run                `json:"-"`
 	Fixed    map[string]any      `json:"-"`
+	Write    string              `json:"-"`
 	Set      map[string]any      `json:"-"`
+	Inputs   map[string]string   `json:"-"`
 }
 
 // ActionRegistry uses declarations that also drive the app's controls and runs.
@@ -43,20 +45,21 @@ func ActionRegistry(app App, runs map[string]Run) []RegisteredAction {
 			}
 			registry = append(registry, registered)
 			wrapped[id] = true
-		} else if set, ok := literalRecordUpdate(command.For, effect); ok {
-			registered := recordAction(command.ID, command.Label, command.For)
-			registered.Set = set
+		} else if registered, ok := registerRecordCommand(app, command, effect); ok {
 			registry = append(registry, registered)
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(runs)) {
 		run := runs[id]
-		if wrapped[id] || commands[id] || strings.HasPrefix(id, "_") || !writesRecords(run.Steps) {
+		if wrapped[id] || strings.HasPrefix(id, "_") || !writesRecords(run.Steps) {
 			continue
 		}
 		label := run.Title
 		if label == "" {
 			label = strings.ReplaceAll(id, "-", " ")
+		}
+		if commands[id] {
+			id = "run/" + id
 		}
 		registry = append(registry, registerRun(run, id, label, ""))
 	}
@@ -116,21 +119,63 @@ func commandEffect(actions []Action) Action {
 	return effect
 }
 
-func literalRecordUpdate(record string, effect Action) (map[string]any, bool) {
-	if record == "" || effect["ask"] != nil {
-		return nil, false
-	}
-	update, _ := effect["records.update"].(map[string]any)
-	set, ok := update["set"].(map[string]any)
-	if !ok || update["ids"] != "$selection.ids" || (update["type"] != nil && update["type"] != record) {
-		return nil, false
-	}
-	for _, value := range set {
-		if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
-			return nil, false
+func registerRecordCommand(app App, command Command, effect Action) (RegisteredAction, bool) {
+	for _, verb := range []string{"records.create", "records.update", "records.delete"} {
+		write, ok := effect[verb].(map[string]any)
+		if !ok {
+			continue
 		}
+		record, _ := write["type"].(string)
+		if record == "" {
+			record = command.For
+		}
+		if verb != "records.create" {
+			target, _ := write["ids"].(string)
+			if target == "" {
+				target, _ = write["id"].(string)
+			}
+			if record == "" || (command.For != "" && command.For != record) || !commandSelectsRecord(target) {
+				return RegisteredAction{}, false
+			}
+		}
+		action := recordAction(command.ID, command.Label, record)
+		action.Write = verb
+		if verb == "records.create" {
+			action.Args = map[string]RunParam{}
+			action.Revision = false
+		}
+		action.Set, _ = write["set"].(map[string]any)
+		action.Inputs = map[string]string{}
+		ask, _ := effect["ask"].(map[string]any)
+		for field, value := range action.Set {
+			text, _ := value.(string)
+			if !strings.HasPrefix(text, "$") {
+				continue
+			}
+			input, bound := strings.CutPrefix(text, "$input.")
+			kind, asked := ask[input].(string)
+			if !bound || !asked || action.Revision && input == "record" {
+				return RegisteredAction{}, false
+			}
+			shape := app.Records[record].Fields[field]
+			param := RunParam{Type: shape.Type, To: shape.To}
+			if param.Type == "" {
+				param.Type = kind
+			}
+			if prior, ok := action.Args[input]; ok && (prior.Type != param.Type || prior.To != param.To) {
+				return RegisteredAction{}, false
+			}
+			action.Args[input] = param
+			action.Inputs[field] = input
+		}
+		return action, true
 	}
-	return set, true
+	return RegisteredAction{}, false
+}
+
+func commandSelectsRecord(target string) bool {
+	return target == "$selection.ids" || target == "$record.id" || target == "$row.id" ||
+		strings.HasPrefix(target, "$selection.") && strings.HasSuffix(target, ".id")
 }
 
 func writesRecords(steps []Step) bool {

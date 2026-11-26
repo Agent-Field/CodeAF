@@ -124,17 +124,23 @@ func (e *Engine) completeStep(ctx context.Context, c *checkpoint, step Step, a *
 	return repaired, err
 }
 
+const (
+	AgentAskRun     = "_agent_ask"
+	AgentDutyPrefix = "_agent_duty_"
+)
+
 // AgentConversation separates interactive assistant turns from run artifacts.
 func AgentConversation(run string) bool {
-	return run == "_agent_ask" || strings.HasPrefix(run, "_agent_duty_")
+	return run == AgentAskRun || strings.HasPrefix(run, AgentDutyPrefix)
 }
 
 func (c *checkpoint) agentInputs() map[string]any {
 	inputs := map[string]any{}
 	params := map[string]any{}
 	for name, param := range c.Definition.Params {
-		// A loop sees its current row below, so it need not send its entire batch.
-		if value, ok := c.Params[name]; ok && !(param.Type == "refs" && len(c.Frames) > 1) {
+		// A loop supplies the active row below. A whole batch must be named
+		// in the step template when it is needed.
+		if value, ok := c.Params[name]; ok && param.Type != "refs" {
 			params[name] = value
 		}
 	}
