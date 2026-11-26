@@ -39,7 +39,9 @@ func TestAnErrandUsesOnlyAHeldConversationAndAServedModel(t *testing.T) {
 		t.Fatalf("unheld: %+v %v", got, err)
 	}
 	door := &appErrandDoor{fakeConversation: &fakeConversation{}}
-	b.locked(func() { b.agents["a"].live = &appLive{conn: &appConn{Conv: door, Release: func() {}}} })
+	b.locked(func() {
+		b.agents["a"].live = &appLive{conn: &appConn{Conv: door, Release: func() {}}, box: appwire.NewOutbox(b.emit)}
+	})
 	if got, err := b.Errand(t.Context(), "a", ask); err != nil || got.Text != "ok" || door.calls != 1 {
 		t.Fatalf("held: %+v %v", got, err)
 	}
@@ -71,7 +73,7 @@ func TestAnErrandOwnersFailureIsLoggedWithItsWords(t *testing.T) {
 	door := &appErrandDoor{fakeConversation: &fakeConversation{}, fail: errors.New("loopback did not answer in time")}
 	b.locked(func() {
 		b.agents["a"] = &appAgent{view: appwire.Agent{ID: "a"}, transcript: filepath.Join(t.TempDir(), "transcript.jsonl"),
-			live: &appLive{conn: &appConn{Conv: door, Release: func() {}}}}
+			live: &appLive{conn: &appConn{Conv: door, Release: func() {}}, box: appwire.NewOutbox(b.emit)}}
 	})
 	got, err := b.Errand(t.Context(), "a", session.ErrandAsk{Purpose: "factory_brief"})
 	if err != nil || got.Reason != appwire.ErrandUnavailable {

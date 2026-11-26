@@ -1,8 +1,8 @@
 {
   "name": "custom/slide-body",
   "version": 1,
-  "summary": "Displays the body of a slide record.",
-  "reason": "The frame uses the shared canvas viewer for text placement, editing and presentation.",
+  "summary": "Open and edit a presentation.",
+  "reason": "The presentation uses a thumbnail rail, slide layouts and presenter notes.",
   "example": {},
   "props": {
     "type": "object",
@@ -31,7 +31,6 @@
   "inputs": [
     "body",
     "title",
-    "x",
-    "y"
+    "deck"
   ]
 }

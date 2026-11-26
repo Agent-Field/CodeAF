@@ -90,6 +90,91 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		var beforeInstall struct{ Apps []store.Summary }
 		wire.must("apps.list", struct{}{}, &beforeInstall)
 
+		kit := home.Join("kit", "apps")
+		if err := os.MkdirAll(kit, 0700); err != nil {
+			t.Fatal(err)
+		}
+		catalogPath := filepath.Join(kit, "crm.codeaf-app")
+		putPackage := func(from string) {
+			t.Helper()
+			raw, err := os.ReadFile(from)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(catalogPath, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		putPackage(v1)
+		if err := os.WriteFile(catalogPath+".txt", []byte("Track deals and contacts\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var browse struct {
+			Packages []struct {
+				apppackage.Source
+				Path         string
+				Builtin      string
+				Job          string
+				InstalledApp string `json:"installed_app"`
+			}
+		}
+		wire.must("apps.browse", map[string]string{}, &browse)
+		found := false
+		for _, p := range browse.Packages {
+			if p.Path == catalogPath && p.Job == "Track deals and contacts" && p.Version == "1.0.0" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("CRM missing from Browse: %+v", browse)
+		}
+		for _, p := range browse.Packages {
+			if p.Publisher == "codeaf examples" && p.Name == "Ad studio" {
+				t.Fatal("held Ad studio was listed in Browse")
+			}
+		}
+		wire.mustFail("apps.preview_package", map[string]string{"builtin": "examples/ad-campaign-studio.codeaf-app"}, appwire.CodeBadParams)
+
+		// Browse and older Kit clients can select the same signed template.
+		var editor apppackage.Source
+		var builtin string
+		for _, p := range browse.Packages {
+			if p.Builtin != "" && p.Publisher == apppackage.BuiltinPublisher {
+				editor, builtin = p.Source, p.Builtin
+				break
+			}
+		}
+		if builtin == "" {
+			t.Fatal("Browse did not list the signed first-party templates")
+		}
+		var template builder.Preview
+		wire.must("apps.preview_package", map[string]string{"package": editor.ID, "expected_hash": editor.Hash}, &template)
+		if !template.Sample || template.Scope == "" {
+			t.Fatalf("signed template preview: %+v", template)
+		}
+		wire.must("apps.close_package_preview", map[string]string{"draft": template.Scope}, &struct{}{})
+		wire.mustFail("apps.preview_package", map[string]string{"package": editor.ID, "builtin": builtin}, appwire.CodeBadParams)
+		wire.mustFail("apps.preview_package", map[string]string{"package": editor.ID, "expected_hash": "sha256:old"}, appwire.CodeConflict)
+
+		var sample builder.Preview
+		wire.must("apps.preview_package", map[string]string{"path": catalogPath}, &sample)
+		if !sample.Sample || sample.Scope == "" || len(sample.Screens) != 1 || sample.Screens[0] != "main" {
+			t.Fatalf("browse preview was not an isolated sample screen: %+v", sample)
+		}
+		wire.must("apps.close_package_preview", map[string]string{"draft": sample.Scope}, &struct{}{})
+		wire.mustFail("apps.preview", map[string]string{"draft": sample.Scope}, appwire.CodeNotFound)
+
+		var start struct{ Draft string }
+		wire.must("apps.start_package", map[string]string{"path": catalogPath}, &start)
+		var seeded builder.State
+		wire.must("apps.build_state", map[string]string{"draft": start.Draft}, &seeded)
+		if seeded.State != builder.Ready || seeded.Proposal != nil || len(seeded.Screens) != 1 || seeded.Screens[0] != "main" {
+			t.Fatalf("the package did not open as an editable preview: %+v", seeded)
+		}
+		wire.must("apps.discard", map[string]string{"draft": start.Draft}, &struct{}{})
+
+		wire.mustFail("apps.install", map[string]string{"path": catalogPath, "expected_hash": "sha256:old"}, appwire.CodeConflict)
+
 		var install builder.Proposal
 		wire.must("apps.install", map[string]string{"path": v1}, &install)
 		if install.Source != "package_install" || install.Checkpoint == "" || install.Package.Bindings["contact"].Type != "people" ||
@@ -107,6 +192,25 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		var applied struct{ Meta store.Meta }
 		wire.must("apps.apply", map[string]string{"draft": install.Draft}, &applied)
 		app := applied.Meta.ID
+		wire.must("apps.browse", map[string]string{}, &browse)
+		found = false
+		for _, p := range browse.Packages {
+			if p.Path == catalogPath && p.InstalledApp == app {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Browse did not offer the installed copy: %+v", browse)
+		}
+		wire.must("apps.browse", map[string]string{"app": app}, &browse)
+		if len(browse.Packages) != 0 {
+			t.Fatalf("accepted release was offered again: %+v", browse)
+		}
+		putPackage(v2)
+		wire.must("apps.browse", map[string]string{"app": app}, &browse)
+		if len(browse.Packages) != 1 || browse.Packages[0].Version != "2.0.0" {
+			t.Fatalf("newer release missing: %+v", browse)
+		}
 		if source := applied.Meta.Lineage.Source; source.Version != "1.0.0" || source.Hash != install.Package.Manifest.Hash {
 			t.Fatalf("installed lineage: %+v", source)
 		}
@@ -117,6 +221,13 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 			t.Fatalf("installed CRM did not reuse the existing person: %+v", records)
 		}
 		wire.mustFail("data.create", appwire.DataCreateParams{DataScope: p.DataScope, Type: p.Type, Set: map[string]any{"name": "Extra"}}, appwire.CodeNotAllowed)
+
+		var forkCard builder.Proposal
+		wire.must("apps.fork", map[string]string{"path": catalogPath}, &forkCard)
+		if forkCard.Source != "package_fork" || forkCard.Checkpoint == "" || forkCard.Package.Bindings["contact"].Type != "people" {
+			t.Fatalf("catalog fork did not stage a checked copy: %+v", forkCard)
+		}
+		wire.must("apps.discard", map[string]string{"draft": forkCard.Draft}, &struct{}{})
 
 		local := applied.Meta
 		def, err := defs.Get(app)

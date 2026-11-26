@@ -258,6 +258,24 @@ access. Check renders the screen in Dark, Black and Light at 800 and 1120 px
 when the desktop is connected. The frame reports when it has drawn. If
 its deadline passes, Check names the part in a layout finding.
 
+A native editor part takes one element and one record binding. Use
+`<document field="body" />` for a Markdown document, or the `grid`, `board`
+or `slide` element with a visible longtext field. Map its optional `edit`
+intent to the screen's record Action. These elements use fixed Desk editors.
+Their declarations do not load package-supplied code into Desk.
+
+A Menu can use Button children for choices with different Actions. Give
+each Button an ID, a label and one or more `on.click` Actions. Leave its
+`items` list empty when using children. A Menu with an `items` list
+continues to emit `on.pick` with the selected ID.
+
+Put a Sheet with `props.placement: "side"` beside an editor or other record
+surface in a Row. An `open` Action targeting its ID opens a side panel and
+leaves the editor available. Ordinary Sheets open over the screen.
+
+Set `agent.dock` to `"closed"` in app.json to keep the agent panel folded
+when the app opens. The agent button in the header opens it.
+
 `codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
 into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
 session uses `codeaf app use-kit-part` with the part's ID and version, then
@@ -331,6 +349,34 @@ For a conflict, choose `local` or `upstream` in
 Give a choice for each conflict. Check runs on the result and Apply is still
 required. A clean update also waits for Apply. The card can be reopened after
 an engine restart with `codeaf app build_state '{"draft":"<draft>"}'`.
+
+## Browse the Kit, use an app package, or start from a template
+
+Open **Kit** above Canvases. Search apps by name, job, publisher or source,
+or choose a role in Browse. **Preview** opens
+a full app screen on sample data. **Use this app** opens the same Install
+card as **Use** on the tile. **Use** checks the
+package and opens an Install card. The card names the screens, new types,
+existing types it uses, and requested access. Choose **Install** to publish.
+**Start from** opens the new app builder with the package already loaded.
+You can ask for changes and preview them before keeping the app. **Fork**
+opens a card for a separate copy and records where it came from.
+
+In a saved app's **App** menu, **Pack to Kit** puts the current definition
+in Browse. A connected desktop draws its sample screen in the current theme.
+On the engine machine, shared package files use the `.codeaf-app` suffix
+and go in `<codeaf home>/kit/apps/`. Browse reads that folder on open.
+The command-line equivalent is `codeaf app browse`. Run
+`codeaf app start-package '{"path":"/absolute/crm.codeaf-app"}'` to seed a draft.
+An adjacent `.codeaf-app.txt` can supply the job, and `.codeaf-app.json` can set
+the job, role, and before and after lines. Its screen preference breaks
+ties when Browse picks the most populated rendered screen. Bundled examples
+require acceptance for their exact release and at least 30 sample records.
+
+For a package you installed, **App** names the publisher and accepted package
+version. **Check for update** reads the Kit for a newer release. Choose a
+value for each competing edit, then **Check choices**. **Apply** publishes
+the update. The app keeps its existing version until you Apply.
 
 ## Work a queue beside its record or shape the app
 

@@ -3,7 +3,11 @@
   "name": "Canvas",
   "version": 1,
   "kit": 2,
-  "agent": {"name": "Canvas agent", "file": "agent.md"},
+  "agent": {
+    "name": "Canvas agent",
+    "file": "agent.md",
+    "dock": "closed"
+  },
   "records": {
     "canvas_board": {
       "label": "Board",
@@ -25,6 +29,11 @@
         "y": {
           "type": "number",
           "default": 120
+        },
+        "objects": {
+          "type": "longtext",
+          "label": "Objects",
+          "default": ""
         }
       }
     }
@@ -98,6 +107,19 @@
       "params": {
         "source": "$record.id"
       }
+    },
+    {
+      "id": "delete",
+      "label": "Delete\u2026",
+      "for": "canvas_board",
+      "do": [
+        {
+          "records.delete": {
+            "type": "canvas_board",
+            "id": "$record.id"
+          }
+        }
+      ]
     }
   ],
   "outputs": {

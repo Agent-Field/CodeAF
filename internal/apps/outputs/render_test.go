@@ -1,7 +1,10 @@
 package outputs
 
 import (
+	"archive/zip"
 	"bytes"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,5 +77,40 @@ func TestTextOutputRendersTheCurrentDocument(t *testing.T) {
 		[]map[string]any{{"title": "Review", "body": "Ready to share."}})
 	if err != nil || string(content) != "Review\n\nReady to share." {
 		t.Fatalf("text output = %q, %v", content, err)
+	}
+}
+
+func TestPresentationExportKeepsSlideBoundaries(t *testing.T) {
+	var template schema.OutputTemplate
+	if err := json.Unmarshal([]byte(`{"label":"Pilot","format":"pptx","record":"deck","body":"{{title}}","slides":"deck"}`), &template); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Render(template, []map[string]any{{"title": "Pilot", "deck": `[{"title":"Listening","body":"Interview eight people"},{"title":"Delivery","body":"Ship the pilot","notes":"Internal notes"}]`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(got), int64(len(got)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slides []string
+	for _, file := range archive.File {
+		if !strings.HasPrefix(file.Name, "ppt/slides/slide") {
+			continue
+		}
+		r, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(r)
+		_ = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		slides = append(slides, string(content))
+	}
+	if len(slides) != 2 || !strings.Contains(slides[0], "Listening") ||
+		!strings.Contains(slides[1], "Delivery") || strings.Contains(slides[1], "Internal notes") {
+		t.Fatalf("expected two slides in order without notes; got %d", len(slides))
 	}
 }

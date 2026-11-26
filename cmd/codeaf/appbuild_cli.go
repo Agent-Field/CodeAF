@@ -100,10 +100,11 @@ func runAppCommand(args []string) error {
 		fmt.Fprintln(os.Stdout, "codeaf app residency <show|preview|apply> APP TYPE [MODE]")
 		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app <data-query|data-aggregate|data-types> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app worksheet-window [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app connect google <gmail|calendar|drive> [--write] [--no-browser]")
 		fmt.Fprintln(os.Stdout, "codeaf app model-policy FILE.json")
 		fmt.Fprintln(os.Stdout, "codeaf app pack <app> [file] | install <file> | fork <app> | update <app> <file> | lineage <app>")
-		fmt.Fprintln(os.Stdout, "codeaf app <apply|resolve-package> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <browse|start-package|apply|resolve-package> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app mcp --app <app> --agent <agent>")
 		return nil
 	case verb == "kit" && len(args) == 1:
