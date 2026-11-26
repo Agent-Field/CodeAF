@@ -75,6 +75,8 @@ type ChangeEvent struct {
 }
 
 type Config struct {
+	// OwnerName supplies the name only when a run template binds owner.name.
+	OwnerName     string
 	ResolveParams func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
 	RecordInput   func(app string, change Change) (Change, error)
 	ReadRecords   func(app string, recordType string) ([]any, error)

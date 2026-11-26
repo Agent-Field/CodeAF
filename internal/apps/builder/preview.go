@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -135,24 +136,48 @@ func (s *Jobs) Screen(draft, screen string) (json.RawMessage, error) {
 	if !definitionPath.MatchString(path) {
 		return nil, store.ErrBadInput
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	scope, ok := s.scopes[draft]
-	if !ok {
-		j, err := s.load(draft)
-		if err != nil {
-			return nil, err
-		}
-		scope.files = j.Working.Files
-		if j.WritingFiles != nil {
-			scope.files = j.WritingFiles
-		}
+	files, err := s.previewFiles(draft)
+	if err != nil {
+		return nil, err
 	}
-	raw := json.RawMessage(scope.files[path])
+	raw := json.RawMessage(files[path])
 	if !json.Valid(raw) {
 		return nil, store.ErrNotFound
 	}
 	return raw, nil
+}
+
+// ViewScreen ties a draft query to the app and screen that declared it.
+func (s *Jobs) ViewScreen(app, draft, screen string) ([]byte, error) {
+	files, err := s.previewFiles(draft)
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil || manifest.ID != app {
+		return nil, store.ErrNotFound
+	}
+	raw := []byte(files["screens/"+screen+".json"])
+	if !json.Valid(raw) {
+		return nil, store.ErrNotFound
+	}
+	return raw, nil
+}
+
+func (s *Jobs) previewFiles(draft string) (map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if scope, ok := s.scopes[draft]; ok {
+		return maps.Clone(scope.files), nil
+	}
+	j, err := s.load(draft)
+	if err != nil {
+		return nil, err
+	}
+	if j.WritingFiles != nil {
+		return maps.Clone(j.WritingFiles), nil
+	}
+	return maps.Clone(j.Working.Files), nil
 }
 
 func (s *Jobs) removeScope(id string) {

@@ -94,13 +94,13 @@ func appAssistantActions(app schema.App, def store.Definition) ([]appAssistantAc
 	return schema.ActionRegistry(app, flows), nil
 }
 
-func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, request appwire.AppViewQuery) (json.RawMessage, error) {
+func declaredViewIR(view schema.QueryIR, arguments map[string]json.RawMessage) (data.QueryIR, error) {
 	ir := data.QueryIR{Type: view.Type, Group: view.Group, Select: view.Select}
 	args := map[string]any{}
-	for key, raw := range request.Args {
+	for key, raw := range arguments {
 		var value any
 		if json.Unmarshal(raw, &value) != nil || !appViewArgument(view.Args[key], value) {
-			return nil, appwire.Errorf(appwire.CodeBadParams, "Invalid argument %q.", key)
+			return data.QueryIR{}, appwire.Errorf(appwire.CodeBadParams, "Invalid argument %q.", key)
 		}
 		args[key] = value
 	}
@@ -110,20 +110,43 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 			if key, ref := strings.CutPrefix(ref, "$args."); ref {
 				value, ok = args[key]
 				if !ok {
-					return nil, appwire.Errorf(appwire.CodeBadParams, "Missing argument %q.", key)
+					return data.QueryIR{}, appwire.Errorf(appwire.CodeBadParams, "Missing argument %q.", key)
 				}
 			}
 		}
 		op := filter.Op
-		neg := op == "!="
+		neg := op == "!=" || op == "ne"
 		switch op {
-		case "=", "==", "!=":
+		case "=", "==", "!=", "eq", "ne":
 			op = ":"
+		case "lt":
+			op = "<"
+		case "lte":
+			op = "<="
+		case "gt":
+			op = ">"
+		case "gte":
+			op = ">="
 		}
-		ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op, Value: fmt.Sprint(value), Neg: neg, Literal: true})
+		if op == "has" {
+			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op})
+		} else {
+			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op, Value: fmt.Sprint(value), Neg: neg, Literal: true})
+		}
 	}
 	for _, agg := range view.Aggregate {
 		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: agg.Op, Field: agg.Field, As: agg.As})
+	}
+	if view.Window != nil && len(view.Window.OrderBy) == 1 {
+		ir.Sort = view.Window.OrderBy[0]
+	}
+	return ir, nil
+}
+
+func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, request appwire.AppViewQuery) (json.RawMessage, error) {
+	ir, err := declaredViewIR(view, request.Args)
+	if err != nil {
+		return nil, err
 	}
 	s, err := b.dataStore("")
 	if err != nil {

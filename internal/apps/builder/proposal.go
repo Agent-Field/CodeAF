@@ -25,20 +25,39 @@ func (s *Jobs) checkedProposal(j *job, intent proposalIntent) *Proposal {
 	}
 	checkpoint := j.Checkpoints[len(j.Checkpoints)-1]
 	card.Checkpoint = checkpoint.ID
+	display := DisplayChange{Part: displayName(j.Name, "App"), Before: "Current app", After: "Updated app"}
+	screen := card.Screen
+	var before map[string]string
+	if err == nil {
+		before = live.Files()
+	}
 	if target := intent.Target; target != nil {
 		card.Source = "marked"
-		path := "screens/" + target.Screen + ".json"
-		var before string
+		screen = target.Screen
 		if snap, ok := j.Saved[target.Checkpoint]; ok {
-			before = snap.Files[path]
-		} else if err == nil {
-			before = live.Files()[path]
+			before = snap.Files
 		}
-		name, previous := describeMarkedPart(before, target)
-		_, next := describeMarkedPart(j.Working.Files[path], target)
-		card.SummaryLines = []string{name, "Before: " + previous, "After: " + next}
 	}
-	card.SummaryLines = append(card.SummaryLines, checkpoint.Summary)
+	if screen != "" {
+		path := "screens/" + screen + ".json"
+		display = screenChange(before, j.Working.Files, path, intent.Target)
+		if target := intent.Target; target != nil && display.After == "Updated layout" {
+			name, previous := describeMarkedPart(before[path], target)
+			_, next := describeMarkedPart(j.Working.Files[path], target)
+			display.Part = displayName(name, display.Part)
+			if previous != next {
+				display.Before = displayName(previous, display.Before)
+				display.After = displayName(next, display.After)
+			}
+		}
+	}
+	if screen == "" || before["screens/"+screen+".json"] == j.Working.Files["screens/"+screen+".json"] {
+		if field, ok := recordFieldChange(before, j.Working.Files); ok {
+			display = field
+		}
+	}
+	card.Display = &display
+	card.SummaryLines = []string{display.Part, "Before: " + display.Before, "After: " + display.After}
 	return card
 }
 

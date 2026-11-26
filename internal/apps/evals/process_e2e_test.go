@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 type appProcess struct {
@@ -140,7 +141,20 @@ func (p *appProcess) cli(ctx context.Context, verb string, params any) (json.Raw
 	cmd.Env, cmd.Dir, cmd.Stdin = p.env, p.home, bytes.NewReader(args)
 	out, err := cmd.Output()
 	if err != nil {
-		// Engine logs may include provider details. Report only the exit status.
+		// The app command prints its scrubbed builder problem on the final
+		// error line. Never dump process logs or its environment.
+		var exit *exec.ExitError
+		if verb == "plan" && errors.As(err, &exit) {
+			lines := strings.Split(strings.TrimSpace(string(exit.Stderr)), "\n")
+			if detail, ok := strings.CutPrefix(lines[len(lines)-1], "error: "); ok {
+				for _, env := range p.env {
+					if key, ok := strings.CutPrefix(env, "OPENROUTER_API_KEY="); ok && key != "" {
+						detail = strings.ReplaceAll(detail, key, "[redacted]")
+					}
+				}
+				return nil, fmt.Errorf("codeaf app plan: %s", trace.Scrub([]byte(detail)))
+			}
+		}
 		return nil, fmt.Errorf("codeaf app %s: %w", verb, err)
 	}
 	if !json.Valid(out) {
@@ -232,10 +246,18 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 		}
 	}
 	params := map[string]string{"draft": plan.Draft}
+	planned, _ := readReply[struct{ Progress []BuildPass }](p.cli(ctx, "build_state", params))
+	var planning []BuildPass
+	for _, pass := range planned.Progress {
+		if pass.Stage == "planning" && len(pass.Calls) != 0 {
+			planning = append(planning, pass)
+		}
+	}
 	if _, err := p.cli(ctx, "build", params); err != nil {
 		return BuildState{}, err
 	}
 	state, err := p.waitCheck(ctx, params)
+	state.Passes = append(planning, slices.DeleteFunc(state.Passes, func(pass BuildPass) bool { return pass.Stage == "planning" })...)
 	if err != nil {
 		return state, err
 	}
@@ -259,7 +281,7 @@ func (p *appProcess) waitCheck(ctx context.Context, params any) (BuildState, err
 			State    string `json:"state"`
 			Problem  string `json:"problem"`
 			Progress []struct {
-				Round  int   `json:"round"`
+				BuildPass
 				OK     *bool `json:"ok"`
 				Report struct {
 					Problems []struct {
@@ -272,7 +294,11 @@ func (p *appProcess) waitCheck(ctx context.Context, params any) (BuildState, err
 		if err != nil {
 			return result, err
 		}
+		result.Passes = result.Passes[:0]
 		for _, event := range state.Progress {
+			if len(event.Calls) != 0 {
+				result.Passes = append(result.Passes, event.BuildPass)
+			}
 			result.Rounds = max(result.Rounds, event.Round)
 			if event.OK != nil {
 				result.Checked = *event.OK

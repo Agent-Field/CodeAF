@@ -124,6 +124,19 @@ func TestCheckRejectsACreateButtonMissingRequiredInput(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsAnUnboundDraftPlaceholder(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const file = "runs/follow-up.yaml"
+	def.Files[file] = bytes.Replace(def.Files[file], []byte("Draft a short, plain follow-up for {{deal.name}} from the thread."), []byte("Dear [Name], thanks for your time. [Your name]"), 1)
+	report := check.Definition(def, nil)
+	if !slices.Contains(report.Codes(), "unbound_placeholder") {
+		t.Fatalf("Check accepted a draft placeholder: %v", report)
+	}
+}
+
 func TestCheckRequiresTheAssistantActionsItClaims(t *testing.T) {
 	def, err := schema.Load("../schema/testdata/crm")
 	if err != nil {
