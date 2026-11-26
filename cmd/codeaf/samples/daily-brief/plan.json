@@ -1,0 +1,8 @@
+{
+  "ask": "Show my recent Gmail messages and my Google Calendar meetings.",
+  "data": [
+    {"id": "message", "line": "Recent Gmail messages", "create": true},
+    {"id": "meeting", "line": "Upcoming Calendar meetings", "create": true}
+  ],
+  "screens": [{"id": "brief", "line": "Messages and meetings"}]
+}

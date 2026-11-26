@@ -89,6 +89,11 @@ func (s *Store) PublishApp(p AppPublication, previousVersion int) error {
 			deleted = excluded.deleted, metadata = excluded.metadata`, p.App, p.Version, p.Archived, p.Deleted, string(p.Metadata)); err != nil {
 			return err
 		}
+		if p.Archived {
+			if _, err := w.tx.Exec("DELETE FROM source_indexes WHERE app = ?", p.App); err != nil {
+				return err
+			}
+		}
 		return w.invalidate(EventPolicyChanged, "", "")
 	})
 }

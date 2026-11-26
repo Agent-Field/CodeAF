@@ -1,0 +1,29 @@
+{
+  "id": "daily-brief",
+  "name": "Daily brief",
+  "icon": "list",
+  "version": 1,
+  "kit": 0,
+  "agent": {"name": "Brief agent", "file": "agent.md"},
+  "records": {
+    "message": {
+      "title": "subject",
+      "fields": {
+        "subject": {"type": "text"},
+        "sender": {"type": "text"},
+        "snippet": {"type": "text"},
+        "received": {"type": "datetime"}
+      }
+    },
+    "meeting": {
+      "title": "title",
+      "fields": {
+        "title": {"type": "text"},
+        "starts": {"type": "datetime"},
+        "ends": {"type": "datetime"},
+        "attendees": {"type": "text"}
+      }
+    }
+  },
+  "capabilities": {"records": {"message": "r", "meeting": "r"}}
+}
