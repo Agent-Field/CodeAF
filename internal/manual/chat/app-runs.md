@@ -2,7 +2,7 @@
 
 ## Start an app run and see its steps
 
-A desktop app can start a run from a screen or command using its saved run definition. Its progress updates as each step runs. A run can create or update records the app has permission to write, ask the app agent for an answer, call an allowed connection, wait for a duration, or repeat steps up to a limit. Shell commands and repository workspaces are unavailable in app runs.
+A desktop app can start a run from a screen or command using its saved run definition. Its progress updates as each step runs. A run can create or update records the app has permission to write, render a declared output, ask the app agent for an answer, call an allowed connection, wait for a duration, or repeat steps up to a limit. Shell commands and repository workspaces are unavailable in app runs.
 
 ## What happens to scheduled runs when codeaf is closed?
 
