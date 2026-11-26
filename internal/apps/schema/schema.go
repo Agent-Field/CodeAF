@@ -78,10 +78,11 @@ func SchemaJSON(name string) ([]byte, error) {
 
 // Kit is the parsed kit catalog.
 type Kit struct {
-	Kit        int                 `json:"kit"`
-	Parts      []Part              `json:"parts"`
-	Registries Registries          `json:"registries,omitempty"`
-	Hooks      map[string][]string `json:"hooks,omitempty"`
+	CommonTypes *CommonTypeLibrary  `json:"common_types,omitempty"`
+	Kit         int                 `json:"kit"`
+	Parts       []Part              `json:"parts"`
+	Registries  Registries          `json:"registries,omitempty"`
+	Hooks       map[string][]string `json:"hooks,omitempty"`
 }
 
 // Part is one kit part: its props schema, whether it takes child nodes, whether a

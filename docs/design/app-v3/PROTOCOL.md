@@ -3163,7 +3163,9 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
 | `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
-| `apps.kit` | `{}` | The embedded kit catalog object, including its version and parts. |
+| `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
+| `apps.common_types` | `{}` | `{version,types}`. Each portable key maps to the type's label, terms, and typed fields with their roles and reference targets. |
+| `apps.bind_common_type` | `{common,type}` | `{common,type,type_id}`. The existing type is selected by name or ID. Binding keeps the existing type and record IDs. |
 
 ### App building and Desk Look
 

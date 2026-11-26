@@ -168,7 +168,7 @@ func (b *appBackend) DataTypes(p appwire.DataScope) (*appwire.DataTypesResult, e
 	out := &appwire.DataTypesResult{Types: []appwire.DataType{}}
 	for _, t := range types {
 		wt := appwire.DataType{
-			ID: t.ID, Name: t.Name, Title: t.Title, Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
+			ID: t.ID, Name: t.Name, Common: string(t.Common), Title: t.Title, Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
 			UsedBy: nonNilStrings(t.UsedBy), Count: t.Count, Hidden: t.Hidden, Ledger: t.Ledger, Fields: []appwire.DataField{},
 		}
 		if lc := t.Lifecycle; lc != nil {
