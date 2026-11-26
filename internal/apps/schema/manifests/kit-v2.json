@@ -4489,7 +4489,7 @@
       "render": {
         "id": "render",
         "version": 2,
-        "doc": "Render a declared output. Set inbox for a query digest. A record template needs a record ID.",
+        "doc": "Render a declared output. Set inbox for a query digest. A record template needs a record ID. Set clipboard to copy a text or CSV result in Desk.",
         "example": {
           "render": {
             "output": "weekly-pipeline",
@@ -4513,6 +4513,9 @@
                   "minLength": 1
                 },
                 "inbox": {
+                  "type": "boolean"
+                },
+                "clipboard": {
                   "type": "boolean"
                 }
               },

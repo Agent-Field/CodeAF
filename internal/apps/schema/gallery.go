@@ -371,6 +371,9 @@ func (c *checker) checkReference(ctx actionCtx, at, check, value string) {
 			c.add(ctx.file, at, CodeRunUnknown, "There is no run named %q.", value)
 		}
 	case "screen", "open":
+		if check == "open" && value == "desk:canvases" {
+			return
+		}
 		if !c.screens[value] && !(check == "open" && (ctx.sheets[value] || c.knownType(value) && c.canRead(value))) {
 			c.add(ctx.file, at, CodeOpenUnknown, "There is no accessible screen, sheet or record type named %q.", value)
 		}
