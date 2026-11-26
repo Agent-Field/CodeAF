@@ -8,9 +8,12 @@ types, it refers to the same people and companies by ID. Edits you make with
 write access are visible in both apps. Each app still needs its own read or
 write access to the records.
 
-During planning, choose the offer to use your existing records. Check uses
-example rows in a separate draft. Applying the app connects it to the shared
-types and records. Records with similar names are never matched automatically.
+With Desk connected, choose the offer to use your existing records during
+planning. For a headless build, the plan lists matching reuse as a proposal,
+such as “Uses your existing Contacts from CRM,” and Build continues to Check.
+Check uses example rows in a separate draft. Apply confirms reuse and connects
+the app to the shared types and records. Records with similar names are never
+matched automatically.
 
 ## List the common types or bind an existing type
 
