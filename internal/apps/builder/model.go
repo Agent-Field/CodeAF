@@ -38,11 +38,9 @@ for types and settings, process-2.json for lifecycle, and run-2.json or
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
 writes the outline and starts the manifest. Each plan line has id and line.
 Use data for type ids, screens for screen ids, and automation for each
-planned run id. Set "create":true on each data line people should add records
-to. Put each requested manual action in "actions":[{"id":"follow-up","line":"Follow up"}],
-using its command or run id. Reuse those ids in the compiled definitions.
-Keep these declarations when revising the plan. Types written only by
-automation and automatic runs do not need their own controls.
+planned run id. In data, use "create":true for types people add. Put manual
+actions in "actions" by command or run id. Keep these declarations when
+revising the plan. Reuse the plan ids in the compiled definitions.
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
@@ -79,19 +77,7 @@ Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
-Put the controls on the screen where the person works. Use a Button with
-on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
-or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
-button, set the list id and selection mode and show the button when a row
-is selected. A local save requiring approval puts gate: {approval: proof}
-on the records.create or records.update step itself so the Inbox shows the
-actual proposed write. Set a run title and step titles in plain language.
-Use a Button labelled "Add <record>" with on-click to open a Sheet
-containing a RecordForm, or use a Button with an asked records.create
-action. Supply every required field with no default through the form, or
-through records.create.set and ask, for example name: $input.name with
-ask: {name: text}. A bare collection recipe does not add a create button. A Check
-finding for a missing control means implement the control in this round.
+Use the screen_controls guide from context for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
@@ -181,6 +167,20 @@ field definitions when editing the type with add-type. For any new or changed
 field, suggest a class of public, internal, confidential, restricted, or pii
 according to its intended data and any classification the person asked for.`
 
+const screenControlsGuide = `Put the controls on the screen where the person works. Use a Button with
+on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
+or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
+button, set the list id and selection mode and show the button when a row
+is selected. A local save requiring approval puts gate: {approval: proof}
+on the records.create or records.update step itself so the Inbox shows the
+actual proposed write. Set a run title and step titles in plain language.
+Use a Button labelled "Add <record>" with on-click to open a Sheet
+containing a RecordForm, or use a Button with an asked records.create
+action. Supply every required field with no default through the form, or
+through records.create.set and ask, for example name: $input.name with
+ask: {name: text}. A bare collection recipe does not add a create button. A Check
+finding for a missing control means implement the control in this round.`
+
 const contextFilePage = 6 << 10
 
 var schemaName = regexp.MustCompile(`^[a-z0-9-]+\.json$`)
@@ -256,6 +256,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 	}
 	raw, err := json.Marshal(struct {
 		RecordPolicy   string            `json:"record_policy"`
+		ScreenControls string            `json:"screen_controls"`
 		Stage          string            `json:"stage"`
 		Manifest       json.RawMessage   `json:"manifest,omitempty"`
 		Plan           json.RawMessage   `json:"plan,omitempty"`
@@ -266,7 +267,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		Using          []string          `json:"using,omitempty"`
 		Report         *modelReport      `json:"report,omitempty"`
 	}{
-		recordPolicyGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
 		unchanged, typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err
