@@ -37,29 +37,30 @@ var ErrAIUnavailable = errors.New("this app AI capability is unavailable")
 var ErrBudget = errors.New("per-run budget reached")
 
 type Run struct {
-	App          string    `json:"app"`
-	DefinitionID string    `json:"run"`
-	ID           string    `json:"id"`
-	State        string    `json:"state"`
-	Step         string    `json:"step"`
-	CaughtUp     bool      `json:"caught_up,omitempty"`
-	Error        string    `json:"error,omitempty"`
-	Cost         float64   `json:"cost,omitempty"`
-	Proposal     *Proposal `json:"proposal,omitempty"`
-	Subject      *Subject  `json:"subject,omitempty"`
-	Screen       string    `json:"screen,omitempty"`
-	CanSteer     bool      `json:"can_steer,omitempty"`
-	FirstStep    string    `json:"first_step,omitempty"`
-	Principal    string    `json:"principal,omitempty"`
-	Harness      string    `json:"harness,omitempty"`
-	AppVersion   int       `json:"app_version,omitempty"`
-	Title        string    `json:"title,omitempty"`
-	Queue        string    `json:"review_queue,omitempty"`
-	Approval     *Approval `json:"approval,omitempty"`
-	WakeAt       time.Time `json:"wake_at,omitzero"`
-	EndedAt      time.Time `json:"ended_at,omitzero"`
-	StartedAt    time.Time `json:"started_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	App          string          `json:"app"`
+	DefinitionID string          `json:"run"`
+	ID           string          `json:"id"`
+	State        string          `json:"state"`
+	Step         string          `json:"step"`
+	CaughtUp     bool            `json:"caught_up,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	Cost         float64         `json:"cost,omitempty"`
+	Proposal     *Proposal       `json:"proposal,omitempty"`
+	Subject      *Subject        `json:"subject,omitempty"`
+	Screen       string          `json:"screen,omitempty"`
+	CanSteer     bool            `json:"can_steer,omitempty"`
+	FirstStep    string          `json:"first_step,omitempty"`
+	Principal    string          `json:"principal,omitempty"`
+	Harness      string          `json:"harness,omitempty"`
+	AppVersion   int             `json:"app_version,omitempty"`
+	Title        string          `json:"title,omitempty"`
+	Queue        string          `json:"review_queue,omitempty"`
+	Effects      []EffectReceipt `json:"effects,omitempty"`
+	Approval     *Approval       `json:"approval,omitempty"`
+	WakeAt       time.Time       `json:"wake_at,omitzero"`
+	EndedAt      time.Time       `json:"ended_at,omitzero"`
+	StartedAt    time.Time       `json:"started_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 type ChangeEvent struct {

@@ -103,7 +103,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		fmt.Fprintln(os.Stderr, "app runs data:", err)
 	}
 	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }}
-	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager}
+	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager, Sources: b.appConnections()}
 	harnesses := b.appAIHarnesses(files)
 	ordinary := harnesses[runs.HarnessCodeaf].Run
 	agent := func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {

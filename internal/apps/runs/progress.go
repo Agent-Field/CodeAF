@@ -89,6 +89,10 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "" || step.AI != nil) {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
+			if connection, _, ok := schema.ParseSourceTool(step.Tool); ok {
+				c.Effects = append(c.Effects, EffectReceipt{Step: step.ID, Tool: step.Tool,
+					Key: c.Action.Key, Connection: connection, Outcome: "unknown"})
+			}
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
 		}
 		// A declared gate can hold its exact payload while a connection is
@@ -474,6 +478,12 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			call := a.Call
 			call.approved = a.Outbound && c.Approved == outboundGate(a.Name)
 			reply, err = e.cfg.Connector.Call(ctx, call)
+		}
+	}
+	if reply.Effect != nil {
+		c.Effects = append(c.Effects, *reply.Effect)
+		if err != nil {
+			return e.stop(c, Incomplete, err.Error())
 		}
 	}
 	if validCost(reply.Cost) {
