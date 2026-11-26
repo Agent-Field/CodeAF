@@ -14,7 +14,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
-	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -313,7 +312,7 @@ func briefText(text string, limit int) string {
 
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
-func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, error) {
+func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, preflight func(map[string]string) schema.Report, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, error) {
 	raw, err := json.Marshal(struct {
 		Request string  `json:"request"`
 		Target  *Target `json:"target,omitempty"`
@@ -391,8 +390,15 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			}
 			return compact.String(), nil
 		case "check":
-			report := check.Definition(definition(files), types)
-			out, err := json.Marshal(briefReport(&report))
+			report := preflight(files)
+			status := "definition_only"
+			if slices.Contains(report.Codes(), "choose_reuse") {
+				status = NeedsYou
+			}
+			out, err := json.Marshal(struct {
+				Status string `json:"status"`
+				*modelReport
+			}{status, briefReport(&report)})
 			return string(out), err
 		case "look":
 			if look == nil {
@@ -464,6 +470,7 @@ asked to edit them. Use markup when recipes cannot make the requested screen.
 Write samples, run check once and finish on success. The engine then tries the
 samples and Desk Look.`
 	}
+	prompt += "\nThe check command reports preliminary definition findings or a reuse question (needs_you). Only the engine's Check after this turn can confirm the result. Leave reuse decisions to the person and describe the changes you made."
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
 	}

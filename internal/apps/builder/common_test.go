@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,9 +17,18 @@ import (
 )
 
 func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
+	review := make(chan struct{}, 2)
 	options := builder.Options{
+		Changed: func(e builder.Event) {
+			if e.Line == "Plan ready to review." {
+				review <- struct{}{}
+			}
+		},
 		Home:    t.TempDir(),
 		CanLook: func() bool { return true },
+		Compiler: fixtureCompiler{schema.Definition{Files: map[string][]byte{
+			"screens/contacts.json": []byte(`{"screen":"contacts","title":"Contacts","body":{"id":"root","part":"Stack"}}`),
+		}}},
 		Catalog: func(string) (builder.Catalog, error) {
 			return builder.Catalog{
 				Types:    schema.TypeSet{"contact": {Owner: "crm", Common: "person"}},
@@ -28,21 +38,31 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 		},
 		Model: func() (builder.Completer, error) {
 			step := 0
-			var keep bool
+			var keep, writing bool
 			return script(func(_ context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
 				step++
 				switch step {
 				case 1:
 					return toolCalls(command("context", nil)), nil
 				case 2:
-					var state struct{ Using []string }
+					var state struct {
+						Using []string
+						Stage string
+					}
 					last := messages[len(messages)-1]
 					if last.Role == "tool" && len(last.Content) > 0 {
 						_ = json.Unmarshal([]byte(last.Content[0].Text), &state)
 					}
 					keep = slices.Contains(state.Using, "contact")
-					return toolCalls(command("plan", map[string]any{"name": "Support", "plan": map[string]any{"ask": "Track customers"}})), nil
+					writing = state.Stage == builder.Writing
+					if writing {
+						return toolCalls(command("markup", map[string]string{"screen": "contacts"})), nil
+					}
+					return toolCalls(command("plan", map[string]any{"name": "Support", "plan": json.RawMessage(`{"ask":"Track customers","data":[{"id":"customer","line":"Customer details"}],"screens":[{"id":"contacts","line":"Contact list"}]}`)})), nil
 				case 3:
+					if writing {
+						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I wrote the Contacts screen."}}}, nil
+					}
 					return toolCalls(command("add-type", map[string]any{
 						"name":       "customer",
 						"access":     "rw",
@@ -66,19 +86,34 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.Offers) != 2 || plan.Offers[0].Type != "contact" || plan.Offers[0].Count != 4 ||
-		plan.Offers[1].Type != "person" || plan.Offers[1].App != "" {
+		plan.Offers[1].Type != "person" || plan.Offers[1].App != "" || plan.Offers[1].Count != 0 {
 		t.Fatalf("wanted existing contact and library Person offers: %+v", plan.Offers)
 	}
-	_, err = jobs.Plan(ctx, builder.PlanRequest{Draft: plan.Draft, Request: "Use my existing Contacts."})
-	if err != nil {
+	<-review
+	if err := jobs.Say(plan.Draft, "Use my existing contact records (4, from CRM) instead of making a new type", nil); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-review:
+	case <-ctx.Done():
+		t.Fatal("the reuse choice did not finish replanning")
 	}
 	state, err := jobs.State(plan.Draft)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if state.State != builder.Planning || len(state.Screens) != 0 {
+		t.Fatalf("accepted plan must still be waiting for Write: state=%s screens=%v", state.State, state.Screens)
+	}
 	if !slices.Contains(state.Using, "customer") || !slices.Contains(state.Needs, "Uses your existing Contacts from CRM") || !slices.Contains(state.Needs, "Read and edit customer") {
 		t.Fatalf("expected the card to name the CRM reuse: %+v", state)
+	}
+	if err := jobs.Build(plan.Draft); err != nil {
+		t.Fatal(err)
+	}
+	state = waitState(t, jobs, plan.Draft, builder.Ready)
+	if !slices.Equal(state.Screens, []string{"contacts"}) || !slices.Contains(state.Using, "customer") {
+		t.Fatalf("built screens or binding missing: %+v", state)
 	}
 }
 
@@ -133,10 +168,22 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 							return toolCalls(command("markup", map[string]string{"screen": "contacts"})), nil
 						case 3:
 							return toolCalls(command("add-type", map[string]any{"name": "customer", "definition": map[string]any{"uses": !planning, "common": "person", "fields": map[string]any{}}})), nil
-						default:
+						case 4:
 							if !planning {
-								deskReady.Store(false)
+								return toolCalls(command("check", nil)), nil
 							}
+							fallthrough
+						default:
+							if desk && !planning {
+								last := messages[len(messages)-1]
+								if !strings.Contains(last.Content[0].Text, "choose_reuse") {
+									t.Error("the Builder's check did not report the pending reuse question")
+								}
+							}
+							if planning {
+								return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I outlined Contacts."}}}, nil
+							}
+							deskReady.Store(false)
 							return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Contacts are ready."}}}, nil
 						}
 					}), nil
@@ -159,7 +206,14 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 				t.Fatal(err)
 			}
 			if desk {
-				waitState(t, jobs, plan.Draft, builder.NeedsYou)
+				state := waitState(t, jobs, plan.Draft, builder.NeedsYou)
+				event := state.Progress[len(state.Progress)-1]
+				if event.OK != nil || event.Report == nil || !slices.Contains(event.Report.Codes(), "choose_reuse") {
+					t.Fatalf("expected a consent question before Check: %+v", event)
+				}
+				if slices.ContainsFunc(state.Transcript, func(message builder.Message) bool { return message.Text == "Contacts are ready." }) {
+					t.Fatal("the model's reply from before Check was shown while consent was pending")
+				}
 				return
 			}
 			state := waitState(t, jobs, plan.Draft, builder.Ready)

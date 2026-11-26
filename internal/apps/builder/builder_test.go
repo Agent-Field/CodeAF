@@ -242,6 +242,12 @@ func TestInterruptedJobResumesAfterEngineOpens(t *testing.T) {
 	start := make(chan struct{})
 	opts := scriptedApp(t, home)
 	reopened := opts
+	review := make(chan struct{}, 1)
+	reopened.Changed = func(e builder.Event) {
+		if e.Line == "Plan ready to review." {
+			review <- struct{}{}
+		}
+	}
 	opts.Model = func() (builder.Completer, error) {
 		return script(func(ctx context.Context, _ []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
 			close(start)
@@ -276,8 +282,16 @@ func TestInterruptedJobResumesAfterEngineOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	state := waitState(t, again, waiting[0].Draft, builder.Ready)
-	if len(state.Transcript) != 2 || len(state.Checkpoints) != 1 {
+	select {
+	case <-review:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reopened job never completed its plan")
+	}
+	state, err := again.State(waiting[0].Draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != builder.Planning || len(state.Screens) != 0 || len(state.Transcript) != 2 || len(state.Checkpoints) != 1 {
 		t.Fatalf("resuming should complete the same turn once: %+v", state)
 	}
 }

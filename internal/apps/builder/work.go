@@ -75,7 +75,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
 			if !headless {
-				report = j.checkReuse(catalog)
+				report = j.checkReuse(j.Working.Files, catalog)
 			}
 			if report.OK() {
 				if s.opts.Check != nil {
@@ -180,7 +180,14 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report,
-	}, types, s.author, func(files map[string]string) error {
+	}, types, s.author, func(files map[string]string) schema.Report {
+		if !headless {
+			if report := j.checkReuse(files, catalog); !report.OK() {
+				return report
+			}
+		}
+		return check.Definition(definition(files), types)
+	}, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
 		return s.claim(ctx, j.Draft, t.ID, target)
@@ -335,7 +342,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			j.State.State = NeedsYou
 			j.Problem = "Check found an issue. " + report.Problems[0].Message
 			if pendingReuse {
-				j.Problem = "Choose whether this app should use your existing records."
+				j.Problem = report.Problems[0].Message
+				event.OK = nil
 			}
 			if unavailable {
 				for _, issue := range report.Problems {
@@ -345,9 +353,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 					}
 				}
 			}
-			if t.Reply != "" {
-				j.Transcript = append(j.Transcript, Message{ID: t.ID + "-reply", Role: "assistant", Text: t.Reply})
-			}
+			// The engine's outcome owns this turn when the draft cannot be tried.
 			event.Stage, event.Line = NeedsYou, j.Problem
 			return s.finish(j, event)
 		}
@@ -370,7 +376,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		if err := j.checkpoint(reply); err != nil {
 			return err
 		}
-		j.State.State = Ready
+		j.State.State = Planning
 		return s.finish(j, Event{Stage: Planning, Line: "Plan ready to review."})
 	}
 	j.Queue[0].Reply = reply
@@ -494,14 +500,18 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(catalog Catalog) schema.Report {
-	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
+func (j *job) checkReuse(files map[string]string, catalog Catalog) schema.Report {
+	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
+			source := name
+			if offer, ok := catalog.Types.OfferCommonType(name, typ); ok && offer.Existing != "" {
+				source = offer.Existing
+			}
 			report.Problems = append(report.Problems, schema.Problem{
 				File: schema.AppFile, Path: "/records/" + name, Code: "choose_reuse",
-				Message: "The person needs to confirm sharing their " + name + " records.",
+				Message: "Use " + catalog.reuseText(source) + "?",
 			})
 		}
 	}
