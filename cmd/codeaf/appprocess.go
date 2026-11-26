@@ -161,7 +161,12 @@ func (b *appBackend) DataCommentList(p appwire.DataCommentListParams) (*appwire.
 		return nil, err
 	}
 	list, err := s.Comments(dataScope(p.DataScope), p.Type, p.Record, p.App, p.Node)
-	return items(list, err, (*data.Comment).Row)
+	thread, err := items(list, err, (*data.Comment).Row)
+	if err != nil {
+		return nil, err
+	}
+	thread.Viewer = s.Person()
+	return thread, nil
 }
 
 func (b *appBackend) DataActivity(p appwire.DataRecordParams) (*appwire.DataItemsResult, error) {

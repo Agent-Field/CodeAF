@@ -89,7 +89,21 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	}
 
 	lines := make([]string, 0, len(rows))
+	slideTitles := false
 	for _, row := range rows {
+		if raw, _ := row[t.Slides].(string); t.Slides != "" && raw != "" {
+			if len(raw) > remaining {
+				return nil, errors.New("presentation exceeds the export limit")
+			}
+			remaining -= len(raw)
+			slides, err := slideSections(raw)
+			if err != nil {
+				return nil, err
+			}
+			lines = append(lines, slides...)
+			slideTitles = true
+			continue
+		}
 		text, err := merge(t.Body, row)
 		if err != nil {
 			return nil, err
@@ -105,11 +119,36 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	case "docx":
 		err = writeDOCX(&buf, t.Label, lines)
 	case "pptx":
-		err = writePPTX(&buf, t.Label, lines)
+		err = writePPTX(&buf, t.Label, lines, slideTitles)
 	default:
 		err = fmt.Errorf("unknown output format %q", t.Format)
 	}
 	return checkedFile(&buf, err)
+}
+
+func slideSections(raw string) ([]string, error) {
+	var slides []struct {
+		Title, Body, Right string
+		Chart              []struct {
+			Label string
+			Value float64
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &slides); err != nil || len(slides) == 0 || len(slides) > 60 {
+		return nil, errors.New("choose a presentation with 1 to 60 readable slides")
+	}
+	sections := make([]string, 0, len(slides))
+	for _, slide := range slides {
+		parts := []string{strings.ReplaceAll(slide.Title, "\n", " "), slide.Body}
+		if slide.Right != "" {
+			parts = append(parts, slide.Right)
+		}
+		for _, point := range slide.Chart {
+			parts = append(parts, point.Label+": "+strconv.FormatFloat(point.Value, 'f', -1, 64))
+		}
+		sections = append(sections, strings.Join(parts, "\n"))
+	}
+	return sections, nil
 }
 
 // A worksheet uses tab-separated cells internally. Export requires the

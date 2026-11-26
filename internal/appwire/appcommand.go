@@ -18,7 +18,7 @@ func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, err
 		"reference", "parts", "kit_parts", "promote_part", "kit_steps", "promote_step", "common_types", "bind_common_type",
 		"match_candidates", "match_scan", "match_accept", "match_reject", "match_merge", "match_unmerge", "list", "get", "screen", "versions", "mark", "presence",
 		"render", "outputs", "output_file", "worksheet_window",
-		"pack", "install", "fork", "update", "lineage", "resolve_package", "apply", "keep":
+		"browse", "pack", "install", "start_package", "fork", "update", "lineage", "resolve_package", "apply", "keep":
 	case "add_type", "add_field", "configure", "recipe", "markup", "claim", "set_run", "set_agent", "set_sample", "set_custom_part", "set_custom_step", "use_kit_part", "use_kit_step":
 		return nil, Errorf(CodeForbidden, "Start an app build to run this command in its scoped session.")
 	default:

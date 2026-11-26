@@ -63,5 +63,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Worksheets",
+    "props": {
+      "items": [
+        {
+          "label": "Worksheets",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

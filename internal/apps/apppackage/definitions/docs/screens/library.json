@@ -63,5 +63,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Documents",
+    "props": {
+      "items": [
+        {
+          "label": "Documents",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

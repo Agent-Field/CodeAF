@@ -294,7 +294,6 @@ func shapesOf(sch *schema, used []string) shapeApp {
 // resolved. It stays in memory so normal checks never see a partial record.
 type seedRow struct {
 	typ   *Type
-	set   map[string]any
 	title string
 }
 
@@ -305,7 +304,8 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 	return s.write(func(w *writeTx) error {
 		w.seed = make(map[string]seedRow)
 		order := seedOrder(w.schema, rows)
-		ids := make(map[string][]string)
+		prepared := make(map[string][]map[string]any)
+		types := make(map[string]*Type)
 		for _, typ := range order {
 			if len(rows[typ]) == 0 {
 				continue
@@ -314,6 +314,7 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 			if err != nil {
 				return err
 			}
+			types[typ] = t
 			for _, set := range rows[typ] {
 				id, _ := set["id"].(string)
 				switch {
@@ -326,37 +327,48 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 					return errorf(CodeDuplicate, "more than one example record uses id %s", id)
 				}
 				set = copyMap(set)
-				delete(set, "id")
+				set["id"] = id
 				title, _ := set[t.titleField()].(string)
-				w.seed[id] = seedRow{typ: t, set: set, title: title}
-				ids[typ] = append(ids[typ], id)
+				w.seed[id] = seedRow{typ: t, title: title}
+				prepared[typ] = append(prepared[typ], set)
 			}
 		}
 		scope := Scope{Actor: "sample"}
 		for _, typ := range order {
-			if len(ids[typ]) == 0 {
-				continue
-			}
-			t := w.seed[ids[typ][0]].typ
-			if w.change != nil {
-				w.completedChanges = append(w.completedChanges, w.change)
-			}
-			if _, err := w.newBatch(scope, OpSeed, t); err != nil {
+			if err := w.seedRows(types[typ], scope, prepared[typ]); err != nil {
 				return err
-			}
-			for _, id := range ids[typ] {
-				row := w.seed[id]
-				if err := w.resolveTitles(t, row.set); err != nil {
-					return err
-				}
-				if _, err := w.createOneAs(t, scope, row.set, OpSeed, id); err != nil {
-					return err
-				}
-				delete(w.seed, id)
 			}
 		}
 		return nil
 	})
+}
+
+func (w *writeTx) seedRows(t *Type, scope Scope, rows []map[string]any) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if w.change != nil {
+		w.completedChanges = append(w.completedChanges, w.change)
+	}
+	if _, err := w.newBatch(scope, OpSeed, t); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		set := copyMap(row)
+		id, _ := set["id"].(string)
+		delete(set, "id")
+		if err := w.resolveTitles(t, set); err != nil {
+			return err
+		}
+		if id != "" && !validID(id) {
+			return errorf(CodeInvalid, "sample %s id %q is not a ULID", t.Name, id)
+		}
+		if _, err := w.createOneAs(t, scope, set, OpSeed, id); err != nil {
+			return err
+		}
+		delete(w.seed, id)
+	}
+	return nil
 }
 
 // seedOrder writes reference targets first where possible, so titles

@@ -15,9 +15,9 @@
           {
             "part": "Button",
             "id": "back",
-            "label": "Sheets",
+            "label": "Worksheets",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -28,48 +28,58 @@
             }
           },
           {
-            "part": "Button",
-            "id": "export-csv",
-            "label": "Export CSV",
+            "part": "Menu",
+            "id": "file",
+            "label": "File",
             "props": {
-              "kind": "secondary"
+              "items": []
             },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "csv",
-                    "record": "$params.id"
-                  }
+            "children": [
+              {
+                "part": "Button",
+                "id": "export-csv",
+                "label": "Export CSV",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "csv",
+                        "record": "$params.id"
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          },
-          {
-            "part": "Button",
-            "id": "share",
-            "label": "Copy CSV",
-            "props": {
-              "kind": "secondary"
-            },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "share",
-                    "record": "$params.id",
-                    "clipboard": true
-                  }
+              },
+              {
+                "part": "Button",
+                "id": "share",
+                "label": "Copy CSV",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "share",
+                        "record": "$params.id",
+                        "clipboard": true
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
+              }
+            ]
           },
           {
             "part": "Button",
             "id": "details-button",
             "label": "Details",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -82,55 +92,78 @@
         ]
       },
       {
-        "part": "custom/worksheet-body",
-        "id": "body",
-        "label": "Worksheet",
-        "bind": {
-          "record": "$params.id",
-          "type": "sheets_worksheet"
-        },
-        "on": {
-          "edit": [
-            {
-              "records.update": {
-                "type": "sheets_worksheet",
-                "id": "$record.id",
-                "set": {
-                  "body": "$input.value"
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "part": "Sheet",
-        "id": "details-sheet",
-        "label": "Details",
+        "part": "Row",
+        "id": "editor-workspace",
         "children": [
           {
-            "part": "RecordPage",
-            "id": "details",
-            "label": "Worksheet details",
+            "part": "custom/worksheet-body",
+            "id": "body",
+            "label": "Worksheet",
             "bind": {
               "record": "$params.id",
               "type": "sheets_worksheet"
             },
-            "props": {
-              "fields": [
-                "title"
-              ],
-              "history": true,
-              "actions": [
-                "rename"
+            "on": {
+              "edit": [
+                {
+                  "records.update": {
+                    "type": "sheets_worksheet",
+                    "id": "$record.id",
+                    "set": {
+                      "body": "$input.value",
+                      "column_formats": "$input.column_formats"
+                    }
+                  }
+                }
               ]
             }
+          },
+          {
+            "part": "Sheet",
+            "id": "details-sheet",
+            "label": "Details",
+            "children": [
+              {
+                "part": "RecordPage",
+                "id": "details",
+                "label": "Worksheet details",
+                "bind": {
+                  "record": "$params.id",
+                  "type": "sheets_worksheet"
+                },
+                "props": {
+                  "fields": [
+                    "title"
+                  ],
+                  "history": true,
+                  "actions": [
+                    "rename",
+                    "duplicate",
+                    "delete"
+                  ]
+                }
+              }
+            ],
+            "props": {
+              "title": "Details",
+              "placement": "side"
+            }
           }
-        ],
-        "props": {
-          "title": "Details"
-        }
+        ]
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Worksheets",
+    "props": {
+      "items": [
+        {
+          "label": "Worksheets",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

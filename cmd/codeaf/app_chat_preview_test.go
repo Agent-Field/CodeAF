@@ -33,7 +33,18 @@ func TestAppEntriesMarksLocalHistoryWhenRemoteViewDisappears(t *testing.T) {
 	if err != nil || !page.LocalFallback || page.RemoteHead != "" || len(page.Entries) != 1 || page.Entries[0].Text != "The old local history" {
 		t.Fatalf("reading after losing the remote view = %+v, %v", page, err)
 	}
+	// A move notice can arrive before its location fields are populated.
+	a.view.Location = &appwire.Location{Line: "This chat moved to another computer."}
+	b.chats.byAgent = map[string]appwire.ChatRow{id: {
+		Cell: "saved-chat", Seen: appwire.Seen{Head: "announced-remote-head"},
+	}}
+	page, err = b.EntriesWithFallback(id, "", appwire.MaxEntries)
+	if err != nil || !page.LocalFallback || len(page.Entries) != 1 {
+		t.Fatalf("reading after a move notice and a missing remote view = %+v, %v", page, err)
+	}
+
 	a.view.Location = nil
+	b.chats.byAgent = nil
 	page, err = b.EntriesWithFallback(id, "", appwire.MaxEntries)
 	if err != nil || page.LocalFallback || page.RemoteHead != "" || len(page.Entries) != 1 {
 		t.Fatalf("ordinary local page = %+v, %v", page, err)

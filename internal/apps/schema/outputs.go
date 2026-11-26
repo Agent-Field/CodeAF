@@ -15,6 +15,7 @@ type OutputTemplate struct {
 	Body    string         `json:"body,omitempty"`
 	Columns []OutputColumn `json:"columns,omitempty"`
 	Table   string         `json:"table,omitempty"`
+	Slides  string         `json:"slides,omitempty"`
 }
 
 type OutputColumn struct {
@@ -131,6 +132,9 @@ func (c *checker) checkOutput(at string, t OutputTemplate) {
 	}
 	if t.Table != "" && (!names[t.Table] || fields[t.Table].Type != "longtext") {
 		c.add(AppFile, at+"/table", CodeFieldUnknown, "A worksheet output needs a visible longtext field.")
+	}
+	if t.Slides != "" && (t.Record == "" || t.Format != "pptx" && t.Format != "pdf" || !names[t.Slides] || fields[t.Slides].Type != "longtext") {
+		c.add(AppFile, at+"/slides", CodeFieldUnknown, "A slide export needs a visible longtext field of a PDF or PPTX record source.")
 	}
 	check(at+"/body", t.Body)
 	for i, column := range t.Columns {

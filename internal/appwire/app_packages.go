@@ -6,10 +6,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
@@ -20,14 +22,15 @@ type packParams struct {
 }
 
 type packageParams struct {
-	Path    string `json:"path"`
-	Package string `json:"package"`
+	Path    string `json:"path,omitempty"`
+	Builtin string `json:"builtin,omitempty"`
+	Package string `json:"package,omitempty"`
+	Hash    string `json:"expected_hash,omitempty"`
 }
 
 type updatePackageParams struct {
-	App     string `json:"app"`
-	Path    string `json:"path"`
-	Package string `json:"package"`
+	App string `json:"app"`
+	packageParams
 }
 
 type resolvePackageParams struct {
@@ -47,7 +50,7 @@ type lineageResult struct {
 
 func init() {
 	methods["apps.pack"] = buildCall(func(b *builder.Jobs, p packParams) (*packResult, error) {
-		if !filepath.IsAbs(p.Path) {
+		if p.Path != "" && !filepath.IsAbs(p.Path) {
 			return nil, Errorf(CodeBadParams, "Choose an absolute path for the exported app package.")
 		}
 		raw, err := b.Pack(p.App, p.PackOptions)
@@ -61,6 +64,16 @@ func init() {
 		if err := json.Unmarshal(raw, &result); err != nil {
 			return nil, err
 		}
+		if p.Path == "" {
+			if err := os.MkdirAll(kitPackagesDir(), 0700); err != nil {
+				return nil, Errorf(CodeEngine, "The Kit package folder could not be opened.")
+			}
+			p.Path = filepath.Join(kitPackagesDir(), strings.TrimPrefix(result.Manifest.Hash, "sha256:")+packageSuffix)
+			if existing, err := readPackage(p.Path); err == nil && existing.Manifest.Hash == result.Manifest.Hash {
+				result.Path = p.Path
+				return &result, nil
+			}
+		}
 		if err := writePackage(p.Path, raw); err != nil {
 			if errors.Is(err, os.ErrExist) {
 				return nil, Errorf(CodeConflict, "A file already exists at the package path. Choose a new filename.")
@@ -71,7 +84,7 @@ func init() {
 		return &result, nil
 	})
 	methods["apps.install"] = buildCall(func(b *builder.Jobs, p packageParams) (*builder.Proposal, error) {
-		a, err := packageFrom(p.Path, p.Package)
+		a, err := selectedPackage(p)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +94,7 @@ func init() {
 		return &card, packageError(err)
 	})
 	methods["apps.update"] = buildCall(func(b *builder.Jobs, p updatePackageParams) (*builder.Proposal, error) {
-		a, err := packageFrom(p.Path, p.Package)
+		a, err := selectedPackage(p.packageParams)
 		if err != nil {
 			return nil, err
 		}
@@ -90,9 +103,42 @@ func init() {
 		card, err := b.Update(ctx, p.App, a)
 		return &card, packageError(err)
 	})
-	methods["apps.fork"] = buildCall(func(b *builder.Jobs, p appParams) (*builder.Proposal, error) {
+	methods["apps.preview_package"] = buildCall(func(b *builder.Jobs, p packageParams) (*builder.Preview, error) {
+		a, err := selectedPackage(p)
+		if err != nil {
+			return nil, err
+		}
+		preview, err := b.PreviewPackage(schema.Definition{Files: a.Files})
+		return &preview, packageError(err)
+	})
+	methods["apps.close_package_preview"] = buildCall(func(b *builder.Jobs, p draftParams) (*Empty, error) {
+		b.ClosePackagePreview(p.Draft)
+		return &Empty{}, nil
+	})
+	methods["apps.start_package"] = buildCall(func(b *builder.Jobs, p packageParams) (*draftParams, error) {
+		a, err := selectedPackage(p)
+		if err != nil {
+			return nil, err
+		}
 		ctx, cancel := packageContext()
 		defer cancel()
+		id, err := b.StartPackage(ctx, a)
+		return &draftParams{Draft: id}, packageError(err)
+	})
+	methods["apps.fork"] = buildCall(func(b *builder.Jobs, p updatePackageParams) (*builder.Proposal, error) {
+		ctx, cancel := packageContext()
+		defer cancel()
+		if p.App == "" {
+			a, err := selectedPackage(p.packageParams)
+			if err != nil {
+				return nil, err
+			}
+			card, err := b.ForkPackage(ctx, a)
+			return &card, packageError(err)
+		}
+		if p.Path != "" || p.Builtin != "" || p.Package != "" {
+			return nil, Errorf(CodeBadParams, "Choose either an installed app or an app package to fork.")
+		}
 		card, err := b.Fork(ctx, p.App)
 		return &card, packageError(err)
 	})
@@ -121,6 +167,44 @@ func packageError(err error) error {
 		return Errorf(CodeBadParams, "%s", err)
 	}
 	return err
+}
+
+func selectedPackage(p packageParams) (apppackage.Archive, error) {
+	var a apppackage.Archive
+	var err error
+	if p.Builtin == "" {
+		a, err = packageFrom(p.Path, p.Package)
+	} else {
+		name, example := strings.CutPrefix(p.Builtin, "examples/")
+		directory := "firstparty"
+		if example {
+			directory = "examples"
+		}
+		if p.Path != "" || p.Package != "" || filepath.Base(name) != name || !strings.HasSuffix(name, packageSuffix) {
+			return a, Errorf(CodeBadParams, "Choose one app package.")
+		}
+		catalog, fsErr := apppackage.CatalogFiles(directory)
+		if fsErr != nil {
+			return a, fsErr
+		}
+		f, openErr := catalog.Open(name)
+		if openErr != nil {
+			return a, Errorf(CodeBadParams, "This Kit package isn't available.")
+		}
+		defer f.Close()
+		a, err = apppackage.Read(f)
+		if err != nil {
+			err = Errorf(CodeBadParams, "%s", err)
+		} else if !example && a.Manifest.Publisher != apppackage.BuiltinPublisher {
+			err = Errorf(CodeBadParams, "This Kit template needs a release signature.")
+		} else if example && !exampleAccepted(catalog, name, a) {
+			err = Errorf(CodeBadParams, "This example isn't available in the Kit.")
+		}
+	}
+	if err == nil && p.Hash != "" && a.Manifest.Hash != p.Hash {
+		return apppackage.Archive{}, Errorf(CodeConflict, "This package changed. Reopen Browse and try again.")
+	}
+	return a, err
 }
 
 func packageFrom(path, id string) (apppackage.Archive, error) {
