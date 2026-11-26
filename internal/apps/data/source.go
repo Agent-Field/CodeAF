@@ -246,7 +246,7 @@ func (w *writeTx) projectSource(t *Type, sc Scope, id string, values map[string]
 	}
 	after.Rev++
 	after.UpdatedAt = w.now.UTC().Format(stamp)
-	if err := w.save(t, after, false); err != nil {
+	if err := w.save(t, after, false, sc); err != nil {
 		return err
 	}
 	return w.history(t, sc, OpSync, "", before, after)

@@ -38,6 +38,8 @@ const (
 	CodeFrozen = "frozen"
 	// CodeDuplicate is a value a unique field already holds elsewhere.
 	CodeDuplicate = "duplicate"
+	// CodeBookingConflict names a conflicting booking.
+	CodeBookingConflict = "booking_conflict"
 	// CodeLifecycle is a raw write to a lifecycle's state, or a transition
 	// that cannot fire now (wrong state, guard not holding).
 	CodeLifecycle = "lifecycle"

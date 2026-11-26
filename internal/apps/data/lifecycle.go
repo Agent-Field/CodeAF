@@ -257,6 +257,7 @@ func (w *writeTx) applyTransition(sc Scope, t *Type, tr *transition, before *rec
 	from, _ := before.Data[field].(string)
 	next := before.clone()
 	next.Data[field] = tr.To
+	next.Meta.LastTransition = tr.ID
 	next.Meta.By[field] = sc.kind(OpTransition)
 	compute(t, next, changedFields(before, next), w.schema.person)
 	if err := w.checkRecord(t, next, []string{field}); err != nil {
@@ -264,7 +265,7 @@ func (w *writeTx) applyTransition(sc Scope, t *Type, tr *transition, before *rec
 	}
 	next.UpdatedAt = w.now.UTC().Format(stamp)
 	next.Rev++
-	if err := w.save(t, next, false); err != nil {
+	if err := w.save(t, next, false, sc); err != nil {
 		return nil, err
 	}
 	note := tr.ID
@@ -272,6 +273,9 @@ func (w *writeTx) applyTransition(sc Scope, t *Type, tr *transition, before *rec
 		note += ": " + reason
 	}
 	if err := w.history(t, sc, OpTransition, note, before, next); err != nil {
+		return nil, err
+	}
+	if err := w.assign(sc, t, next, tr.ID); err != nil {
 		return nil, err
 	}
 	effects := tr.Effects
@@ -394,14 +398,15 @@ func (w *writeTx) guardHoldsOn(q querier, t *Type, tr *transition, r *record) (b
 		return true, nil
 	}
 	values := r.values()
-	var signed, open int
-	if err := q.QueryRow(`SELECT count(*) FROM signoffs WHERE record = ? AND version_hash = ?`, r.ID, versionHash(t, r)).Scan(&signed); err != nil {
+	signed, err := currentApproval(q, t, r)
+	if err != nil {
 		return false, err
 	}
+	var open int
 	if err := q.QueryRow(`SELECT count(*) FROM work_items WHERE record = ? AND status = ?`, r.ID, WorkOpen).Scan(&open); err != nil {
 		return false, err
 	}
-	values["_signed"] = signed > 0
+	values["_signed"] = signed
 	values["_open_work"] = float64(open)
 	values["_checklists"] = completedChecklists(t, r)
 	return tr.guard.evalBool(t, values, nil), nil

@@ -51,6 +51,7 @@ type Field struct {
 // its records are kept and the Data place still shows them.
 type Type struct {
 	Common       CommonTypeKey
+	rules        writeRules
 	ID           string
 	Name         string
 	CreatedByApp string
@@ -266,10 +267,13 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		}
 		var def TypeDef
 		_ = json.Unmarshal([]byte(raw), &def)
+		if !slices.Contains(declared[id], defApp) || slices.Contains(uses[id], defApp) {
+			def.Rules = ruleDeclarations{}
+		}
 		t := &Type{
 			ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
-			Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
+			rules: writeRules{declarations: def.Rules}, Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
 		for _, rule := range def.Freeze {
 			t.Freeze = append(t.Freeze, &freezeRule{FreezeRule: rule})
@@ -406,7 +410,9 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 
 	problems := map[string][]error{}
 	for _, name := range sortedKeys(s.types) {
-		if p := s.types[name].compile(now, s.person); len(p) > 0 {
+		p := s.types[name].compile(now, s.person)
+		p = append(p, s.compileRules(s.types[name], now)...)
+		if len(p) > 0 {
 			problems[name] = p
 		}
 	}
@@ -566,7 +572,9 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			return nil, err
 		}
 		if !t.Uses {
-			typeDef := canonicalJSON(TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Freeze: t.Freeze, Lifecycle: t.Lifecycle, Checklists: t.Checklists, Ledger: t.Ledger})
+			stored := t
+			stored.Fields = nil
+			typeDef := canonicalJSON(stored)
 			if _, err := tx.Exec(`UPDATE types SET def_app = ?, def_json = ? WHERE id = ?`, app, typeDef, id); err != nil {
 				return nil, err
 			}
@@ -634,6 +642,9 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			return nil, errorf(CodeInvalid, "%v", p[0])
 		}
 	}
+	if err := checkRuleDependencies(next, current); err != nil {
+		return nil, err
+	}
 	if err := checkRegistered(tx, next, current, def); err != nil {
 		return nil, err
 	}
@@ -695,7 +706,15 @@ func checkRegistered(tx *sql.Tx, s, before *schema, def *AppDef) error {
 			return errorf(CodeInvalid, "%s's capabilities name %s records, and there is no %s type", def.ID, typ, typ)
 		}
 	}
-	return ensureIndexes(tx, s)
+	if err := ensureIndexes(tx, s); err != nil {
+		return err
+	}
+	for _, name := range def.typeOrder {
+		if err := checkNewBookings(tx, s, before, s.appType(def.ID, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // declarers is the apps that declare t without "uses": its definer, while
@@ -743,7 +762,8 @@ func ensureIndexes(tx *sql.Tx, s *schema) error {
 // forgetApp removes an app's capabilities and declarations. Its types and
 // fields stay, hidden when no other app declares them, and so do their
 // values: deleting an app never touches its types or their records.
-func forgetApp(tx *sql.Tx, app string, now func() time.Time) (*schema, error) {
+func forgetApp(w *writeTx, app string) (*schema, error) {
+	tx := w.tx
 	for _, stmt := range []string{
 		`DELETE FROM app_types WHERE app = ?`,
 		`DELETE FROM app_type_bindings WHERE app = ?`,
@@ -754,8 +774,23 @@ func forgetApp(tx *sql.Tx, app string, now func() time.Time) (*schema, error) {
 			return nil, err
 		}
 	}
-	next, _, err := loadSchema(tx, now)
-	return next, err
+	next, _, err := loadSchema(tx, w.s.now)
+	if err != nil {
+		return nil, err
+	}
+	return next, checkRuleDependencies(next, w.schema)
+}
+
+// A schema change must keep the rules of other defining apps usable.
+func checkRuleDependencies(next, previous *schema) error {
+	for _, name := range sortedKeys(next.types) {
+		t := next.types[name]
+		prior := previous.byID[t.ID]
+		if t.rules.invalid != nil && prior != nil && prior.rules.invalid == nil {
+			return errorf(CodeInvalid, "%s rules would stop working: %s", t.Name, t.rules.invalid.Message)
+		}
+	}
+	return nil
 }
 
 // RenameType gives a type a new name. Its records, history and indexes are
