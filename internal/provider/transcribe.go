@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -75,6 +76,17 @@ type transcriptionWire struct {
 	Language   string             `json:"language,omitempty"`
 }
 
+const transcriptionPath = "/audio/transcriptions"
+
+// TranscriptionDestination returns the precise model policy address of an audio send.
+func (c Config) TranscriptionDestination() ModelDestination {
+	u, err := url.Parse(mediaEndpoint(c.BaseURL, transcriptionPath))
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return ModelDestination{}
+	}
+	return modelDestination(c.Model, u)
+}
+
 // Transcribe posts one audio file and returns its transcript.
 //
 // Usage follows the rest of this client's law: the body's own usage object when
@@ -103,7 +115,7 @@ func (c *MediaClient) Transcribe(ctx context.Context, request TranscriptionReque
 		Text  string    `json:"text"`
 		Usage *ai.Usage `json:"usage,omitempty"`
 	}
-	headers, err := c.postJSON(ctx, "/audio/transcriptions", transcriptionWire{
+	headers, err := c.postJSON(ctx, transcriptionPath, transcriptionWire{
 		Model:      model,
 		InputAudio: transcriptionAudio{Data: base64.StdEncoding.EncodeToString(request.Data), Format: format},
 		Language:   strings.TrimSpace(request.Language),
