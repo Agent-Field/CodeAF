@@ -22,10 +22,10 @@ import (
 
 // An app run supplies the principal and kept version before the model sees
 // any records or command arguments. The executor has one literal app verb.
-func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, call runs.AgentCall, model, system, prompt string, client session.Completer) (string, error) {
+func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, call runs.AgentCall, model, system, prompt string, client session.Completer, spend *session.SpendGuard) (runs.Reply, error) {
 	workspace, err := os.MkdirTemp("", "codeaf-app-output-")
 	if err != nil {
-		return "", err
+		return runs.Reply{}, err
 	}
 	defer os.RemoveAll(workspace)
 	system += "\n\nYou may invoke one of this app's declared outputs using codeaf app render " +
@@ -33,7 +33,10 @@ func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, ca
 		". For a query output, omit the record. Use only record IDs supplied by the run. " +
 		"The app and actor come from the run. Declared output IDs: " +
 		strings.Join(slices.Sorted(maps.Keys(app.Outputs)), ", ") + "."
-	return session.ScopedCommandTurn(ctx, workspace, model, system, prompt, client, func(ctx context.Context, command string) (string, error) {
+	// The session records provider usage. The guard supplies the same
+	// turn's accumulated cost to the run without recording a second charge.
+	spend.Task = &session.SpendTask{}
+	answer, err := session.ScopedCommandTurn(ctx, workspace, model, system, prompt, spend.Wrap(model, client), func(ctx context.Context, command string) (string, error) {
 		verb, args, err := appcmd.Parse(command)
 		if err != nil {
 			return "", err
@@ -64,4 +67,5 @@ func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, ca
 		receipt, err := json.Marshal(file)
 		return string(receipt), err
 	})
+	return runs.Reply{Output: answer, Cost: spend.Task.Total()}, err
 }

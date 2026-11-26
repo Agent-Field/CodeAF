@@ -239,7 +239,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			TaskCap:  call.Remaining, TaskAction: "per-run budget reached",
 		}
 		const name = "app run"
-		ctx, recorded := factoryAIAccounting(provider.WithCallTag(ctx, name), settings, model, name, nil)
+		ctx = provider.WithCallTag(ctx, name)
 		prompt := call.Prompt
 		if len(call.Steps) != 0 {
 			outputs, err := json.Marshal(call.Steps)
@@ -252,13 +252,12 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		if err != nil {
 			return runs.Reply{}, err
 		}
-		guarded := spend.Wrap(model, client)
 		var result runs.Reply
 		if app.Kit == 2 && len(app.Outputs) > 0 {
-			result.Output, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, guarded)
-			result.Cost = recorded(nil)
+			result, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, client, spend)
 		} else {
-			reply, callErr := runs.CompleteAgent(ctx, guarded, system, prompt)
+			ctx, recorded := factoryAIAccounting(ctx, settings, model, name, nil)
+			reply, callErr := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt)
 			err = callErr
 			result.Cost = recorded(reply)
 			if reply != nil {

@@ -60,6 +60,11 @@ Use add-chart with group and aggregate
 {"screen":"deals","title":"Deals","markup":"<...>"} with the kit parts as
 elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run if requested.
+For a document, give the Action a name and visible merge fields, for example
+configure {"outputs":{"deal-pdf":{"label":"Make deal PDF","format":"pdf","record":"deal","body":"Deal: {{name}}"}}}.
+Bind render to that output and the selected record ID. For an inbox digest,
+declare a query in the output, then use a scheduled run with
+render: {output: weekly-pipeline, inbox: true}.
 set-agent {"text":"..."} writes instructions if requested.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last

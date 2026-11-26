@@ -1,8 +1,8 @@
 ---
 name: workaf-apps
-description: Make or change a personal app using the app command. Use for plans, types, fields, screen recipes, markup, automations, and edits pinned to a screen.
+description: Make or change a personal app using the app command. Use for plans, types, fields, screen recipes, markup, automations, document outputs, and edits pinned to a screen.
 ---
-<!-- workaf-apps v3 -->
+<!-- workaf-apps v4 -->
 
 # Make and edit a personal app
 
@@ -20,6 +20,7 @@ command and its JSON arguments.
    Use `app reference {"schema":"plan-1.json"}` to read one file format.
 2. Use `app plan` to save the outline, `app add-type` and `app add-field` for
    records, and `app recipe` or `app markup` to compile screens.
+   For a document or scheduled digest, read `app reference {"schema":"output-template-2.json"}`.
 3. Read `app mark` for pinned feedback. Use `app claim` before editing its
    node, and preserve the rest of the screen and the existing node ids.
 4. Use fictional sample rows and run `app check`. Use `app look` for the

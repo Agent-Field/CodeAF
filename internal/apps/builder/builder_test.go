@@ -62,8 +62,14 @@ func scriptedApp(t *testing.T, home string) builder.Options {
 					return ai.Message{}, fmt.Errorf("unexpected command slot: %+v", tools)
 				}
 				for _, message := range messages {
-					if message.Role == "system" && len(message.Content) > 0 && len(message.Content[0].Text) > 8<<10 {
-						t.Error("the scoped system prompt must fit without the full kit, manual or worked examples")
+					if message.Role == "system" && len(message.Content) > 0 {
+						prompt := message.Content[0].Text
+						if len(prompt) > 8<<10 {
+							t.Error("the scoped system prompt must fit without the full kit, manual or worked examples")
+						}
+						if !strings.Contains(prompt, `configure {"outputs":`) || !strings.Contains(prompt, "output-template-2.json") {
+							t.Error("the builder needs the output command and schema to offer document Actions")
+						}
 					}
 				}
 				last := messages[len(messages)-1]

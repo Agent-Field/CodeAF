@@ -24,7 +24,8 @@ Rendering a custom part requires the desktop sandbox.
 Kit 2 can check Markdown, sheets, timelines, graphs, maps and slide content.
 It also checks declarations for file references, record links, reasoned reveals,
 sign-off, evidence, timers and output templates. Check matches a render Action
-to its declared output and checks the visible merge fields.
+to its declared output and checks the visible merge fields. Draft runs render
+with example records so you can test the output before applying the app.
 The data store, run engine and desktop each implement their own execution and
 rendering, including carrying out a run in a repository.
 

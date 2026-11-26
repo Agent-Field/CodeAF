@@ -19,6 +19,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestAppOutputActionParity(t *testing.T) {
@@ -84,8 +86,13 @@ func TestAppOutputActionParity(t *testing.T) {
 		t.Fatalf("digest inbox = %+v", inbox)
 	}
 	w.must("apps.output_file", appwire.AppOutputFileParams{App: id, ID: inbox.Items[0].ID}, &file)
-	if got := string(file.Content); got != "Contacts\n1\n" {
-		t.Fatalf("digest CSV = %q", got)
+	pdf := filepath.Join(t.TempDir(), "digest.pdf")
+	if err := os.WriteFile(pdf, file.Content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := pdfx.Extract(pdf)
+	if err != nil || !strings.Contains(summary, "Contacts: 1") {
+		t.Fatalf("digest PDF = %q, %v", summary, err)
 	}
 }
 
@@ -108,8 +115,8 @@ func keepOutputApp(t *testing.T, root string) string {
 		Capabilities: schema.Capabilities{Records: map[string]string{"contact": "rw"}},
 		Outputs: map[string]schema.OutputTemplate{
 			"contact-card": {Label: "Contact card", Format: "csv", Record: "contact", Columns: []schema.OutputColumn{{Label: "Contact", Value: "{{name}}"}}},
-			"weekly-digest": {Label: "Weekly contacts", Format: "csv", Query: &schema.QueryIR{Type: "contact", Aggregate: []schema.QueryAggregate{{Op: "count", As: "total"}}},
-				Columns: []schema.OutputColumn{{Label: "Contacts", Value: "{{total}}"}}},
+			"weekly-digest": {Label: "Weekly contacts", Format: "pdf", Query: &schema.QueryIR{Type: "contact", Aggregate: []schema.QueryAggregate{{Op: "count", As: "total"}}},
+				Body: "Contacts: {{total}}"},
 		},
 		Triggers: []schema.Trigger{{ID: "weekly", On: "schedule", Cron: "0 9 * * 1", Run: "weekly-digest"}},
 	}
@@ -178,6 +185,7 @@ func outputAppCommand(t *testing.T, root string) *factoryWire {
 	go func() {
 		defer close(w.answers)
 		scan := bufio.NewScanner(out)
+		scan.Buffer(make([]byte, 64<<10), 16<<20)
 		for scan.Scan() {
 			select {
 			case w.answers <- json.RawMessage(scan.Text()):
@@ -321,12 +329,23 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 			}
 			message.Content = []ai.ContentPart{{Type: "text", Text: "Saved the contact card."}}
 		}
-		return &ai.Response{Choices: []ai.Choice{{Message: message}}}, nil
+		usd := 0.02
+		return &ai.Response{
+			Model: "openai/gpt-4o-mini", Choices: []ai.Choice{{Message: message}},
+			Usage: &ai.Usage{PromptTokens: 10, CompletionTokens: 10, Cost: &usd},
+		}, nil
 	})
 	call := runs.AgentCall{Call: runs.Call{App: id, ID: "run-for-contact", Step: "draft", Key: "run-for-contact-1"}}
-	answer, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client)
-	if err != nil || !strings.Contains(answer, "Saved the contact card.") {
-		t.Fatalf("scoped agent answer: %q, %v", answer, err)
+	result, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{})
+	if err != nil || result.Output != "Saved the contact card." || result.Cost != 0.04 {
+		t.Fatalf("scoped agent answer: %+v, %v", result, err)
+	}
+	if !session.FlushUsage() {
+		t.Fatal("the session's usage ledger did not flush")
+	}
+	used, err := session.DailySpendUSD(session.UsageLedgerPath(), time.Now())
+	if err != nil || used != result.Cost {
+		t.Fatalf("session ledger = %v, want one charge per call totaling %v: %v", used, result.Cost, err)
 	}
 	page, err := db.Outputs(data.Scope{App: id}, call.ID, "", false)
 	if err != nil || len(page.Items) != 1 {
