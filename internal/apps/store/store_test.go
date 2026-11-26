@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -123,6 +124,10 @@ func TestAppConcurrentKeepRejectsStaleDraft(t *testing.T) {
 func TestAppRevertMakesNewVersion(t *testing.T) {
 	s, home := testStore(t)
 	meta := makeApp(t, s)
+	original, err := s.Get(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d, err := s.NewDraft(meta.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +145,9 @@ func TestAppRevertMakesNewVersion(t *testing.T) {
 	got, err := s.Get(meta.ID)
 	if err != nil || got.Meta.Version != 3 || got.AgentMD != "Manage contacts." || len(got.Screens) != 1 {
 		t.Fatalf("reverted app: %+v, %v", got, err)
+	}
+	if !bytes.Equal(got.App, original.App) {
+		t.Fatalf("revert did not restore the original app manifest: %s", got.App)
 	}
 	if _, err := s.Screen(meta.ID, "detail"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("screen from later version: %v", err)
