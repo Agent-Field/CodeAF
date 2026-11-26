@@ -156,6 +156,14 @@ An idle chat stops its own program after a while and starts it again, with its c
 
 If the machine that runs chats restarts, its running processes end and its files stay. Your first attach afterwards works: the organization's server notices the machine lost your chat's model access and hands over new access before anything is sent. If the organization's server restarts instead, the chats keep working and so does the access they hold.
 
+## my terminal lost its connection to the organization's server — reconnecting, my laptop slept, the wifi changed, the window ended, I lost access while I was gone
+
+A `codeaf chat --org` window whose connection breaks, because the laptop slept, the network changed or the server restarted, comes back by itself and says `reconnecting to <server> — trying for up to 5 minutes` while it tries. The chat kept running on the server the whole time. When the connection is back the window carries on where it stopped: what the chat said while you were gone is there and a turn that was running is still running. A message sent while it is reconnecting is refused with `reconnecting to <server> — try that again in a moment`, so send it again once the window is back. A window that comes back does not take the keyboard from another window of yours that took it meanwhile; press enter there to take it back.
+
+If the server says no while you were gone, because the chat is no longer yours or your sign-in was taken away, the window ends at once with the server's own sentence, for example `There is no such chat.`, and does not keep trying. After those 5 minutes with nothing it gives up and says the connection ended; run `codeaf chat --org <server> --session hs_...` to open the chat again. One message sent from a script with `--once` is never retried: if the connection breaks, it ends.
+
+The desktop app's organization window does not reconnect by itself yet: open the chat again from the list.
+
 ## how many chats can I have on the server at once — limits and waiting
 
 The operator sets how many chats may run at once, and how many one person may have running. When you are over your own limit you read: `You already have 2 chats running; stop one first.` (the number is the operator's). When the whole server is full you read: `Waiting for a free slot (3 of 3 in use).` Try again in a moment, or stop a chat you are not using.
@@ -197,6 +205,8 @@ Personal never sees the organization's chats, files or people, and an organizati
 ## can a teammate send messages in my chat while I am using it — one window writes at a time, and the owner's keyboard comes first
 
 Only if you shared the chat with a role that holds `run` (the `edit` and `full` roles do), and even then one window writes at a time. While you have the chat open with the keyboard, a message or a redirect from your teammate is refused by the chat with its own sentence about the keyboard. It goes through once you close your window, or after they take the keyboard (a person who may send can), which tells your window. Interrupting a turn and answering a question are not held up. Whatever they send runs as you: in your folder, with your GitHub identity and your spending limits, and a command that needs approval waits for you, unless the organization's policy lets people who answer allow one (see *can someone I shared my hosted chat with approve a command*).
+
+Every other window of the chat reads WHO has the keyboard by name: `typing from mia now · enter types here`, with the name the organization knows the person by, never a name their own computer picked, so nobody can appear to be the owner or another member. A bot reads as `abir's bot`, the person whose rights it uses.
 
 ## the organization's server is down or my sign-in ended — a hosted chat never runs on my computer instead
 
