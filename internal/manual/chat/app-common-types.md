@@ -12,8 +12,8 @@ With Desk connected, choose the offer to use your existing records during
 planning. For a headless build, the plan lists matching reuse as a proposal,
 such as “Uses your existing Contacts from CRM,” and Build continues to Check.
 Check uses example rows in a separate draft. Apply confirms reuse and connects
-the app to the shared types and records. Records with similar names are never
-matched automatically.
+the app to the shared types and records. Applying a build leaves those records
+as they are.
 
 ## List the common types or bind an existing type
 
