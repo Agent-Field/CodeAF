@@ -113,8 +113,10 @@ func (w *writeTx) matchingSubject(t *Type, r *record, fields IdentityFields) (Ma
 		}
 		subject.Organization = root
 	}
-	err := w.tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity_attestations
-		WHERE record = ? AND rev = ?)`, r.ID, r.Rev).Scan(&subject.VerifiedWorkEmail)
+	err := w.tx.QueryRow(`SELECT
+		EXISTS(SELECT 1 FROM identity_attestations WHERE record = ?1 AND rev = ?2 AND field_id = ?3 AND role = 'work_email' AND context = ?4),
+		COALESCE((SELECT context FROM identity_attestations WHERE record = ?1 AND rev = ?2 AND field_id = ?5 AND role = 'external'), '')`,
+		r.ID, r.Rev, fields.Email, fields.Organization, fields.ExternalID).Scan(&subject.VerifiedWorkEmail, &subject.Namespace)
 	return subject, err
 }
 
@@ -127,6 +129,9 @@ type candidateScore struct {
 // score. Only a native source observation may automatically join records.
 func (w *writeTx) matchIdentity(sc Scope, t *Type, anchor *record, fields IdentityFields, auto bool) (string, error) {
 	subject, err := w.matchingSubject(t, anchor, fields)
+	if !auto && subject.Namespace == "" {
+		subject.Namespace = fields.Namespace
+	}
 	if err != nil {
 		return "", err
 	}
@@ -138,6 +143,9 @@ func (w *writeTx) matchIdentity(sc Scope, t *Type, anchor *record, fields Identi
 				return err
 			}
 			other, err := w.matchingSubject(t, r, fields)
+			if !auto && other.Namespace == "" {
+				other.Namespace = fields.Namespace
+			}
 			if err != nil {
 				return err
 			}

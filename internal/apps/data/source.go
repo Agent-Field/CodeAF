@@ -168,9 +168,14 @@ func (w *writeTx) observeSource(o SourceObservation) (string, bool, error) {
 			if err := w.refreshIdentityAlias(t, sc, origin, values); err != nil {
 				return "", false, err
 			}
+			if err := w.keepSurvivorSource(id, origin, values); err != nil {
+				return "", false, err
+			}
 		}
-		if err := w.projectSource(t, sc, id, values); err != nil {
-			return "", false, err
+		if len(values) > 0 {
+			if err := w.projectSource(t, sc, id, values); err != nil {
+				return "", false, err
+			}
 		}
 	}
 	if w.change == nil {

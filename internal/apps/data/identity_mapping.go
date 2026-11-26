@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/mail"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,7 +31,9 @@ const identityMigration = `
 		split_by TEXT NOT NULL DEFAULT '', split_at TEXT NOT NULL DEFAULT ''
 	);
 	CREATE TABLE identity_attestations (
-		record TEXT PRIMARY KEY, rev INTEGER NOT NULL
+		record TEXT NOT NULL, field_id TEXT NOT NULL, role TEXT NOT NULL,
+		context TEXT NOT NULL, rev INTEGER NOT NULL,
+		PRIMARY KEY(record, field_id, role)
 	);
 	CREATE TABLE identity_matches (
 		id TEXT PRIMARY KEY REFERENCES work_items(id), type_id TEXT NOT NULL,
@@ -88,6 +92,11 @@ func (x MappingTransform) valid() bool {
 
 func (x MappingTransform) apply(input any) (any, error) {
 	value, ok := input.(string)
+	if x.Op == "money" {
+		if number, numeric := input.(json.Number); numeric {
+			value, ok = number.String(), true
+		}
+	}
 	if !ok || len(value) > 4096 || !x.valid() {
 		return nil, fmt.Errorf("%s requires a supported transform and a short text value", x.Op)
 	}
@@ -261,7 +270,7 @@ func (w *writeTx) sourceMapping(key ExternalKey, epochs TypeEpochs) (SourceMappi
 	return m, version, json.Unmarshal([]byte(raw), &m)
 }
 
-func (m SourceMapping) claims(values map[string]any) (map[string]SourceFieldClaim, error) {
+func (m SourceMapping) claims(t *Type, values map[string]any, native bool) (map[string]SourceFieldClaim, error) {
 	claims := map[string]SourceFieldClaim{}
 	for _, rule := range m.Fields {
 		v, present := values[rule.Source]
@@ -274,6 +283,11 @@ func (m SourceMapping) claims(values map[string]any) (map[string]SourceFieldClai
 				v, err = transform.apply(v)
 				if err != nil {
 					return nil, fieldErr(rule.Target, "%v", err)
+				}
+			}
+			if native && t.byID[rule.Target] != nil && t.byID[rule.Target].Type == TypeMoney {
+				if len(rule.Transforms) == 0 || rule.Transforms[len(rule.Transforms)-1].Op != "money" || !exactNativeMoney(v) {
+					return nil, fieldErr(rule.Target, "native money needs an explicit currency and an amount that fits without rounding")
 				}
 			}
 		}
@@ -290,8 +304,22 @@ type MappedSourceObservation struct {
 	VerifiedWorkEmail bool
 }
 
-// ObserveMappedSource uses the source's typed key to commit a mapping, its
-// claims and a first match assessment under the same writer transaction.
+func exactNativeMoney(value any) bool {
+	text, ok := value.(string)
+	if !ok {
+		return false
+	}
+	n, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return false
+	}
+	amount, ok := new(big.Rat).SetString(text)
+	rounded, exact := new(big.Rat).SetString(strconv.FormatFloat(n, 'f', 2, 64))
+	return ok && exact && amount.Cmp(rounded) == 0
+}
+
+// ObserveMappedSource uses the source's typed key to commit mapped claims and a
+// first match assessment under the same writer transaction.
 func (s *Store) ObserveMappedSource(input MappedSourceObservation) (string, error) {
 	o := input.SourceObservation
 	if err := o.validate(); err != nil {
@@ -317,15 +345,18 @@ func (s *Store) ObserveMappedSource(input MappedSourceObservation) (string, erro
 		if err != nil {
 			return err
 		}
+		t := w.schema.common[m.Common]
+		if t == nil {
+			return errorf(CodeNotFound, "the mapped common type is unavailable")
+		}
 		o.mappingVersion = version
-		if o.Claims, err = m.claims(input.Values); err != nil {
+		if o.Claims, err = m.claims(t, input.Values, o.NativeValues); err != nil {
 			return err
 		}
 		id, err := w.linkIdentity(m.Common, o.Key, "")
 		if err != nil {
 			return err
 		}
-		t := w.schema.common[m.Common]
 		before, err := loadRecord(w.tx, w.schema, id)
 		if err != nil {
 			return err
@@ -357,17 +388,41 @@ func (s *Store) ObserveMappedSource(input MappedSourceObservation) (string, erro
 }
 
 func (w *writeTx) attestMappedIdentity(t *Type, r *record, fields IdentityFields, o SourceObservation, verified bool) error {
-	email := t.byID[fields.Email]
-	org := t.byID[fields.Organization]
-	if !verified || email == nil || org == nil || r.Meta.Sources[email.Name] != o.Key || r.Meta.Sources[org.Name] != o.Key {
-		return nil
+	supplied := func(id string) bool {
+		f := t.byID[id]
+		if f == nil || r.Meta.Sources[f.Name] != o.Key {
+			return false
+		}
+		_, ok := o.Claims[id]
+		return ok
+	}
+	set := func(field, role, context string) error {
+		if context == "" {
+			_, err := w.tx.Exec(`DELETE FROM identity_attestations WHERE record = ? AND field_id = ? AND role = ?`, r.ID, field, role)
+			return err
+		}
+		_, err := w.tx.Exec(`INSERT INTO identity_attestations VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(record, field_id, role) DO UPDATE SET context = excluded.context, rev = excluded.rev`,
+			r.ID, field, role, context, r.Rev)
+		return err
+	}
+	if supplied(fields.ExternalID) {
+		namespace := fields.Namespace
+		if o.Claims[fields.ExternalID].Value == nil {
+			namespace = ""
+		}
+		if err := set(fields.ExternalID, "external", namespace); err != nil {
+			return err
+		}
 	}
 	// Both fields must be in this observation so a partial refresh cannot
 	// attest a work address or a relationship from an old revision.
-	if o.Claims[fields.Email].Value == nil || o.Claims[fields.Organization].Value == nil {
-		return nil
+	if supplied(fields.Email) && supplied(fields.Organization) {
+		orgField := ""
+		if verified && o.Claims[fields.Email].Value != nil && o.Claims[fields.Organization].Value != nil {
+			orgField = fields.Organization
+		}
+		return set(fields.Email, "work_email", orgField)
 	}
-	_, err := w.tx.Exec(`INSERT INTO identity_attestations VALUES (?, ?)
-		ON CONFLICT(record) DO UPDATE SET rev = excluded.rev`, r.ID, r.Rev)
-	return err
+	return nil
 }

@@ -2,6 +2,7 @@ package data
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -206,4 +207,60 @@ func TestIdentityGoldenSet(t *testing.T) {
 	}
 	t.Logf("auto-link precision: %d/%d, recall: %d/%d; linked or reviewed precision: %d/%d, recall: %d/%d",
 		trueLinks, linked, trueLinks, duplicatePairs, trueFlags, flagged, trueFlags, duplicatePairs)
+}
+
+func TestIdentityDoNotAutoLinkConflictsOrUnrelatedExternalNamespaces(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp(fixture(t, "identity-crm-app.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindCommonType(CommonPerson, "contact"); err != nil {
+		t.Fatal(err)
+	}
+	fields := []MappingField{{Source: "label", Target: "name"}, {Source: "ext", Target: "title"}}
+	mapping := func(binding, namespace string, epoch TypeEpochs) TypeEpochs {
+		t.Helper()
+		next, err := s.InstallSourceMapping(SourceMapping{Common: CommonPerson, Binding: binding, Object: "person",
+			Fields: fields, Match: IdentityFields{ExternalID: "title", Namespace: namespace}}, epoch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return next
+	}
+	ep := mapping("left", "sales", TypeEpochs{})
+	ep = mapping("right", "support", ep)
+	observe := func(binding, key, name string) string {
+		t.Helper()
+		id, err := s.ObserveMappedSource(MappedSourceObservation{SourceObservation: SourceObservation{
+			Key: ExternalKey{Binding: binding, Object: "person", Key: key, Generation: 1}, NativeValues: true,
+			Event: "first", Revision: "1", Epochs: ep,
+		}, Values: map[string]any{"label": name, "ext": "42"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a := observe("left", "1", "Dina Rhee")
+	if b := observe("right", "1", "Dina Rhee"); a == b {
+		t.Fatal("source namespaces shared an external subject ID")
+	}
+	// A person edits just the name. The source then refreshes the external
+	// subject attestation without replacing the name that the person holds.
+	if _, err := s.Update(person, "contact", []string{a}, map[string]any{"name": "Dina (verified)"}, UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ObserveMappedSource(MappedSourceObservation{SourceObservation: SourceObservation{
+		Key: ExternalKey{Binding: "left", Object: "person", Key: "1", Generation: 1}, NativeValues: true,
+		Event: "refresh", Revision: "2", Epochs: ep,
+	}, Values: map[string]any{"ext": "42"}}); err != nil {
+		t.Fatal(err)
+	}
+	b := observe("left", "2", "Dina Rhee")
+	if a == b {
+		t.Fatal("a conflicting person-entered value was merged automatically")
+	}
+	list, err := s.IdentityCandidates(person)
+	if err != nil || len(list) != 1 || !slices.Contains(list[0].Evidence.Signals, "person-entered conflict") {
+		t.Fatalf("conflict review: %+v, %v", list, err)
+	}
 }

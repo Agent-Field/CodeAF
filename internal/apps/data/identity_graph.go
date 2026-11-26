@@ -344,3 +344,29 @@ func (w *writeTx) refreshIdentityAlias(t *Type, sc Scope, id string, values map[
 	_, err = w.tx.Exec(`UPDATE records SET data_json = ?, meta_json = ? WHERE id = ?`, data, meta, id)
 	return err
 }
+
+// keepSurvivorSource keeps the existing source winner on overlapping fields.
+// An alias can still refresh its own contributions and fill missing fields.
+func (w *writeTx) keepSurvivorSource(id, origin string, values map[string]any) error {
+	r, err := loadRecord(w.tx, w.schema, id)
+	if err != nil {
+		return err
+	}
+	if r == nil || r.DeletedAt != "" {
+		return errorf(CodeNotFound, "the survivor is unavailable")
+	}
+	for name := range values {
+		key, set := r.Meta.Sources[name]
+		if !set {
+			continue
+		}
+		same, err := sourceBelongsToAlias(w.tx, key, origin)
+		if err != nil {
+			return err
+		}
+		if !same {
+			delete(values, name)
+		}
+	}
+	return nil
+}

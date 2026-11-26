@@ -180,7 +180,7 @@ func (f IdentityFields) subject(t *Type, r *record) MatchSubject {
 		return ""
 	}
 	return MatchSubject{Name: value(f.Name), Email: value(f.Email), Organization: value(f.Organization),
-		Phone: value(f.Phone), Domain: value(f.Domain), ExternalID: value(f.ExternalID), Namespace: f.Namespace}
+		Phone: value(f.Phone), Domain: value(f.Domain), ExternalID: value(f.ExternalID)}
 }
 
 func personConflict(t *Type, a, b *record) bool {

@@ -54,7 +54,8 @@ or clear entered by a person takes precedence. If both people-entered
 values differ, the survivor's value wins, and the other value remains in
 the other record's history. To restore the two records, use
 `codeaf app match-unmerge '{"id":"<merge ID>","revision":<current survivor revision>}'`.
-Split newer merges on the same survivor first.
+If the source joined the records automatically, use the merge batch ID from
+record history. Split newer merges on the same survivor first.
 
 When a source is configured to copy values into this space, a strong,
 unambiguous match may join automatically. Shared email addresses,
