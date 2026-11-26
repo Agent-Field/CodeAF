@@ -29,11 +29,11 @@ type galleryProcess struct {
 
 func (p *galleryProcess) Exercise(ctx context.Context, name, app string, record Record) (map[string]any, error) {
 	switch name {
-	case "guarded-undo":
+	case probeGuardedUndo:
 		return p.guardedUndo(ctx)
-	case "duplicate-trigger", "record-instructions", "email-instructions":
+	case probeDuplicateTrigger, probeRecordInstructions, probeEmailInstructions:
 		return p.runStimulus(ctx, name)
-	case "person-wins", "rename-with-live-data":
+	case probePersonWins, probeRename:
 		return p.recordStimulus(ctx, name, app, record)
 	default:
 		return nil, fmt.Errorf("unknown platform probe %q", name)
@@ -54,7 +54,7 @@ func seedApp(home, fixture string) (string, error) {
 }
 
 func (p *galleryProcess) guardedUndo(ctx context.Context) (observed map[string]any, err error) {
-	scratch := filepath.Join(p.home, "guarded-undo")
+	scratch := filepath.Join(p.home, probeGuardedUndo)
 	app, err := seedApp(scratch, "testdata/stimulus")
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (p *galleryProcess) guardedUndo(ctx context.Context) (observed map[string]a
 			"expected_rev": "$rev", "evidence": map[string]any{"kind": "note", "text": "Release checked"},
 		}, Expect: []Check{equal("/checklist/steps/0/done", true)}, Capture: map[string]string{"rev": "/_rev"}},
 		{Method: "data.signoffs.create", Params: map[string]any{
-			"app": app, "type": "probe", "id": "$id", "statement": "Release may close", "expected_rev": "$rev",
+			"app": app, "type": "probe", "id": "$id", "statement": "Release may close", "rev": "$rev",
 		}, Expect: []Check{equal("/item/current", true)}},
 		{Method: "data.process", Params: process, Expect: []Check{equal("/transitions/0/ready", true)}, Capture: map[string]string{"rev": "/_rev"}},
 		{Method: "data.transition_batch", Params: move, Expect: []Check{
@@ -138,7 +138,7 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 	}
 	value := created.Rows[0][field]
 	switch name {
-	case "person-wins":
+	case probePersonWins:
 		var held []data.Held
 		err := p.withDataStore(ctx, func(db *data.Store) error {
 			write, err := db.Update(data.Scope{App: app, Agent: true, AI: true}, typ, []string{id},
@@ -156,7 +156,7 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 			"held": len(held), "person_value_preserved": reflect.DeepEqual(row[field], value) &&
 				slices.ContainsFunc(held, func(h data.Held) bool { return h.ID == id && h.Field == field }),
 		}, err
-	case "rename-with-live-data":
+	case probeRename:
 		before, err := p.fieldID(ctx, scope, typ, field)
 		if err != nil {
 			return nil, err
@@ -181,14 +181,14 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 	}
 }
 
-func (p *appProcess) stimulusRow(ctx context.Context, scope appwire.DataScope, typ, id string) (appwire.DataRow, error) {
+func (p *galleryProcess) stimulusRow(ctx context.Context, scope appwire.DataScope, typ, id string) (appwire.DataRow, error) {
 	result, err := readReply[appwire.DataRowResult](p.wire(ctx, "data.get", appwire.DataRecordParams{
 		DataScope: scope, Type: typ, ID: id,
 	}))
 	return result.Row, err
 }
 
-func (p *appProcess) fieldID(ctx context.Context, scope appwire.DataScope, typ, field string) (string, error) {
+func (p *galleryProcess) fieldID(ctx context.Context, scope appwire.DataScope, typ, field string) (string, error) {
 	result, err := readReply[appwire.DataTypesResult](p.wire(ctx, "data.types", scope))
 	if err != nil {
 		return "", err
@@ -207,21 +207,24 @@ func (p *appProcess) fieldID(ctx context.Context, scope appwire.DataScope, typ, 
 
 // The current person wire has no AI principal or rename operation. Hand
 // ownership of the disposable home to the native writer for those stimuli.
-func (p *appProcess) withDataStore(ctx context.Context, work func(*data.Store) error) error {
+func (p *galleryProcess) withDataStore(ctx context.Context, work func(*data.Store) error) (err error) {
+	defer func() {
+		next, restartErr := launchWithEnv(ctx, p.binary, p.home, p.env)
+		if restartErr == nil {
+			*p.appProcess = *next
+		}
+		err = errors.Join(err, restartErr)
+	}()
 	if err := p.Close(); err != nil {
 		return err
 	}
 	place := data.NewPlace(p.home, data.Options{NoRefresh: true})
+	defer func() { err = errors.Join(err, place.Close()) }()
 	db, err := place.Main()
-	if err == nil {
-		err = work(db)
+	if err != nil {
+		return err
 	}
-	err = errors.Join(err, place.Close())
-	next, restartErr := launchWithEnv(ctx, p.binary, p.home, p.env)
-	if restartErr == nil {
-		*p = *next
-	}
-	return errors.Join(err, restartErr)
+	return work(db)
 }
 
 func TestPlatformStimulus(t *testing.T) {

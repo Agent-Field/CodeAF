@@ -33,8 +33,8 @@ adapter also runs six platform probes:
 - Guarded undo applies a signed transition through the process wire and checks
   the typed undo refusal and the record state. The platform publishes a fixture
   in its own home so the probe can run even for apps without a lifecycle.
-- Trigger replay uses a committed record event and E's durable receipt across
-  an engine reopen. Record and email instructions use E's data and connector
+- Trigger replay uses a committed record event and a durable run receipt across
+  an engine reopen. Record and email instructions use the run engine's data and connector
   inputs and check committed rows and effect calls. The fixture connector
   never sends real mail. Paid cases also pass the hostile text to the app
   run's headless model door, and their reported usage includes those calls.
