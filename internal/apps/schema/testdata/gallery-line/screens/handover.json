@@ -1,0 +1,34 @@
+{
+  "screen": "handover",
+  "title": "Handover",
+  "body": {
+    "part": "Text",
+    "label": "Handover notes",
+    "props": {},
+    "bind": {
+      "content-part": "docs/handover.md"
+    },
+    "id": "text"
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "id": "navigation",
+    "label": "Work views",
+    "props": {
+      "items": [
+        {
+          "screen": "lines",
+          "label": "Live"
+        },
+        {
+          "screen": "handover",
+          "label": "Handover"
+        },
+        {
+          "screen": "shifts",
+          "label": "Shifts"
+        }
+      ]
+    }
+  }
+}

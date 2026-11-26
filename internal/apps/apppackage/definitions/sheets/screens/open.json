@@ -1,0 +1,136 @@
+{
+  "screen": "open",
+  "title": "Worksheet",
+  "params": [
+    "id"
+  ],
+  "body": {
+    "part": "Stack",
+    "id": "open",
+    "children": [
+      {
+        "part": "Row",
+        "id": "navigation",
+        "children": [
+          {
+            "part": "Button",
+            "id": "back",
+            "label": "Sheets",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "library"
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "export-csv",
+            "label": "Export CSV",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "render": {
+                    "output": "csv",
+                    "record": "$params.id"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "share",
+            "label": "Copy CSV",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "render": {
+                    "output": "share",
+                    "record": "$params.id",
+                    "clipboard": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
+            "id": "details-button",
+            "label": "Details",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "details-sheet"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "custom/worksheet-body",
+        "id": "body",
+        "label": "Worksheet",
+        "bind": {
+          "record": "$params.id",
+          "type": "sheets_worksheet"
+        },
+        "on": {
+          "edit": [
+            {
+              "records.update": {
+                "type": "sheets_worksheet",
+                "id": "$record.id",
+                "set": {
+                  "body": "$input.value"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "part": "Sheet",
+        "id": "details-sheet",
+        "label": "Details",
+        "children": [
+          {
+            "part": "RecordPage",
+            "id": "details",
+            "label": "Worksheet details",
+            "bind": {
+              "record": "$params.id",
+              "type": "sheets_worksheet"
+            },
+            "props": {
+              "fields": [
+                "title"
+              ],
+              "history": true,
+              "actions": [
+                "rename"
+              ]
+            }
+          }
+        ],
+        "props": {
+          "title": "Details"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "id": "gallery-support",
+  "name": "Support",
+  "icon": "inbox",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Support assistant",
+    "file": "agent.md"
+  },
+  "records": {
+    "ticket": {
+      "title": "subject",
+      "fields": {
+        "subject": {
+          "type": "text"
+        },
+        "external_id": {
+          "type": "text",
+          "unique": true
+        },
+        "body": {
+          "type": "longtext"
+        },
+        "received_at": {
+          "type": "datetime"
+        },
+        "reply_by": {
+          "type": "datetime",
+          "computed": "timestamp(received_at) + duration(\"2h\")",
+          "timer": {
+            "field": "reply_by",
+            "direction": "down",
+            "amber": "PT30M",
+            "red": "PT0S"
+          }
+        },
+        "customer": {
+          "type": "text",
+          "label": "Customer"
+        },
+        "company": {
+          "type": "text",
+          "label": "Company"
+        },
+        "status": {
+          "type": "enum",
+          "label": "Status",
+          "values": [
+            "Open",
+            "Pending",
+            "Solved"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "ticket": "rw"
+    },
+    "connectors": {
+      "gmail": {
+        "can": [
+          "thread.received",
+          "reply"
+        ],
+        "approve": [
+          "reply"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "new-thread",
+      "on": "connector",
+      "connector": "gmail",
+      "event": "thread.received",
+      "run": "ingest"
+    }
+  ]
+}

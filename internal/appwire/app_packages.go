@@ -20,12 +20,14 @@ type packParams struct {
 }
 
 type packageParams struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
+	Package string `json:"package"`
 }
 
 type updatePackageParams struct {
-	App  string `json:"app"`
-	Path string `json:"path"`
+	App     string `json:"app"`
+	Path    string `json:"path"`
+	Package string `json:"package"`
 }
 
 type resolvePackageParams struct {
@@ -69,7 +71,7 @@ func init() {
 		return &result, nil
 	})
 	methods["apps.install"] = buildCall(func(b *builder.Jobs, p packageParams) (*builder.Proposal, error) {
-		a, err := readPackage(p.Path)
+		a, err := packageFrom(p.Path, p.Package)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +81,7 @@ func init() {
 		return &card, packageError(err)
 	})
 	methods["apps.update"] = buildCall(func(b *builder.Jobs, p updatePackageParams) (*builder.Proposal, error) {
-		a, err := readPackage(p.Path)
+		a, err := packageFrom(p.Path, p.Package)
 		if err != nil {
 			return nil, err
 		}
@@ -119,6 +121,25 @@ func packageError(err error) error {
 		return Errorf(CodeBadParams, "%s", err)
 	}
 	return err
+}
+
+func packageFrom(path, id string) (apppackage.Archive, error) {
+	if id == "" {
+		return readPackage(path)
+	}
+	if path != "" {
+		return apppackage.Archive{}, Errorf(CodeBadParams, "Choose a Kit template or an app package file.")
+	}
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		return apppackage.Archive{}, err
+	}
+	for _, archive := range archives {
+		if archive.Manifest.ID == id {
+			return archive, nil
+		}
+	}
+	return apppackage.Archive{}, Errorf(CodeBadParams, "This Kit template is unavailable.")
 }
 
 func readPackage(path string) (apppackage.Archive, error) {

@@ -108,3 +108,37 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 		t.Fatalf("invalid path = %v", got)
 	}
 }
+
+func TestAppsContentReadServesPublishedPlanFiles(t *testing.T) {
+	fake := &fakeEngine{}
+	apps := store.NewAt(t.TempDir(), nil)
+	draft, err := apps.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(draft.Dir(), os.DirFS("../apps/schema/testdata/line-handover")); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := apps.Promote(draft, "Keep the shift plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := startWireOver(t, definitionEngine{fake, apps}, fake)
+	w.next()
+	call := func(ref string) map[string]any {
+		w.send(fmt.Sprintf(`{"id":1,"method":"apps.content.read","params":{"app":%q,"ref":%q}}`, meta.ID, ref))
+		return w.next()
+	}
+	raw, err := os.ReadFile("../apps/schema/testdata/line-handover/plan/shifts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call("plan/shifts.json"); got["error"] != nil || got["result"].(map[string]any)["text"] != string(raw) {
+		t.Fatalf("read plan: %v", got)
+	}
+	for _, ref := range []string{"app.json", "plan/../agent.md", "plan/missing.json"} {
+		if got := call(ref); got["error"].(map[string]any)["code"] != CodeNotFound {
+			t.Fatalf("read %q: %v", ref, got)
+		}
+	}
+}

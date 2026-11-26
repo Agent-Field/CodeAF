@@ -101,7 +101,7 @@ func (b *appBackend) drawAppPreview(ctx context.Context, preview builder.Preview
 	state := &b.builds.look
 	reply := state.addLook(id)
 	defer state.removeLook(id)
-	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen, Theme: params.Theme, Viewport: params.Viewport, Fixture: "synthetic", Checkpoint: params.Checkpoint})
+	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen, Theme: params.Theme, Viewport: params.Viewport, Fixture: "synthetic", Checkpoint: params.Checkpoint, Params: params.Params})
 	select {
 	case capture := <-reply:
 		return capture, nil
