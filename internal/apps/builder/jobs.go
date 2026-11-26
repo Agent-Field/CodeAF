@@ -189,6 +189,7 @@ type job struct {
 	Working         snapshot
 	Saved           map[string]snapshot
 	Queue           []turn
+	Paused          *turn `json:",omitempty"`
 	Base            int
 	Dirty           bool
 	Editable        bool
@@ -571,7 +572,7 @@ func (s *Jobs) Say(id, text string, target *Target) error {
 		return err
 	}
 	stage := Writing
-	if !j.Editable && len(j.Screens) == 0 && (len(j.Queue) == 0 || j.Queue[0].Stage == Planning) {
+	if !j.Editable && j.Paused == nil && len(j.Screens) == 0 && (len(j.Queue) == 0 || j.Queue[0].Stage == Planning) {
 		stage = Planning
 	}
 	var active turn
@@ -670,8 +671,14 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 		j.Problem = ""
 	}
 	small := proposal != "" && !j.Dirty && len(j.Queue) == 0
+	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small}
+	if stage == Writing && request == "" && j.Paused != nil {
+		next = *j.Paused
+		next.ID = id
+	}
+	j.Paused = nil
 	j.Dirty = true
-	j.Queue = append(j.Queue, turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small})
+	j.Queue = append(j.Queue, next)
 	if err := s.save(j, Event{}); err != nil {
 		return "", err
 	}
