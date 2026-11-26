@@ -242,9 +242,11 @@ func TestCheckRequiresARecordPageToHaveARecord(t *testing.T) {
 	}
 	for _, test := range []struct{ bind, message string }{
 		{"", "Bind this RecordPage to a record"},
-		{`,"bind":{"record":"deal","type":"deal"}`, "A RecordPage needs a record ID"},
+		{`,"bind":{"record":"deal","type":"deal"}`, "is not a saved record ID"},
+		{`,"bind":{"record":"$row.id","type":"deal"}`, "There is no current row here"},
+		{`,"bind":{"record":"$selection.typo.id","type":"deal"}`, "no RecordList with that id"},
 	} {
-		def.Files["screens/broken.json"] = []byte(`{"screen":"broken","title":"Detail","body":{"part":"RecordPage","label":"Detail","props":{"fields":["name"]}` + test.bind + `}}`)
+		def.Files["screens/deals.json"] = []byte(`{"screen":"deals","title":"Detail","body":{"part":"RecordPage","label":"Detail","props":{"fields":["name"]}` + test.bind + `}}`)
 		report := check.Definition(def, nil)
 		if report.OK() || !strings.Contains(report.String(), test.message) {
 			t.Fatalf("Check accepted a detail page with no record: %v", report)

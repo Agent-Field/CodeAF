@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/extensions"
-	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // Problem codes. They are stable: the Builder's Check matches on them and tests
@@ -855,8 +854,8 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 		switch {
 		case n.Bind == nil || n.Bind.Record == "":
 			c.add(ctx.file, at+"/bind", CodeBindNotAccepted, "Bind this RecordPage to a record, such as the selected row or a record ID passed to the screen.")
-		case !strings.HasPrefix(n.Bind.Record, "$") && !cell.ValidID(n.Bind.Record):
-			c.add(ctx.file, at+"/bind/record", CodeBindNotAccepted, "A RecordPage needs a record ID, not the record type or title. Bind it to the selected row or a record ID passed to the screen.")
+		case rowType == "" && (strings.HasPrefix(n.Bind.Record, "$row.") || strings.HasPrefix(n.Bind.Record, "$record.")):
+			c.add(ctx.file, at+"/bind/record", CodeBindNotAccepted, "Bind this RecordPage to the selected row or a record ID supplied to the screen. There is no current row here.")
 		}
 	}
 	if n.Part == "CommandButton" {

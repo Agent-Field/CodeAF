@@ -274,7 +274,7 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 			}
 			// A field revision keeps the type's existing identity and reuse
 			// choice unless the author explicitly supplies a replacement.
-			for _, key := range []string{"common", "uses", "portable_reuse"} {
+			for _, key := range []string{"common", "uses", "portable_reuse", "package_private"} {
 				if value, ok := before[key]; ok && revised[key] == nil {
 					revised[key] = value
 				}
