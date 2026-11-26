@@ -64,6 +64,7 @@ type compiled struct {
 	args     []any
 	sort     sortSpec
 	group    string
+	external *sourceQuery
 }
 
 // col is the SQL reading field f of the row this query tests.
@@ -128,6 +129,7 @@ func compileIR(sch *schema, t *Type, sc Scope, ir *QueryIR, now time.Time) (*com
 		}
 		c.group = f.Name
 	}
+	c.external = ir.external
 	return c, nil
 }
 
@@ -770,21 +772,35 @@ type Group struct {
 // counts a StateMeter draws. An enum's groups come in its declared order,
 // zeros included, so the meter does not reshuffle as counts move.
 func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) {
-	sch := s.schema.Load()
-	t, err := sch.allow(sc, typ, false)
+	ir, err := ParseQuery(query)
 	if err != nil {
 		return nil, 0, err
 	}
-	c, err := compileQuery(sch, t, sc, query, s.now())
+	ir.Type = typ
+	return s.CountRows(sc, ir, group)
+}
+
+// CountRows applies the same grouping to native and bounded source scans.
+func (s *Store) CountRows(sc Scope, ir *QueryIR, group string) ([]Group, int, error) {
+	sch := s.schema.Load()
+	t, err := sch.allow(sc, ir.Type, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	c, err := compileIR(sch, t, sc, ir, s.now())
 	if err != nil {
 		return nil, 0, err
 	}
 	if group == "" {
 		group = c.group
 	}
+	if err := s.checkLocalRead(t, c); err != nil {
+		return nil, 0, err
+	}
 	where, args := c.filter()
 	var total int
-	if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&total); err != nil {
+	countStmt, countArgs := c.statement(`SELECT count(*) FROM records r WHERE `+where, args)
+	if err := s.rdb.QueryRow(countStmt, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	if group == "" {
@@ -808,6 +824,7 @@ func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) 
 		col := c.col(f)
 		stmt = `SELECT ` + col + `, count(*) FROM records r WHERE ` + where + ` GROUP BY ` + col
 	}
+	stmt, args = c.statement(stmt, args)
 	rows, err := s.rdb.Query(stmt, args...)
 	if err != nil {
 		return nil, 0, err

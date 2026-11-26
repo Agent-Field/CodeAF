@@ -232,6 +232,7 @@ var migrations = []string{
 	ruleSourceGrantMigration,
 	identityMigration,
 	agentGrantMigration,
+	residencyMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
@@ -588,7 +589,9 @@ func (s *Store) HasApp(app string) bool {
 func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 	sch := s.schema.Load()
 	counts := map[string]int{}
-	rows, err := s.rdb.Query(`SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type_id`)
+	rows, err := s.rdb.Query(`SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL
+     AND NOT EXISTS(SELECT 1 FROM type_residency WHERE type_id = records.type_id AND mode = 'live')
+     GROUP BY type_id`)
 	if err != nil {
 		return nil, err
 	}

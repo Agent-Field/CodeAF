@@ -56,6 +56,7 @@ type Query struct {
 	Read       string    `json:"read"`
 	Args       Arguments `json:"args,omitempty"`
 	Limit      int       `json:"limit,omitempty"`
+	id         string
 }
 
 // Arguments preserves JSON numbers until the source interprets them.
@@ -65,13 +66,7 @@ func (a *Arguments) UnmarshalJSON(raw []byte) error {
 	return decodeJSON(raw, (*map[string]any)(a))
 }
 
-type Source struct {
-	Connection string    `json:"connection"`
-	Read       string    `json:"read"`
-	Residency  string    `json:"residency"`
-	Freshness  string    `json:"freshness"`
-	ObservedAt time.Time `json:"observed_at"`
-}
+type Source = data.QuerySource
 
 type Page struct {
 	Rows    []data.Row `json:"rows"`
@@ -111,11 +106,37 @@ func (s Service) Register(c Config, credential string) error {
 	if err != nil {
 		return err
 	}
-	definition, err := json.Marshal(registration{Config: c, Binding: binding})
+	registered := registration{Config: c, Binding: binding}
+	definition, err := json.Marshal(registered)
 	if err != nil {
 		return err
 	}
-	return s.vault().Register(c.ID, definition, credential)
+	register := func() error { return s.vault().Register(c.ID, definition, credential) }
+	bindings := map[string]data.ResidencyBinding{}
+	var store *data.Store
+	for name, read := range c.Reads {
+		if read.Residency == nil {
+			continue
+		}
+		if _, exists := bindings[read.Type]; exists {
+			return errors.New("only one residency read is allowed per type")
+		}
+		current, _, typ, err := s.bind(c, read, true)
+		if err != nil {
+			return err
+		}
+		for field := range read.Fields {
+			if _, err := sourceField(read, typ, field); err != nil {
+				return err
+			}
+		}
+		store = current
+		bindings[read.Type] = residencyBinding(registered, read, name)
+	}
+	if store == nil {
+		return register()
+	}
+	return store.DeclareResidencies(bindings, register)
 }
 
 func (s Service) List(app string) ([]Summary, error) {
@@ -191,9 +212,29 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	var route residencyRoute
+	state, err := store.Residency(data.Scope{App: q.App}, read.Type)
+	if err != nil {
+		return Page{}, err
+	}
+	if read.Residency == nil && state.Binding.App != "" {
+		return Page{}, ErrUnavailable
+	}
+	if read.Residency != nil {
+		route, err = s.route(q.App, read.Type)
+		if err != nil {
+			return Page{}, err
+		}
+		if route.config.ID != q.Connection || route.name != q.Read {
+			return Page{}, ErrUnavailable
+		}
+		if route.state.Mode != data.ResidencyLive {
+			return s.readResident(route, q)
+		}
+	}
 	fields := map[string]*data.Field{}
 	for name := range read.Fields {
-		f, err := typ.LiveField(name, false)
+		f, err := sourceField(read, typ, name)
 		if err != nil {
 			return Page{}, err
 		}
@@ -205,6 +246,13 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	args, err := matchArgs(q.Args, read, fields)
 	if err != nil {
 		return Page{}, err
+	}
+	if q.id != "" {
+		key, err := effectKey(store, c, read, binding, q.id)
+		if err != nil {
+			return Page{}, err
+		}
+		args[read.Key] = key
 	}
 	secret, err := s.vault().Credential(c.ID)
 	if err != nil {
@@ -259,7 +307,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			if !exists || !boundedScalar(value) || c.Kind == HTTP && containsCredential(value, secret) {
 				return Page{}, ErrInvalidRows
 			}
-			mapped, err := field.LiveValue(value, false)
+			mapped, err := mappedSourceValue(store, c.App, read, field, value)
 			if err != nil {
 				return Page{}, err
 			}
@@ -285,6 +333,13 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	}
 	// TODO(R1): use the same binding when the type gains a mirror or native
 	// route. A live read persists only the crosswalk, never source values.
+	if read.Residency != nil {
+		if err := route.checkEpoch(); err != nil {
+			return Page{}, err
+		}
+		page.Source = route.source()
+		page.Source.ObservedAt = observed
+	}
 	return page, nil
 }
 
@@ -346,8 +401,8 @@ func matchArgs(input map[string]any, read Read, fields map[string]*data.Field) (
 		if !ok {
 			return nil, errors.New("this read does not declare that argument")
 		}
-		if field := fields[name]; field != nil && field.Masked {
-			return nil, errors.New("a read cannot match on a masked field")
+		if field := fields[name]; field != nil && (field.Masked || field.Type == data.TypeRef) {
+			return nil, errors.New("a read cannot match on a masked or crosswalk field")
 		}
 		if !boundedScalar(value) || value == nil {
 			return nil, errors.New("a read argument needs a bounded scalar")

@@ -176,9 +176,10 @@ type Scope struct {
 	Cause      string
 	CauseChain []string
 
-	sync        bool
-	sourceEvent string
-	sourceKey   ExternalKey
+	sync          bool
+	sourceEvent   string
+	sourceKey     ExternalKey
+	restoreSource bool
 }
 
 func (sc Scope) isAgent() bool {

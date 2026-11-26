@@ -53,6 +53,7 @@ type QueryIR struct {
 	Group     []string
 	Select    []string
 	Aggregate []Agg
+	external  *sourceQuery
 }
 
 // ParseQuery parses a query's tokens into the IR (no type yet: the type is
@@ -140,6 +141,9 @@ func (s *Store) selection(sch *schema, t *Type, sc Scope, list []string) (*selec
 		}
 		target, err := sch.allow(sc, f.To, false)
 		if err != nil {
+			return nil, err
+		}
+		if err := s.checkLocalRead(target, nil); err != nil {
 			return nil, err
 		}
 		g := target.field(tail)
@@ -328,6 +332,10 @@ func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
 	allArgs := append([]any(nil), args...)
 	allArgs = append(allArgs, groupArgs...)
 	out := &AggResult{Group: append([]string{}, ir.Group...), Groups: []AggGroup{}}
+	if err := s.checkLocalRead(t, c); err != nil {
+		return nil, err
+	}
+	stmt, allArgs = c.statement(stmt, allArgs)
 	err = eachRow(s.rdb, stmt, allArgs, func(scan func(...any) error) error {
 		dest := make([]any, len(selects))
 		ptrs := make([]any, len(selects))
@@ -358,7 +366,8 @@ func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&out.Total); err != nil {
+	countStmt, countArgs := c.statement(`SELECT count(*) FROM records r WHERE `+where, args)
+	if err := s.rdb.QueryRow(countStmt, countArgs...).Scan(&out.Total); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -390,6 +399,7 @@ func (c *compiled) groupColumn(sc Scope, name string) (string, *Field, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	c.related[target.ID] = true
 	g := target.field(tail)
 	if g == nil {
 		return "", nil, fieldErr(name, "%s records have no field %q", target.Name, tail)
@@ -442,6 +452,14 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 // page is one page of the records a compiled query matches, in its order,
 // resuming after a cursor.
 func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, limit int) (*Page, error) {
+	if err := s.checkLocalRead(t, c); err != nil {
+		return nil, err
+	}
+	signature := c.sort.signature()
+	if c.external != nil {
+		signature += "/" + c.external.cursor
+	}
+
 	if limit <= 0 {
 		limit = PageDefault
 	}
@@ -450,7 +468,8 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 	}
 	where, args := c.filter()
 	var total int
-	if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&total); err != nil {
+	countStmt, countArgs := c.statement(`SELECT count(*) FROM records r WHERE `+where, args)
+	if err := s.rdb.QueryRow(countStmt, countArgs...).Scan(&total); err != nil {
 		return nil, err
 	}
 	dir, cmp := "ASC", ">"
@@ -466,7 +485,7 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 		if err != nil {
 			return nil, err
 		}
-		if cur.Sort != c.sort.signature() {
+		if cur.Sort != signature {
 			return nil, errorf(CodeInvalid, "the cursor belongs to another order; start again from the first page")
 		}
 		if cur.Null {
@@ -489,6 +508,7 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 	pageArgs = append(pageArgs, c.sort.args...)
 	pageArgs = append(pageArgs, c.sort.args...)
 	pageArgs = append(pageArgs, limit+1)
+	stmt, pageArgs = c.statement(stmt, pageArgs)
 	rows, err := s.rdb.Query(stmt, pageArgs...)
 	if err != nil {
 		return nil, err
@@ -504,7 +524,7 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 			return nil, err
 		}
 		if len(page.Rows) == limit {
-			cur := cursor{Sort: c.sort.signature(), ID: last.ID, Key: normalizeKey(lastKey), Null: lastKey == nil}
+			cur := cursor{Sort: signature, ID: last.ID, Key: normalizeKey(lastKey), Null: lastKey == nil}
 			page.Next = cur.encode()
 			break
 		}

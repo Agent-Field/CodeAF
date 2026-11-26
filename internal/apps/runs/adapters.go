@@ -10,15 +10,16 @@ import (
 // Call names one step invocation. Key is stable across retries of that same
 // invocation and can serve as an idempotency key at the destination.
 type Call struct {
-	approved bool
-	App      string         `json:"app"`
-	Run      string         `json:"run"`
-	ID       string         `json:"id"`
-	Step     string         `json:"step"`
-	Key      string         `json:"key"`
-	Name     string         `json:"name"`
-	As       string         `json:"as"`
-	Args     map[string]any `json:"args"`
+	approved    bool
+	App         string         `json:"app"`
+	Run         string         `json:"run"`
+	ID          string         `json:"id"`
+	Step        string         `json:"step"`
+	Key         string         `json:"key"`
+	SourceFence string         `json:"source_fence,omitempty"`
+	Name        string         `json:"name"`
+	As          string         `json:"as"`
+	Args        map[string]any `json:"args"`
 }
 
 type Reply struct {

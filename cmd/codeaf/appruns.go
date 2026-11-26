@@ -99,8 +99,9 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	if _, err := b.dataStore(""); err != nil {
 		fmt.Fprintln(os.Stderr, "app runs data:", err)
 	}
-	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }}
-	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager, Sources: b.appConnections()}
+	sources := b.appConnections()
+	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }, Sources: &sources}
+	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager, Sources: sources}
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: b.appRunAgent(files),

@@ -2,7 +2,9 @@ package connections_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,8 +75,9 @@ func crm(t *testing.T) (connections.Service, *data.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	definition := crmManifest(t)
 	if err := store.PublishApp(data.AppPublication{
-		App: "crm", Version: 1, Metadata: []byte("{}"), Definition: crmManifest(t),
+		App: "crm", Version: 1, Metadata: fmt.Appendf(nil, `{"digest":"%x"}`, sha256.Sum256(definition)), Definition: definition,
 	}, 0); err != nil {
 		t.Fatal(err)
 	}

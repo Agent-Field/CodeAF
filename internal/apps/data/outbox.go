@@ -203,6 +203,11 @@ func (w *writeTx) invalidate(event, typeID, binding string) error {
 	return w.emit(outboxRow{event: event, typeID: typeID, binding: binding})
 }
 
+// InvalidateSource asks watches to refetch using their current source route.
+func (s *Store) InvalidateSource(typeID, binding string) error {
+	return s.write(func(w *writeTx) error { return w.invalidate(EventFreshnessChanged, typeID, binding) })
+}
+
 // InvalidatePolicy commits a reset when policy changes without rewriting a
 // record. A blank type ID names all types.
 func (s *Store) InvalidatePolicy(typeID string) error {
@@ -221,6 +226,9 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 	defer s.visibility.RUnlock()
 	t, err := s.schema.Load().allow(sc, typeID, false)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.checkLocalRead(t, nil); err != nil {
 		return nil, nil, err
 	}
 	var rawBefore, rawAfter sql.NullString

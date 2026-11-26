@@ -2,9 +2,11 @@ package connections
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -20,6 +22,7 @@ type Effect struct {
 	key     any
 	version string
 	values  map[string]any
+	fence   string
 }
 
 type Receipt struct {
@@ -75,7 +78,29 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 		}
 		values[read.Fields[name]] = normalized
 	}
-	return &Effect{service: s, config: c, read: read, write: write, key: key, version: version, values: values}, nil
+	state, err := store.Residency(data.Scope{App: app}, read.Type)
+	if err != nil {
+		return nil, err
+	}
+	if read.Residency == nil && state.Binding.App != "" {
+		return nil, ErrRejected
+	}
+	var route residencyRoute
+	if read.Residency != nil {
+		route, err = s.route(app, read.Type)
+		if err != nil {
+			return nil, err
+		}
+		if route.state.Mode == data.ResidencyNative {
+			return nil, ErrRejected
+		}
+	}
+	publication, _, err := store.Publication(app)
+	if err != nil {
+		return nil, err
+	}
+	fence := effectFence(c, state.Epochs, publication)
+	return &Effect{fence: fence, service: s, config: c, read: read, write: write, key: key, version: version, values: values}, nil
 }
 
 func effectKey(store *data.Store, c registration, read Read, binding data.TypeBinding, id string) (any, error) {
@@ -124,7 +149,10 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 		if !ok {
 			return receipt, ErrConflict
 		}
-		receipt.Version, err = sqlWrite(ctx, c.Kind, secret, e.read, sqlKey, e.version, e.values)
+		receipt.Version, err = sqlWrite(ctx, c.Kind, secret, e.read, sqlKey, e.version, e.values, e.checkRoute)
+		return receipt, err
+	}
+	if err := e.checkRoute(); err != nil {
 		return receipt, err
 	}
 	body := make(map[string]any, len(e.values)+2)
@@ -161,4 +189,30 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 		}
 	}
 	return receipt, nil
+}
+
+// Fence binds a broker approval to the registration, app version and epochs.
+func (e *Effect) Fence() string { return e.fence }
+
+func effectFence(c registration, epochs data.TypeEpochs, pub data.AppPublication) string {
+	return fmt.Sprintf("%s/%d/%d/%d/%x", c.Binding, epochs.Mapping, epochs.Residency, pub.Version, sha256.Sum256(pub.Metadata))
+}
+
+func (e *Effect) checkRoute() error {
+	store, _, _, err := e.service.bind(e.config.Config, e.read, true)
+	if err != nil {
+		return err
+	}
+	state, err := store.Residency(data.Scope{App: e.config.App}, e.read.Type)
+	if err != nil {
+		return err
+	}
+	publication, _, err := store.Publication(e.config.App)
+	if err != nil {
+		return err
+	}
+	if e.Fence() != effectFence(e.config, state.Epochs, publication) {
+		return ErrConflict
+	}
+	return nil
 }

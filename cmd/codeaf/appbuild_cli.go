@@ -93,6 +93,7 @@ func runAppCommand(args []string) error {
 	case verb == "help":
 		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|common-types|bind-common-type|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
+		fmt.Fprintln(os.Stdout, "codeaf app residency <show|preview|apply> APP TYPE [MODE]")
 		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
 		return nil
 	case verb == "kit" && len(args) == 1:
@@ -129,13 +130,27 @@ func runAppCommand(args []string) error {
 	if len(params) > appCommandLimit || !json.Valid(params) {
 		return errors.New("app command arguments must be valid JSON")
 	}
-	path, err := appCommandSocket()
+	result, err := callAppCommand(verb, params)
+	if errors.Is(err, errAppCommandOffline) && verb == "bind_common_type" {
+		return runAppCommonBind(params)
+	}
 	if err != nil {
 		return err
 	}
+	_, err = fmt.Fprintln(os.Stdout, string(result))
+	return err
+}
+
+var errAppCommandOffline = errors.New("open the desktop app for this profile to use app commands")
+
+func callAppCommand(verb string, params json.RawMessage) (json.RawMessage, error) {
+	path, err := appCommandSocket()
+	if err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(appCommandRequest{Verb: verb, Params: params})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), appCommandWait)
 	defer cancel()
@@ -145,26 +160,25 @@ func runAppCommand(args []string) error {
 	defer transport.CloseIdleConnections()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://apps/app", bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	response, err := (&http.Client{Transport: transport}).Do(request)
 	if err != nil {
-		if verb == "bind_common_type" && (errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
-			return runAppCommonBind(params)
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, errAppCommandOffline
 		}
-		return errors.New("open the desktop app for this profile to use app commands")
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return errors.New("the desktop engine rejected the app command request")
+		return nil, errors.New("the desktop engine rejected the app command request")
 	}
 	var reply appCommandReply
 	if err := json.NewDecoder(response.Body).Decode(&reply); err != nil {
-		return err
+		return nil, err
 	}
 	if reply.Error != nil {
-		return reply.Error
+		return nil, reply.Error
 	}
-	_, err = fmt.Fprintln(os.Stdout, string(reply.Result))
-	return err
+	return reply.Result, nil
 }

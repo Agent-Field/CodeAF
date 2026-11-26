@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -225,11 +226,11 @@ func (b *appBackend) DataQuery(p appwire.DataQueryParams) (*appwire.DataQueryRes
 		ir.Sort = p.Sort
 	}
 	ir.Select = p.Select
-	page, err := s.QueryRows(dataScope(p.DataScope), ir, p.Cursor, p.Limit)
+	page, source, err := b.appQueryRows(s, p.DataScope, dataScope(p.DataScope), ir, p.Cursor, p.Limit)
 	if err != nil {
-		return nil, appDataError(err)
+		return nil, err
 	}
-	return &appwire.DataQueryResult{Rows: wireRows(page.Rows), Next: page.Next, Total: page.Total}, nil
+	return &appwire.DataQueryResult{Rows: wireRows(page.Rows), Next: page.Next, Total: page.Total, Source: &source}, nil
 }
 
 // queryIR is a wire query in the store's one intermediate form: the typed
@@ -259,11 +260,15 @@ func (b *appBackend) DataAggregate(p appwire.DataAggregateParams) (*appwire.Data
 	for _, a := range p.Aggregate {
 		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: a.Fn, Field: a.Field, As: a.As})
 	}
-	res, err := s.Aggregate(dataScope(p.DataScope), ir)
+	planned, source, _, err := b.planAppQuery(p.DataScope, ir)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.Aggregate(dataScope(p.DataScope), planned)
 	if err != nil {
 		return nil, appDataError(err)
 	}
-	out := &appwire.DataAggregateResult{Group: nonNilStrings(res.Group), Groups: []appwire.DataAggregate{}, Total: res.Total}
+	out := &appwire.DataAggregateResult{Group: nonNilStrings(res.Group), Groups: []appwire.DataAggregate{}, Total: res.Total, Source: &source}
 	for _, g := range res.Groups {
 		out.Groups = append(out.Groups, appwire.DataAggregate{Key: g.Key, Values: g.Values})
 	}
@@ -275,11 +280,19 @@ func (b *appBackend) DataCount(p appwire.DataCountParams) (*appwire.DataCountRes
 	if err != nil {
 		return nil, err
 	}
-	groups, total, err := s.Count(dataScope(p.DataScope), p.Type, p.Query, p.Group)
+	ir, err := queryIR(p.Type, p.Query, nil)
+	if err != nil {
+		return nil, err
+	}
+	planned, source, _, err := b.planAppQuery(p.DataScope, ir)
+	if err != nil {
+		return nil, err
+	}
+	groups, total, err := s.CountRows(dataScope(p.DataScope), planned, p.Group)
 	if err != nil {
 		return nil, appDataError(err)
 	}
-	out := &appwire.DataCountResult{Groups: []appwire.DataGroup{}, Total: total}
+	out := &appwire.DataCountResult{Groups: []appwire.DataGroup{}, Total: total, Source: &source}
 	for _, g := range groups {
 		out.Groups = append(out.Groups, appwire.DataGroup{Key: g.Key, Count: g.Count})
 	}
@@ -291,11 +304,17 @@ func (b *appBackend) DataGet(p appwire.DataRecordParams) (*appwire.DataRowResult
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.Get(dataScope(p.DataScope), p.Type, p.ID, p.Reveal)
-	if err != nil {
-		return nil, appDataError(err)
+	source := connections.NativeSource()
+	var row data.Row
+	if p.App != "" && p.Draft == "" {
+		row, source, err = b.appConnections().GetRecord(context.Background(), p.App, p.Type, p.ID, p.Reveal)
+	} else {
+		row, err = s.Get(dataScope(p.DataScope), p.Type, p.ID, p.Reveal)
 	}
-	return &appwire.DataRowResult{Row: appwire.DataRow(row)}, nil
+	if err != nil {
+		return nil, appConnectionError(err)
+	}
+	return &appwire.DataRowResult{Row: appwire.DataRow(row), Source: &source}, nil
 }
 
 func (b *appBackend) DataHistory(p appwire.DataRecordParams) (*appwire.DataHistoryResult, error) {
@@ -512,6 +531,16 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	}
 	p.Sub = strings.TrimSpace(p.Sub)
 	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID, Table: p.Table, InvalidateOnly: p.InvalidateOnly}
+	if p.Draft == "" && p.App != "" && p.Type != "" && p.Table == "" {
+		state, err := b.appConnections().Residency(p.App, p.Type)
+		if err != nil {
+			return nil, appConnectionError(err)
+		}
+		if state.Connection != "" {
+			spec.InvalidateOnly = true
+			spec.Bindings = []string{state.Binding}
+		}
+	}
 	if p.Cursor != nil {
 		spec.Resume, spec.After = true, *p.Cursor
 	}
@@ -536,7 +565,8 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	b.data.subs[p.Sub] = appDataSubscription{store: s, gate: gate}
 	result := &appwire.DataSubscribeResult{Cursor: snapshot.Cursor}
 	if snapshot.Rows != nil {
-		result.Snapshot = &appwire.DataQueryResult{Rows: wireRows(snapshot.Rows), Next: snapshot.Next, Total: snapshot.Total}
+		source := connections.NativeSource()
+		result.Snapshot = &appwire.DataQueryResult{Source: &source, Rows: wireRows(snapshot.Rows), Next: snapshot.Next, Total: snapshot.Total}
 	}
 	if p.DeferEvents {
 		result.ReleaseEvents = gate.release

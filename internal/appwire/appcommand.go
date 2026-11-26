@@ -6,6 +6,8 @@ import "encoding/json"
 // door deliberately has no access to data.*, connectors, or conversations.
 func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, error) {
 	switch verb {
+	case "residency.show", "residency.preview", "residency.cutover":
+		return methods[verb].call(engine, params)
 	case "new", "plan", "build", "check", "say", "build_state", "checkpoints",
 		"restore_checkpoint", "preview", "look", "discard", "change", "kit",
 		"reference", "parts", "common_types", "bind_common_type",

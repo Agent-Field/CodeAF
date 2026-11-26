@@ -34,15 +34,25 @@ type Config struct {
 // Read maps fields on a bound app type to source columns or JSON properties.
 // Match maps arguments to SQL equality predicates or HTTP query parameters.
 type Read struct {
-	Type    string            `json:"type"`
-	Table   string            `json:"table,omitempty"`
-	Path    string            `json:"path,omitempty"`
-	Rows    string            `json:"rows,omitempty"`
-	Key     string            `json:"key"`
-	Version string            `json:"version,omitempty"`
-	Fields  map[string]string `json:"fields"`
-	Match   map[string]string `json:"match,omitempty"`
-	OrderBy string            `json:"order_by,omitempty"`
+	Type      string            `json:"type"`
+	Table     string            `json:"table,omitempty"`
+	Path      string            `json:"path,omitempty"`
+	Rows      string            `json:"rows,omitempty"`
+	Key       string            `json:"key"`
+	Version   string            `json:"version,omitempty"`
+	Fields    map[string]string `json:"fields"`
+	Match     map[string]string `json:"match,omitempty"`
+	Residency *ResidencyConfig  `json:"residency,omitempty"`
+	OrderBy   string            `json:"order_by,omitempty"`
+}
+
+// ResidencyConfig admits a Personal fixed export to the type's existing
+// audience. PostgreSQL must advance both columns for every edit or tombstone.
+type ResidencyConfig struct {
+	UpdatedAt       string                       `json:"updated_at"`
+	Tombstone       string                       `json:"tombstone"`
+	FreshForSeconds int                          `json:"fresh_for_seconds"`
+	References      map[string]map[string]string `json:"references,omitempty"`
 }
 
 // Write names a read's binding and the subset of its fields that can change.
@@ -106,12 +116,34 @@ func (c Config) validate() error {
 			return errors.New("a database read needs a table and optional sort column")
 		}
 		mapped := map[string]bool{read.Key: true, read.Version: true}
+		if r := read.Residency; r != nil {
+			if c.Kind != Postgres || read.Version == "" || !identifier.MatchString(r.UpdatedAt) ||
+				!identifier.MatchString(r.Tombstone) || mapped[r.UpdatedAt] || mapped[r.Tombstone] ||
+				r.UpdatedAt == r.Tombstone || r.FreshForSeconds < 1 || r.FreshForSeconds > 3600 {
+				return errors.New("residency needs PostgreSQL version, updated_at, tombstone and freshness columns or limits")
+			}
+			mapped[r.UpdatedAt], mapped[r.Tombstone] = true, true
+		}
 		for field, column := range read.Fields {
 			if !alias.MatchString(field) || field == "id" || field == "type" || !identifier.MatchString(column) || mapped[column] {
 				return errors.New("a field mapping needs a distinct column outside the source key and version")
 			}
 			mapped[column] = true
 		}
+		if r := read.Residency; r != nil {
+			for field, refs := range r.References {
+				if read.Fields[field] == "" || len(refs) == 0 || len(refs) > maxRows ||
+					read.Match[field] != "" || read.OrderBy == read.Fields[field] {
+					return errors.New("a reference needs a mapped field and a bounded explicit crosswalk")
+				}
+				for key, id := range refs {
+					if key == "" || len(key) > 1024 || !cell.ValidID(id) {
+						return errors.New("a reference maps a source key to a canonical record ID")
+					}
+				}
+			}
+		}
+
 		matched := map[string]bool{}
 		for arg, target := range read.Match {
 			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && read.Fields[arg] != target) {

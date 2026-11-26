@@ -71,3 +71,51 @@ Its arguments are the canonical row `id`, `version` from `_source_version` when 
 `set` with the allowed app fields. The broker asks before dispatch and saves an effect receipt in
 `runs.get` under `effects`. A stale version reports a conflict. If a write's outcome is unknown,
 the broker leaves the run incomplete so it can be checked at the source before anyone sends it again.
+
+## Copy my data in from Postgres
+
+Use a Personal PostgreSQL connection whose declared read includes
+`"residency": {"updated_at": "updated_at", "tombstone": "deleted", "fresh_for_seconds": 30}`.
+By registering this option, the profile operator approves the declared rows and fields as a fixed export to
+the type's existing audience. Use a role and table that export only that data. Delegated and per-user
+source permissions require a separate integration. Review masked fields before copying their values.
+The source needs a unique stable key, a managed integer version, a non-null timestamp and a Boolean
+tombstone. Every source writer advances the version and timestamp, including on deletion. Keep tombstones
+for the mirror to observe. A declared reference may use `residency.references` to map source keys to
+existing canonical record IDs, keyed by app field name.
+
+1. Run `codeaf app residency show APP TYPE` to see the active mode.
+2. Run `codeaf app residency preview APP TYPE mirror` to see row counts, conflicts and a confirmation token.
+3. Apply that plan with `codeaf app residency apply APP TYPE mirror --confirm TOKEN`.
+
+The live read uses a five-second deadline and caches no rows. Mirror copies a bounded snapshot first and
+then polls for edits with a five-minute overlap. Each snapshot or poll is limited to 500 rows and one
+MiB. The app version, canonical record IDs and company links stay the same. The Personal engine catches
+up when it starts. The owner wire uses `residency.show`, `residency.preview` and `residency.cutover`.
+
+## Keep it in sync with the old system
+
+A mirror result includes its source, observation time and freshness. A mirror beyond its configured
+freshness bound is labeled stale. Contacts lists whose source can change receive a payload-free
+`data.reset` and refetch under the current grant. A source tombstone removes a row from the mirror.
+Use the brokered app Action to edit the source in mirror mode. Give it the row's `_source_version`.
+The broker saves its result and reports a conflict if that source revision changed. Synchronization
+records the observed source revision and preserves values and clears a person already pinned.
+
+The poll expects committed updates within the five-minute overlap and treats hard deletes or a
+missing key during cut-over as conflicts. Logical replication is optional and this connection uses polling.
+
+## Stop depending on the old system
+
+Pause upstream writers before moving a mirror to native. Preview with
+`codeaf app residency preview APP TYPE native --source-quiesced`. Apply with
+`codeaf app residency apply APP TYPE native --source-quiesced --confirm TOKEN`.
+A changed plan or a conflict requires a fresh preview. Once native, ordinary edits to fields with
+a declared reverse mapping go to codeaf's writer. During the reversible window, creates, deletes
+and fields without a reverse mapping are fenced. Native reads continue while the source is offline.
+
+To return from native, pause upstream writers again and preview `live` or `mirror`.
+The preview includes the number of rows whose native edits need replay. Apply conditionally writes
+those edits back before switching the read route. Upstream conflicts keep the native route and its
+edits in place. A mirror can return directly to live with a fresh preview and confirmation.
+Returning to live retires the copied values and keeps the identity crosswalk and audit receipts.
