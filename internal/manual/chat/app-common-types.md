@@ -6,7 +6,10 @@ Common types give your apps a shared vocabulary. A CRM's Contacts can use
 Person and its Companies can use Organization. When Support uses those same
 types, it refers to the same people and companies by ID. Edits you make with
 write access are visible in both apps. Each app still needs its own read or
-write access to the records.
+write access to the records. In Desk, a shared record list shows the fields
+from the shared type. Select a record name to open it. With write access,
+select a field such as Email, change it and press Enter. The other open apps
+show the change as it is saved.
 
 With Desk connected, choose the offer to use your existing records during
 planning. For a headless build, the plan lists matching reuse as a proposal,
