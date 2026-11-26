@@ -8,16 +8,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -122,7 +123,7 @@ func TestAppPolicyProductionModelPaths(t *testing.T) {
 	if err := json.Unmarshal(raw, &properties); err != nil {
 		t.Fatal(err)
 	}
-	properties["records"].(map[string]any)["deal"].(map[string]any)["fields"].(map[string]any)["name"].(map[string]any)["class"] = "restricted"
+	properties["records"].(map[string]any)["deal"].(map[string]any)["fields"].(map[string]any)["name"].(map[string]any)["class"] = "pii"
 	properties["agent"].(map[string]any)["model"] = "test/model"
 	raw, err = json.Marshal(properties)
 	if err != nil {
@@ -165,12 +166,63 @@ func TestAppPolicyProductionModelPaths(t *testing.T) {
 		if event != appwire.EventAppsBuild || !ok || out.Draft != edit {
 			return false
 		}
-		if out.Stage == builder.Failed && !strings.Contains(out.Line, errAppModelRestricted.Error()) {
-			t.Fatalf("builder failure: %s", out.Line)
-		}
-		return strings.Contains(out.Line, errAppModelRestricted.Error())
+		return delivered.Load() != 0
 	})
-	if got := delivered.Load(); got != 0 {
-		t.Fatalf("the unapproved endpoint received %d requests", got)
+	if got := delivered.Load(); got == 0 {
+		t.Fatal("the schema-only Builder never reached the model")
+	}
+}
+
+func TestPersonalProfileModelDefault(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("CODEAF_BASE_URL", "https://example.com/v1")
+	t.Setenv("CODEAF_MODEL", "test/process-default")
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	if err := config.WriteChatModel(b.localProfile(), "test/owner-model"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := b.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterApp([]byte(`{"id":"test-app","records":{"contact":{"fields":{"email":{"type":"email","class":"pii"}}}},"capabilities":{"records":{"contact":"r"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	destination := provider.ModelDestination{Model: "test/owner-model", Endpoint: "https://example.com/v1/chat/completions"}
+	authorize := b.appModelAuthorizer("test-app")
+	if err := authorize(t.Context(), destination); err != nil {
+		t.Errorf("chosen profile model: %v", err)
+	}
+	for _, other := range []provider.ModelDestination{
+		{},
+		{Model: "test/app-selected", Endpoint: destination.Endpoint},
+		{Model: destination.Model, Endpoint: "https://other.example/v1/chat/completions"},
+	} {
+		if err := authorize(t.Context(), other); !errors.Is(err, errAppModelRestricted) {
+			t.Errorf("unapproved destination %+v: %v", other, err)
+		}
+	}
+	policyFile := filepath.Join(b.localProfile(), appModelPolicyFile)
+	if err := writeAppModelPolicy(policyFile, []byte(`{"pii":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorize(t.Context(), destination); !errors.Is(err, errAppModelRestricted) {
+		t.Errorf("profile deny: %v", err)
+	}
+	if err := os.Remove(policyFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.appConnections().Register(connections.Config{
+		ID: "work-directory", Kind: connections.HTTP, App: "test-app",
+		Origin: "https://example.com", TestPath: "/status",
+		Reads: map[string]connections.Read{"contacts": {
+			Type: "contact", Path: "/contacts", Key: "id", Fields: map[string]string{"email": "email"},
+		}},
+	}, "fixture-private-token"); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorize(t.Context(), destination); !errors.Is(err, errAppModelRestricted) {
+		t.Errorf("a connected app must keep explicit approvals: %v", err)
 	}
 }

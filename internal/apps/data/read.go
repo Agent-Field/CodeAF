@@ -168,7 +168,7 @@ func (s *Store) historyValues(t *Type, r *record, sc Scope) map[string]any {
 		if f == nil || f.Hidden && sc.App != "" {
 			continue
 		}
-		mode := t.FieldPolicy(f)
+		mode := s.personalFieldPolicy(t, f, r, sc, s.Person())
 		if mode == "hide" || s.schema.Load().withheldRef(f) {
 			s.AuditRecordPolicy(sc, t, "field_hidden")
 			continue
