@@ -1023,6 +1023,10 @@ func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType st
 			c.add(file, sat+"/workspace", CodeWorkspaceRefused, "The step %q checks out a repository (workspace: %s). Apps in this version of codeaf do not work in repositories.", s.ID, s.Workspace)
 		}
 		var kinds []string
+		if s.AI != nil {
+			kinds = append(kinds, "ai")
+			c.checkAIStep(file, sat, r, s.AI)
+		}
 		if s.Agent != "" {
 			kinds = append(kinds, "agent")
 		}

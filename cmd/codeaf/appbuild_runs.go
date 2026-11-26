@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -86,7 +87,7 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 		}
 		r, err := engine.Start(app.ID, run, params)
 		if err != nil {
-			return err
+			return &check.RunProblem{Detail: fmt.Sprintf("The run %s could not start on the example records: %v", run, err)}
 		}
 		started = append(started, r)
 	}
@@ -100,9 +101,14 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 
 func scratchRun(def schema.Definition, id string) (runs.Definition, error) {
 	for _, file := range def.RunFiles() {
-		if schema.FileID(file) == id {
-			return runs.Parse(def.Files[file])
+		if schema.FileID(file) != id {
+			continue
 		}
+		run, err := runs.Parse(def.Files[file])
+		if err != nil {
+			return runs.Definition{}, &check.RunProblem{Detail: fmt.Sprintf("The run %s could not start: %v", id, err)}
+		}
+		return run, nil
 	}
 	return runs.Definition{}, fs.ErrNotExist
 }
@@ -127,8 +133,15 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 		},
 		Triggers:  func() ([]runs.Trigger, error) { return triggers, nil },
 		Connector: runs.NewFakeConnector(replies),
-		Agent: func(context.Context, runs.AgentCall) (runs.Reply, error) {
-			return runs.Reply{Output: "Example draft from this app."}, nil
+		Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
+			if call.AI == nil {
+				return runs.Reply{Output: "Example draft from this app."}, nil
+			}
+			if call.AI.Example == nil {
+				return runs.Reply{}, &check.RunProblem{Detail: "Add an example JSON response to the AI step so Check can exercise it without calling a model."}
+			}
+			output, err := json.Marshal(call.AI.Example)
+			return runs.Reply{Output: string(output)}, err
 		},
 		Records: records.Write, ReadRecords: records.ReadRecords,
 		ResolveParams: records.ResolveParams, RecordInput: records.RecordInput,

@@ -181,6 +181,7 @@
         "masked": { "type": "boolean" },
         "computed": { "type": "string", "minLength": 1 },
         "ai": { "type": "string", "minLength": 1 },
+        "ai_on_change": { "type": "boolean" },
         "values": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
         "to": { "type": "string" },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }

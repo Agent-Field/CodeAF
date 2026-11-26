@@ -38,5 +38,5 @@ The local profile owner can install approvals with
 completion URLs per class, for example
 `{"restricted":[{"model":"provider/model","endpoint":"https://example.com/v1/chat/completions"}]}`.
 Install an empty object to remove approvals. A fallback model or a different
-endpoint needs its own approval. Refusals and masks go to the app data log
+endpoint needs its own approval. An external AI harness cannot receive restricted or PII app input because it does not report a fixed model and completion URL. Refusals and masks go to the app data log
 `policy.jsonl` with decision names and identifiers.

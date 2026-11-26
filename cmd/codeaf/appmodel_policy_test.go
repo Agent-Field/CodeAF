@@ -145,6 +145,13 @@ func TestAppPolicyProductionModelPaths(t *testing.T) {
 			t.Fatalf("%s: %v", id, err)
 		}
 	}
+	harnesses := b.appAIHarnesses(runs.Files(home.Join("apps")))
+	for _, id := range []string{runs.HarnessClaudeCode, runs.HarnessCodex, runs.HarnessAgentField} {
+		_, err := harnesses[id].Run(t.Context(), runs.AgentCall{Call: runs.Call{App: meta.ID}, Prompt: "Summarize deals"})
+		if !errors.Is(err, errAppModelRestricted) {
+			t.Fatalf("harness %s: %v", id, err)
+		}
+	}
 	jobs, err := b.AppBuilds()
 	if err != nil {
 		t.Fatal(err)

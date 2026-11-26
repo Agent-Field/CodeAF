@@ -75,7 +75,7 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 		case data.EventRecordCreated, data.EventRecordUpdated, data.EventRecordDeleted:
 			change := Change{
 				Seq: event.Seq, Type: event.Type, TypeID: event.TypeID, ID: event.Record, Batch: event.Batch,
-				OutboxVersion: event.Version, CauseChain: event.CauseChain, SourceEvent: event.SourceEvent,
+				OutboxVersion: event.Version, CauseChain: event.CauseChain, SourceEvent: event.SourceEvent, Cause: event.Cause,
 			}
 			if event.Event == data.EventRecordCreated && event.SourceEvent != "" {
 				var route data.IntakeTrigger
