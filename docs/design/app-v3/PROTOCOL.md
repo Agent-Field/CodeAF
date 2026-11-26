@@ -373,7 +373,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.aggregate` | `in.DataAggregateParams` | `DataAggregateResult` |
 | `data.checklist_set` | `in.ChecklistSetParams` | `DataProcessResult` |
 | `data.comments.create` | `in.DataCommentParams` | `DataItemResult` |
-| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` |
+| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` with `viewer` (the current person's ID) |
 | `data.count` | `in.DataCountParams` | `DataCountResult` |
 | `data.create` | `in.DataCreateParams` | `DataWriteResult` |
 | `data.delete` | `in.DataDeleteParams` | `DataWriteResult` |

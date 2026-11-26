@@ -72,6 +72,17 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 		"title": "Review notes", "body": "Confirm the numbers.",
 	}}, &created)
 	id := created.Rows[0]["id"]
+	comment := map[string]any{"app": docs, "type": "docs_document", "record": id}
+	var posted appwire.DataItemResult
+	comment["body"] = "Compare completion at the end of the pilot."
+	wire.must("data.comments.create", comment, &posted)
+	delete(comment, "body")
+	var thread appwire.DataItemsResult
+	wire.must("data.comments.list", comment, &thread)
+	if len(thread.Items) != 1 || thread.Viewer == "" || thread.Viewer != posted.Item["author"] ||
+		thread.Items[0]["author"] != thread.Viewer || thread.Items[0]["body"] != posted.Item["body"] {
+		t.Fatalf("document comment did not carry its author and viewer: %+v", thread)
+	}
 	var screen struct {
 		CustomParts map[string]schema.PartProgram `json:"custom_parts"`
 	}
