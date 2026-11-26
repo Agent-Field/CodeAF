@@ -8,3 +8,4 @@ invalidates:
 ---
 
 Browse groups packages by role and draws each preview from its sample data in the active theme. Preview opens the interactive sample without publishing. Browse follows the accepted package's publisher and version when checking for updates.
+Curated examples appear only when the exact release has passed acceptance or is an executable Look golden, with at least 30 sample records in the archive.

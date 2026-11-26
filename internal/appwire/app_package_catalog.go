@@ -17,7 +17,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-const packageSuffix = ".codeaf-app"
+const (
+	packageSuffix     = ".codeaf-app"
+	minExampleRecords = 30
+)
 
 type packagePresentation struct {
 	Job          string   `json:"job"`
@@ -148,6 +151,28 @@ func init() {
 		})
 		return &out, nil
 	})
+}
+
+// A curated release earns its place in Browse for one exact archive.
+func exampleAccepted(files fs.FS, name string, a apppackage.Archive) bool {
+	var evidence struct {
+		Status string `json:"acceptance"`
+		Hash   string `json:"accepted_hash"`
+	}
+	if json.Unmarshal(readPackageCompanion(files, name+".json", 4096), &evidence) != nil ||
+		(evidence.Status != "passed" && evidence.Status != "golden") ||
+		evidence.Hash == "" || evidence.Hash != a.Manifest.Hash {
+		return false
+	}
+	var sample schema.Sample
+	if json.Unmarshal(a.Files[schema.SampleFile], &sample) != nil {
+		return false
+	}
+	count := 0
+	for _, rows := range sample.Records {
+		count += len(rows)
+	}
+	return count >= minExampleRecords
 }
 
 func packageDisplay(files fs.FS, name string, a apppackage.Archive) packagePresentation {

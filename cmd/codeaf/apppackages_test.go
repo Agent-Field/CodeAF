@@ -124,6 +124,13 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		if !found {
 			t.Fatalf("CRM missing from Browse: %+v", browse)
 		}
+		for _, p := range browse.Packages {
+			if p.Publisher == "codeaf examples" && p.Name == "Ad studio" {
+				t.Fatal("held Ad studio was listed in Browse")
+			}
+		}
+		wire.mustFail("apps.preview_package", map[string]string{"builtin": "examples/ad-campaign-studio.codeaf-app"}, appwire.CodeBadParams)
+
 		var sample builder.Preview
 		wire.must("apps.preview_package", map[string]string{"path": catalogPath}, &sample)
 		if !sample.Sample || sample.Scope == "" || len(sample.Screens) != 1 || sample.Screens[0] != "main" {

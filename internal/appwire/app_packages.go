@@ -194,10 +194,12 @@ func selectedPackage(p packageParams) (apppackage.Archive, error) {
 		a, err = apppackage.Read(f)
 		if err != nil {
 			err = Errorf(CodeBadParams, "%s", err)
+		} else if example && !exampleAccepted(catalog, name, a) {
+			err = Errorf(CodeBadParams, "This example isn't available in the Kit.")
 		}
 	}
 	if err == nil && p.Hash != "" && a.Manifest.Hash != p.Hash {
-		return apppackage.Archive{}, Errorf(CodeConflict, "This package changed. Refresh Browse and try again.")
+		return apppackage.Archive{}, Errorf(CodeConflict, "This package changed. Reopen Browse and try again.")
 	}
 	return a, err
 }
