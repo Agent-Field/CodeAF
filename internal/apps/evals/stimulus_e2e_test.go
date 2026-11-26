@@ -9,7 +9,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -122,7 +121,8 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 	if !ok {
 		return nil, errors.New("record stimulus needs a text field for distinct values")
 	}
-	values[field] = original + " " + name
+	value := original + " " + name
+	values[field] = value
 	created, err := readReply[appwire.DataWriteResult](p.wire(ctx, "data.create", appwire.DataCreateParams{
 		DataScope: scope, Type: typ, Set: values,
 	}))
@@ -136,7 +136,9 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 	if id == "" {
 		return nil, errors.New("data.create did not return a record ID")
 	}
-	value := created.Rows[0][field]
+	if created.Rows[0][field] != value {
+		return nil, fmt.Errorf("data.create did not save the stimulus value for %s", field)
+	}
 	switch name {
 	case probePersonWins:
 		var held []data.Held
@@ -153,7 +155,7 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 		}
 		row, err := p.stimulusRow(ctx, scope, typ, id)
 		return map[string]any{
-			"held": len(held), "person_value_preserved": reflect.DeepEqual(row[field], value) &&
+			"held": len(held), "person_value_preserved": row[field] == value &&
 				slices.ContainsFunc(held, func(h data.Held) bool { return h.ID == id && h.Field == field }),
 		}, err
 	case probeRename:
@@ -174,7 +176,7 @@ func (p *galleryProcess) recordStimulus(ctx context.Context, name, app string, r
 		row, err := p.stimulusRow(ctx, scope, typ, id)
 		return map[string]any{
 			"same_field_id": before == after, "same_record_id": row["id"] == id,
-			"value_preserved": reflect.DeepEqual(row[renamed], value),
+			"value_preserved": row[renamed] == value,
 		}, err
 	default:
 		return nil, fmt.Errorf("unknown record probe %q", name)
