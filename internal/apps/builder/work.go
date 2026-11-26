@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -80,7 +81,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
 				} else {
-					report = schema.Validate(def, existing)
+					report = check.Definition(def, existing)
 				}
 			}
 		} else if err == nil {
