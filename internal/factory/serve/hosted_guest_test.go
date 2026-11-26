@@ -165,7 +165,7 @@ func TestP2_5_GuestHelloAndWholeLines(t *testing.T) {
 	defer srv.Close()
 	client := guestDial(t, srv, rg.tokens["abir"], chat)
 	host, _ := guestReceive(t, opened)
-	guestWrite(t, client, `{"kind":"hello","payload":{"launch":{},"model":"other","level":"high","workspace":"/elsewhere","Session":"elsewhere","ſession":"also elsewhere","new":true,"join":true,"holdInterruptedWork":true,"window":{},"BACK":false,"CLIENTID":"desk","version":1,"resume":[{"stream":8,"seq":99}],"encodings":["gzip"],"surface":"desk","watch":false,"extra":{"keep":true}}}`+"\n")
+	guestWrite(t, client, `{"kind":"hello","payload":{"launch":{},"model":"other","level":"high","workspace":"/elsewhere","Session":"elsewhere","ſession":"also elsewhere","new":true,"join":true,"holdInterruptedWork":true,"window":{},"BACK":false,"CLIENTID":"desk","version":1,"resume":[{"stream":8,"seq":99}],"encodings":["gzip"],"surface":"desk","REMOTE":{"device":"someone-else"},"watch":false,"extra":{"keep":true}}}`+"\n")
 	frame := guestFrame(t, guestHostLine(t, host))
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(frame.Payload, &payload); err != nil || frame.Kind != "hello" {
@@ -173,7 +173,7 @@ func TestP2_5_GuestHelloAndWholeLines(t *testing.T) {
 	}
 	want := map[string]string{
 		"back": "true", "clientID": `"guest:desk"`, "version": "1", "watch": "false",
-		"resume": `[{"stream":8,"seq":99}]`, "encodings": `["gzip"]`, "surface": `"desk"`, "extra": `{"keep":true}`,
+		"resume": `[{"stream":8,"seq":99}]`, "encodings": `["gzip"]`, "surface": `"abir"`, "extra": `{"keep":true}`,
 	}
 	if len(payload) != len(want) {
 		t.Errorf("hello kept unexpected fields: %s", frame.Payload)
