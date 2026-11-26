@@ -169,6 +169,30 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			return nil, err
 		}
 	}
+	metrics := func() ([]*Node, error) {
+		var parts []*Node
+		for i, metric := range slots.Metrics {
+			if strings.TrimSpace(metric.Label) == "" {
+				return nil, fmt.Errorf("give every dashboard metric a label")
+			}
+			key := fmt.Sprintf("metric-%d", i+1)
+			props := map[string]any{"kind": "metric", "title": metric.Label}
+			if metric.Format != "" {
+				props["format"] = metric.Format
+			}
+			if metric.Target != nil {
+				props["target"] = *metric.Target
+			}
+			if metric.Limit != nil {
+				props["limit"] = *metric.Limit
+			}
+			n := node(key, "Chart", metric.Label, props)
+			n.Bind = &Bind{Records: r.Record, View: key}
+			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
+			parts = append(parts, n)
+		}
+		return parts, nil
+	}
 	var pair *Node
 	switch r.As {
 	case "queue-detail", "board-detail", "inbox-thread", "brief", "agenda":
@@ -232,7 +256,7 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			}
 			details = append(details, thread)
 		}
-		if visual != nil {
+		if visual != nil && (r.As != "brief" || visual.Bind.File != "") {
 			details = append(details, visual)
 		}
 		panel := node("detail", "Panel", "Details", map[string]any{"title": "Details"}, details...)
@@ -292,31 +316,29 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			work = node("brief-work", "Row", "", map[string]any{"workspace": "brief", "gap": 2},
 				needs, stack("around-the-queue", supporting...))
 		}
-		s.Body = stack("brief", hero, work)
+		parts, err := metrics()
+		if err != nil {
+			return nil, err
+		}
+		var overview []*Node
+		if len(parts) != 0 {
+			overview = append(overview, node("brief-counts", "Row", "", map[string]any{"gap": 2}, parts...))
+		}
+		if visual != nil && visual.Bind.File == "" {
+			overview = append(overview, visual)
+		}
+		sections := []*Node{hero}
+		if len(overview) != 0 {
+			sections = append(sections, node("brief-overview", "Row", "", map[string]any{"workspace": "brief-overview", "gap": 2}, overview...))
+		}
+		s.Body = stack("brief", append(sections, work)...)
 	case "dashboard":
 		if len(slots.Metrics) == 0 || visual == nil {
 			return nil, fmt.Errorf("choose at least one metric and a visual for the dashboard")
 		}
-		var parts []*Node
-		for i, metric := range slots.Metrics {
-			if strings.TrimSpace(metric.Label) == "" {
-				return nil, fmt.Errorf("give every dashboard metric a label")
-			}
-			key := fmt.Sprintf("metric-%d", i+1)
-			props := map[string]any{"kind": "metric", "title": metric.Label}
-			if metric.Format != "" {
-				props["format"] = metric.Format
-			}
-			if metric.Target != nil {
-				props["target"] = *metric.Target
-			}
-			if metric.Limit != nil {
-				props["limit"] = *metric.Limit
-			}
-			n := node(key, "Chart", metric.Label, props)
-			n.Bind = &Bind{Records: r.Record, View: key}
-			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
-			parts = append(parts, n)
+		parts, err := metrics()
+		if err != nil {
+			return nil, err
 		}
 		view.Title = "Exceptions"
 		s.Body = stack("dashboard", node("measures", "Row", "", map[string]any{"wrap": true}, parts...), visual, collection("exceptions", view, "list", false))

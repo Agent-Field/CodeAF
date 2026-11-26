@@ -17,7 +17,8 @@ func TestScreenArchetypesExpandIntoCheckedWorkspaces(t *testing.T) {
 		{"gallery-hiring", "candidate", "agenda", ScreenSlots{Start: "interview"}, []string{"RecordList", "Panel"}},
 		{"gallery-kyc", "case", "record", ScreenSlots{}, []string{"RecordPage", "Timeline"}},
 		{"gallery-hiring", "candidate", "brief", ScreenSlots{Summary: "Today's interviews", Start: "interview",
-			Changed: &ScreenCollection{Record: "candidate", Title: "What changed"}}, []string{"Text", "RecordList", "Panel"}},
+			Metrics: []ScreenMetric{{Label: "Candidates", Op: "count"}}, Visual: &ScreenVisual{Kind: "bar", Title: "Candidates by stage", Group: "stage"},
+			Changed: &ScreenCollection{Record: "candidate", Title: "What changed"}}, []string{"Text", "RecordList", "Panel", "Chart"}},
 		{"gallery-line", "line", "dashboard", ScreenSlots{Metrics: []ScreenMetric{{Label: "Downtime", Op: "sum", Field: "minutes"}},
 			Visual: &ScreenVisual{Kind: "line", Title: "Pressure by hour", Group: "reading", Value: "pressure"}}, []string{"Chart", "RecordList"}},
 		{"gallery-line", "line", "canvas-visual", ScreenSlots{
@@ -39,6 +40,9 @@ func TestScreenArchetypesExpandIntoCheckedWorkspaces(t *testing.T) {
 				if findRecipePart(screen.Body, part) == nil {
 					t.Errorf("%s is missing from the expanded screen", part)
 				}
+			}
+			if tt.archetype == "brief" && (len(screen.Views["metric-1"].Aggregate) != 1 || screen.Views["visual"].Type != tt.record) {
+				t.Fatal("the brief must bind its count and chart to declared views")
 			}
 			again, err := CompileRecipe(def, nil, input)
 			if err != nil || !bytes.Equal(again.Screen, result.Screen) {

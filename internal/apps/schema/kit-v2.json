@@ -1111,7 +1111,7 @@
             ]
           },
           "workspace": {
-            "enum": ["queue", "board", "brief", "evidence"]
+            "enum": ["queue", "board", "brief", "brief-overview", "evidence"]
           },
           "wrap": {
             "type": "boolean"

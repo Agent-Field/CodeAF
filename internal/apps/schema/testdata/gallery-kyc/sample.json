@@ -7,6 +7,7 @@
         "review": "Periodic review",
         "stage": "Checker",
         "risk": 72,
+        "risk_level": "High",
         "maker": "mona",
         "reviewer": "me",
         "pan": "TEST-PAN-001",

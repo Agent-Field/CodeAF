@@ -16,6 +16,7 @@
           "type": "text"
         },
         "pan": {
+          "label": "PAN",
           "type": "text",
           "masked": true
         },
@@ -55,7 +56,13 @@
             "adverse_media",
             "source_of_funds"
           ],
-          "score_reason": "risk_reason"
+          "score_reason": "risk_reason",
+          "score_label": "risk_level"
+        },
+        "risk_level": {
+          "type": "enum",
+          "label": "Risk level",
+          "values": ["Low", "Medium", "High"]
         },
         "cash_business": {
           "type": "number",

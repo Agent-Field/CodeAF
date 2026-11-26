@@ -447,7 +447,7 @@ func (c *checker) checkApp() {
 		for _, fname := range sortedKeys(t.Fields) {
 			f := t.Fields[fname]
 			fat := at + "/fields/" + fname
-			if len(f.ScoreComponents) != 0 || f.ScoreReason != "" {
+			if len(f.ScoreComponents) != 0 || f.ScoreReason != "" || f.ScoreLabel != "" {
 				if f.Type != "number" {
 					c.add(AppFile, fat, CodeFieldUnknown, "Use a number for the %s score.", fname)
 				}
@@ -461,6 +461,12 @@ func (c *checker) checkApp() {
 					reason := fields[f.ScoreReason]
 					if reason.Masked || (reason.Type != "text" && reason.Type != "longtext") {
 						c.add(AppFile, fat+"/score_reason", CodeFieldUnknown, "Choose readable text to explain the score.")
+					}
+				}
+				if f.ScoreLabel != "" {
+					label := fields[f.ScoreLabel]
+					if label.Masked || (label.Type != "text" && label.Type != "enum") {
+						c.add(AppFile, fat+"/score_label", CodeFieldUnknown, "Choose a readable text or choice field for the score label.")
 					}
 				}
 			}

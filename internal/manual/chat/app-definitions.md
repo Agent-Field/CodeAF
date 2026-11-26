@@ -408,10 +408,12 @@ keeps the message as a draft.
 
 A Brief can show today's meetings in local time order. Its agenda can name the
 meeting record type, start time and attendee field. The attention list can
-show a reason under each title. What's changed shows plain rows.
+show a reason under each title. What's changed shows plain rows. Set
+`slots.metrics` and `slots.visual` to put counts and a chart under the summary.
 
 A record panel can show the current state, related facts and bottom actions.
-A numeric score can name its component fields and a text explanation.
+A numeric score can name its component fields, a text explanation, and a
+text or choice field for the score label through `score_label`.
 A completed checklist step shows who finished it and when. Desk can preview
 visible PNG and JPEG attachments on the selected record. The file preview
 uses the same access rules as the record's attachments.

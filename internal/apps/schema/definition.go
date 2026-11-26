@@ -268,6 +268,7 @@ type Field struct {
 	AI              string     `json:"ai,omitempty"`
 	ScoreComponents []string   `json:"score_components,omitempty"`
 	ScoreReason     string     `json:"score_reason,omitempty"`
+	ScoreLabel      string     `json:"score_label,omitempty"`
 	AIOnChange      bool       `json:"ai_on_change,omitempty"`
 	Values          []string   `json:"values,omitempty"`
 	To              string     `json:"to,omitempty"`
