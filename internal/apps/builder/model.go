@@ -58,8 +58,10 @@ configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 A new record should be creatable with its title and the essential input
-the person supplied. For text-first content such as posts and mentions, use
-text as the title field. Give a required status an initial value, for example
+the person supplied. Keep the person's field names as ids: a book's title
+is title, a person's name is name, and an imported post's text is text.
+Use the corresponding field as the record title. Give a required status
+an initial value, for example
 {"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
 Leave other fields optional unless the request requires a value at creation.
 Use a plain enum for status unless the request needs guarded transitions.
