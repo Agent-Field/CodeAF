@@ -105,7 +105,7 @@ func (c Config) mayRequestSecret() bool { return c.mayAsk() && c.Interactive }
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
 func (c Config) mayProposeTask() bool {
-	return !c.readingTask() && (!c.InTask || (c.mayFanOut() && !c.bashBelt))
+	return c.AppScope == nil && !c.readingTask() && (!c.InTask || (c.mayFanOut() && !c.bashBelt))
 }
 
 // mayQuickTask says whether `quick_task` belongs on this belt, and it is
