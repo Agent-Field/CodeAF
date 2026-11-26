@@ -2,6 +2,7 @@ package schema
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,7 @@ func TestGalleryScreenRecipes(t *testing.T) {
 	}{
 		{Recipe{Kind: "add-view", ID: "list", Record: "incident", As: "list"}, "RecordList"},
 		{Recipe{Kind: "add-view", ID: "board", Record: "incident", As: "board", By: "status"}, "RecordList"},
-		{Recipe{Kind: "add-view", ID: "table", Record: "incident", As: "table", Fields: []string{"title"}}, "Table"},
+		{Recipe{Kind: "add-view", ID: "table", Record: "incident", As: "table", Fields: []string{"title"}}, "RecordList"},
 		{Recipe{Kind: "add-view", ID: "calendar", Record: "incident", As: "calendar", By: "opened_at"}, "RecordList"},
 		{Recipe{Kind: "add-form", ID: "form", Record: "incident", Fields: []string{"title"}}, "Form"},
 		{Recipe{Kind: "add-detail", ID: "detail", Record: "incident"}, "RecordPage"},
@@ -27,7 +28,7 @@ func TestGalleryScreenRecipes(t *testing.T) {
 				t.Fatal(err)
 			}
 			s, err := ParseScreen(result.Screen)
-			if err != nil || s.Body == nil || s.Body.Part != tc.part || s.Body.ID == "" {
+			if err != nil || findRecipePart(s.Body, tc.part) == nil || s.Body.ID == "" {
 				t.Fatalf("wrong screen %s (%v)", result.Screen, err)
 			}
 			again, err := CompileRecipe(def, nil, tc.r)
@@ -157,7 +158,8 @@ func TestGalleryLifecycleRecipesRouteBoardMovesAndCheckGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen, _ := ParseScreen(result.Screen)
-	if len(screen.Body.On["move"]) != 1 || screen.Body.On["move"][0]["lifecycle.transition"] == nil {
+	board := findRecipePart(screen.Body, "RecordList")
+	if board == nil || len(board.On["move"]) != 1 || board.On["move"][0]["lifecycle.transition"] == nil {
 		t.Fatalf("board did not compile a transition: %s", result.Screen)
 	}
 	for _, bad := range []string{
@@ -228,4 +230,81 @@ func TestGalleryCompilerRequiresExplicitScreenReplacement(t *testing.T) {
 	if _, err := CompileScreenMarkup(def, nil, markup); err != nil {
 		t.Fatalf("set-screen should accept an explicit replacement: %v", err)
 	}
+}
+
+func findRecipePart(root *Node, part string) *Node {
+	if root == nil || root.Part == part {
+		return root
+	}
+	for _, child := range root.Children {
+		if found := findRecipePart(child, part); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func TestCollectionRecipeDesignFromTheRecordShape(t *testing.T) {
+	def := load(t, "testdata/incident-room")
+	jsonEdit(AppFile, func(app map[string]any) {
+		fields := at(app, "records", "incident", "fields")
+		fields["owner"] = map[string]any{"type": "person"}
+		fields["cost"] = map[string]any{"type": "money", "currency": "USD"}
+	})(t, def.Files)
+	life, err := CompileRecipe(def, nil, Recipe{Kind: "add-lifecycle", ID: "incident-states", Record: "incident", By: "status", States: []string{"investigating", "resolved"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files[AppFile] = life.App
+	output, err := CompileRecipe(def, nil, Recipe{Kind: "add-view", ID: "incidents", Record: "incident", As: "table", Fields: []string{"owner", "opened_at", "cost", "status", "title"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen, err := ParseScreen(output.Screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := findRecipePart(screen.Body, "RecordList")
+	if list == nil {
+		t.Fatal("the collection must use the Desk’s content-sized record columns and whole-value money and date cells")
+	}
+	t.Run("column order", func(t *testing.T) {
+		want := []any{"title", "status", "cost", "opened_at", "owner"}
+		if !reflect.DeepEqual(list.Props["columns"], want) {
+			t.Fatalf("columns = %v, want %v", list.Props["columns"], want)
+		}
+	})
+	t.Run("content widths and whole values", func(t *testing.T) {
+		view := screen.Views[list.Bind.View]
+		if view.Type != "incident" || !reflect.DeepEqual(view.Select, []string{"title", "status", "cost", "opened_at", "owner"}) {
+			t.Fatalf("typed renderer must receive the original fields, got %+v", view)
+		}
+	})
+	t.Run("board and calendar", func(t *testing.T) {
+		if !reflect.DeepEqual(list.Props["views"], []any{"list", "board", "calendar"}) || list.Props["board_by"] != "status" ||
+			at(list.Props, "viewOptions", "calendar")["start"] != "opened_at" {
+			t.Fatalf("view defaults = %+v", list.Props)
+		}
+	})
+	t.Run("stat tiles", func(t *testing.T) {
+		var cost, status bool
+		for _, n := range screen.Body.Children {
+			if n.Part != "Chart" || n.Props["kind"] != "metric" {
+				continue
+			}
+			q := screen.Views[n.Bind.View]
+			if len(q.Aggregate) == 1 {
+				cost = cost || q.Aggregate[0].Op == "sum" && q.Aggregate[0].Field == "cost"
+				status = status || q.Aggregate[0].Op == "count" && len(q.Filter) == 1 && q.Filter[0].Field == "status"
+			}
+		}
+		if !cost || !status {
+			t.Fatalf("expected a cost and status metric: %s", output.Screen)
+		}
+	})
+	t.Run("empty state", func(t *testing.T) {
+		if list.Props["empty"] != "New incident records will appear here." {
+			t.Fatalf("empty = %q", list.Props["empty"])
+		}
+	})
 }
