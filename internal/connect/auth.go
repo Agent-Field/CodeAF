@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -202,10 +203,14 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 	go func() {
 		keys, err := oauth2cli.GetToken(runContext, config)
 		if err != nil {
-			if _, ok := plug.(microsoft); ok {
-				err = microsoftSignInError(err)
+			if _, googleApp := plug.(workspaceGoogle); googleApp {
+				err = googleAuthError(err)
+			} else {
+				if _, ok := plug.(microsoft); ok {
+					err = microsoftSignInError(err)
+				}
+				err = fmt.Errorf("connect %s: %w", service.Name, err)
 			}
-			err = fmt.Errorf("connect %s: %w", service.Name, err)
 		}
 		flow.done <- flowResult{keys: keys, err: err}
 	}()
@@ -312,21 +317,31 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	}
 	if err == nil {
 		entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
-		// The identity probe may fail without failing the connection; only its label is lost.
-		account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys))
-		if probeErr == nil {
-			entry.Account = account
-		}
-		if p, ok := f.plug.(microsoft); ok {
+		if googleApp, ok := f.plug.(workspaceGoogle); ok {
 			entry.GrantID = oauth2.GenerateVerifier()
-			entry.RegistrationID = p.registrationID()
-			for i, scope := range entry.Scopes {
-				entry.Scopes[i] = strings.TrimPrefix(scope, "https://graph.microsoft.com/")
+			if !entry.covers(service.Scopes) {
+				err = errors.New("Google Workspace: Approve the requested permission to use this source.")
+			} else {
+				entry.Subject, err = googleApp.identity(ctx, staticClient(ctx, result.keys))
 			}
-			if probeErr != nil || strings.TrimSpace(result.keys.RefreshToken) == "" {
-				err = entraFailure("Microsoft 365 could not confirm an account with renewable access.")
-			} else if !entry.covers(p.Service().Scopes) {
-				err = entraFailure("Microsoft 365 did not grant the requested permissions.")
+		}
+		if err == nil {
+			// The identity probe may fail without failing the connection; only its label is lost.
+			account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys))
+			if probeErr == nil {
+				entry.Account = account
+			}
+			if p, ok := f.plug.(microsoft); ok {
+				entry.GrantID = oauth2.GenerateVerifier()
+				entry.RegistrationID = p.registrationID()
+				for i, scope := range entry.Scopes {
+					entry.Scopes[i] = strings.TrimPrefix(scope, "https://graph.microsoft.com/")
+				}
+				if probeErr != nil || strings.TrimSpace(result.keys.RefreshToken) == "" {
+					err = entraFailure("Microsoft 365 could not confirm an account with renewable access.")
+				} else if !entry.covers(p.Service().Scopes) {
+					err = entraFailure("Microsoft 365 did not grant the requested permissions.")
+				}
 			}
 		}
 		if err == nil {

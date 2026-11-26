@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"time"
 
+	"context"
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
@@ -358,4 +361,52 @@ func (e *Engine) fireBefore(t Trigger, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+func (e *Engine) fireGoogle(ctx context.Context, t Trigger, now time.Time) error {
+	if !validID(t.App) || !validID(t.ID) || t.When != "" {
+		return errors.New("invalid source trigger")
+	}
+	connection, _ := t.Match["connection"].(string)
+	read, _ := t.Match["read"].(string)
+	query, _ := t.Match["query"].(string)
+	minutes, _ := t.Match["minutes"].(float64)
+	if minutes < 0 || minutes > 1440 || float64(int(minutes)) != minutes {
+		return errors.New("invalid Google trigger lead time")
+	}
+	key := "google-trigger/" + t.App + "/" + t.ID + "/" + t.Run
+	e.mu.Lock()
+	raw := e.checkpoints[key]
+	e.mu.Unlock()
+	var prev connections.GoogleCheckpoint
+	if len(raw) != 0 {
+		if err := json.Unmarshal(raw, &prev); err != nil {
+			return err
+		}
+	}
+	next, events, err := e.cfg.GooglePoll(ctx, connections.GoogleTrigger{
+		App: t.App, Connection: connection, Read: read, Source: t.Connector,
+		Event: t.Event, Query: query, LeadMinutes: int(minutes),
+	}, prev, now)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		claim := key + "/" + event.Key
+		e.mu.Lock()
+		_, used := e.checkpoints[claim]
+		e.mu.Unlock()
+		if !used {
+			input := map[string]any{"id": event.Record, "type": event.Type}
+			if _, err := e.start(t.App, t.Run, nil, input, false, claim, true); err != nil {
+				return err
+			}
+		}
+	}
+	if reflect.DeepEqual(next, prev) {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.saveLocked(nil, key, next)
 }

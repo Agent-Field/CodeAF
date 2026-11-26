@@ -1,0 +1,16 @@
+{
+  "kind": "drive#fileList",
+  "files": [{
+    "id": "doc1",
+    "name": "Launch planning - Transcript",
+    "mimeType": "application/vnd.google-apps.document",
+    "version": "1",
+    "modifiedTime": "2026-11-26T17:00:00Z",
+    "description": "Notes from launch planning",
+    "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+    "shared": true,
+    "trashed": false,
+    "capabilities": {"canDownload": true, "canComment": true},
+    "permissions": [{"type": "user", "role": "reader", "emailAddress": "jo@example.com"}]
+  }]
+}

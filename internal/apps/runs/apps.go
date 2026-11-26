@@ -202,6 +202,10 @@ func (f Files) Triggers() ([]Trigger, error) {
 			}
 		}
 		for _, trigger := range app.Triggers {
+			if trigger.On == "connector" && (schema.GoogleEvent(trigger.Connector, trigger.Event) || schema.GraphSourceTrigger(trigger.Connector, trigger.Event)) &&
+				!slices.Contains(app.Capabilities.Connectors[trigger.Connector].Can, trigger.Event) {
+				continue
+			}
 			triggers = append(triggers, Trigger{
 				App: app.ID, ID: trigger.ID, On: trigger.On, Run: trigger.Run, Cron: trigger.Cron,
 				Type: trigger.Type, When: trigger.When, Since: since, At: trigger.At, Lead: trigger.Lead,

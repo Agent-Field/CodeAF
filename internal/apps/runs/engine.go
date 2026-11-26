@@ -86,6 +86,7 @@ type Config struct {
 	Load           func(app, run string) (Definition, error)
 	Triggers       func() ([]Trigger, error)
 	SourceTriggers func(context.Context, connections.SourceTrigger) (connections.SourceTriggerBatch, error)
+	GooglePoll     func(context.Context, connections.GoogleTrigger, connections.GoogleCheckpoint, time.Time) (connections.GoogleCheckpoint, []connections.GoogleEvent, error)
 	// Records applies local writes. The live and sample engines use Data.Write,
 	// which commits a receipt for each declared write's stable Call.Key.
 	Records    func(context.Context, RecordCall) (Reply, error)

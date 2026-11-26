@@ -299,7 +299,7 @@ func (c *checker) checkRecordWrite(ctx actionCtx, at string, body map[string]any
 }
 
 func (c *checker) checkConnectorDeclaration(name, verb string, connector Connector) {
-	if GraphSourceTrigger(name, verb) {
+	if GoogleEvent(name, verb) || GraphSourceTrigger(name, verb) {
 		return
 	}
 	at := "/capabilities/connectors/" + name
@@ -322,7 +322,7 @@ func (c *checker) checkOperation(file, at, tool string, args map[string]any, gat
 	if _, _, ok := ParseSourceTool(tool); ok {
 		c.checkTool(file, at, tool, screen)
 		if !screen && gate != "send" {
-			c.add(file, at, CodeSendGateMissing, "A source write needs a send approval.")
+			c.add(file, at, CodeSendGateMissing, "An approved source write needs a send approval gate.")
 		}
 		return
 	}
@@ -392,4 +392,45 @@ func validBranch(branch string) bool {
 		}
 	}
 	return !strings.HasPrefix(name, "-") && name != "@"
+}
+
+// GoogleEvent identifies the Workspace event names wired to live source polling.
+func GoogleEvent(connector, event string) bool {
+	switch connector + "." + event {
+	case "gmail.message.received", "calendar.event.starts", "drive.transcript.created":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *checker) checkGoogleTrigger(trigger Trigger, at string) {
+	if !contains(c.app.Capabilities.Connectors[trigger.Connector].Can, trigger.Event) {
+		c.add(AppFile, at+"/event", CodeToolNotAllowed, "Grant %s.%s before using it as a trigger.", trigger.Connector, trigger.Event)
+	}
+	connection, read := asString(trigger.Match["connection"]), asString(trigger.Match["read"])
+	if !contentFileID.MatchString(connection) || !contentFileID.MatchString(read) || trigger.When != "" {
+		c.add(AppFile, at+"/match", CodeTriggerShape, "A Google trigger needs connection and read names. Put its filter in match.")
+	}
+	for name, value := range trigger.Match {
+		switch name {
+		case "connection", "read":
+		case "query":
+			if trigger.Connector == "gmail" && len(asString(value)) > 0 && len(asString(value)) <= 4096 {
+				continue
+			}
+			fallthrough
+		case "minutes":
+			minutes, ok := value.(float64)
+			if name == "minutes" && trigger.Connector == "calendar" && ok && minutes >= 1 && minutes <= 1440 && minutes == float64(int(minutes)) {
+				continue
+			}
+			fallthrough
+		default:
+			c.add(AppFile, at+"/match/"+name, CodeTriggerShape, "Use a Gmail query or a whole number of minutes from 1 to 1440 for Calendar.")
+		}
+	}
+	if trigger.Connector == "calendar" && trigger.Match["minutes"] == nil {
+		c.add(AppFile, at+"/match/minutes", CodeTriggerShape, "Set how many minutes before an event the run should start.")
+	}
 }
