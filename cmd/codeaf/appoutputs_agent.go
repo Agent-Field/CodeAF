@@ -28,7 +28,7 @@ func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, ca
 		return runs.Reply{}, err
 	}
 	defer os.RemoveAll(workspace)
-	system += "\n\nYou may invoke one of this app's declared outputs using codeaf app render " +
+	system += "\n\nYou may invoke a granted output from this app using codeaf app render " +
 		`{"output":"OUTPUT_ID","record":"RECORD_ID"}` +
 		". For a query output, omit the record. Use only record IDs supplied by the run. " +
 		"The app and actor come from the run. Declared output IDs: " +
@@ -58,7 +58,7 @@ func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, ca
 		// requests for the same file reuse the effect's saved receipt.
 		key := fmt.Sprintf("%s/render/%x", call.Key, sha256.Sum256(payload))
 		file, err := b.invokeKeptOutput(ctx, app, outputs.Invocation{
-			Scope:  data.Scope{App: call.App, Agent: true, Flow: true, Actor: "run:" + call.ID},
+			Scope:  data.Scope{App: call.App, Principal: data.AgentPrincipal{ID: call.App}, Flow: true},
 			Render: action, Run: call.ID, Step: call.Step, Key: key,
 		})
 		if err != nil {

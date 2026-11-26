@@ -21,9 +21,6 @@ func Invoke(ctx context.Context, store *data.Store, app schema.App, call Invocat
 	if scope.App == "" || scope.App != app.ID {
 		return data.Output{}, fmt.Errorf("the output must run in its declared app")
 	}
-	if previous, found, err := store.RunOutput(scope, call.Key); err != nil || found {
-		return previous, err
-	}
 	action := call.Render
 	t, ok := app.Outputs[action.Output]
 	if !ok || app.Kit != 2 {
@@ -31,6 +28,19 @@ func Invoke(ctx context.Context, store *data.Store, app schema.App, call Invocat
 	}
 	if (action.Record != "") != (t.Record != "") || action.Inbox && t.Query == nil {
 		return data.Output{}, &data.Error{Code: data.CodeInvalid, Message: "the input does not match the declared output source"}
+	}
+	if scope.Principal.ID != "" {
+		scope.Action = "render/" + action.Output
+		allowed, err := store.AgentAllowed(scope.App, scope.Principal, "actions", scope.Action)
+		if err != nil {
+			return data.Output{}, err
+		}
+		if !allowed {
+			return data.Output{}, &data.Error{Code: data.CodeNotAllowed, Need: scope.Action, Message: "the agent needs a grant for this render Action"}
+		}
+	}
+	if previous, found, err := store.RunOutput(scope, call.Key); err != nil || found {
+		return previous, err
 	}
 	source, err := store.Type(scope, t.SourceType())
 	if err != nil {

@@ -308,7 +308,12 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := "codeaf app render " + string(raw)
+	grant := appwire.AppAgentGrant{App: id, Agent: id, Group: "actions", ID: "render/contact-card", Allowed: true}
+	if err := backend.GrantAppAgent(grant); err != nil {
+		t.Fatal(err)
+	}
 	var calls int
+	var expectGrantRefusal bool
 	client := pricingCompleter(func(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 		calls++
 		message := ai.Message{Role: "assistant"}
@@ -321,11 +326,15 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 				})
 			}
 		} else {
-			var refused bool
+			var refused, grantRefused bool
 			for _, previous := range messages {
 				for _, part := range previous.Content {
 					refused = refused || strings.Contains(part.Text, "scope comes from this session")
+					grantRefused = grantRefused || strings.Contains(part.Text, "the agent needs a grant for this render Action")
 				}
+			}
+			if grantRefused != expectGrantRefusal {
+				return nil, fmt.Errorf("render grant refusal = %v, want %v", grantRefused, expectGrantRefusal)
 			}
 			if !refused {
 				return nil, fmt.Errorf("scoped executor did not refuse the supplied app")
@@ -355,7 +364,7 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 		t.Fatalf("scoped agent outputs: %+v, %v", page, err)
 	}
 	agent := page.Items[0]
-	if agent.Blob != person.Blob || agent.ActorKind != data.ByAI || agent.Actor != "run:"+call.ID {
+	if agent.Blob != person.Blob || agent.ActorKind != data.ByAI || agent.Actor != data.AgentAssigneePrefix+id {
 		t.Fatalf("engine-bound agent receipt: %+v", agent)
 	}
 	_, bytes, err := db.OutputFile(data.Scope{App: id}, agent.ID)
@@ -364,6 +373,14 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 	}
 	if _, _, err := db.OutputFile(data.Scope{App: "another-app"}, agent.ID); err == nil {
 		t.Fatal("another app read the output by id")
+	}
+	grant.Allowed = false
+	if err := backend.GrantAppAgent(grant); err != nil {
+		t.Fatal(err)
+	}
+	calls, expectGrantRefusal = 0, true
+	if _, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{}); err != nil {
+		t.Fatalf("revoked grant on replay: %v", err)
 	}
 }
 
