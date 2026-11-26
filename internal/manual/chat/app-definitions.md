@@ -225,7 +225,8 @@ buttons draw from the query's policy-filtered rows. The markup accepts up to 12 
 rows. Braille dot cells take Unicode Braille. The iframe can emit the
 declared button intents. It has no ambient network, storage or parent DOM
 access. Check renders the screen in Dark, Black and Light at 800 and 1120 px
-when the desktop is connected.
+when the desktop is connected. The frame reports when it has drawn. If
+its deadline passes, Check names the part in a layout finding.
 
 `codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
 into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
