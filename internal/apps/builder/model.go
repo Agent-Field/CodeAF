@@ -50,16 +50,6 @@ tracked type. For a CRM, use
 configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}}}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
-A new record should be creatable with its title and the essential input
-the person supplied. Keep the person's field names as ids: a book's title
-is title, a person's name is name, and an imported post's text is text.
-Use the corresponding field as the record title. Give a required status
-an initial value, for example
-{"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
-Leave other fields optional unless the request requires a value at creation.
-Use a plain enum for status unless the request needs guarded transitions.
-Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
-"transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
 recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
 compiles a collection. For ordinary collections use as "table" or "list"
 and fields, for example companies and contacts in a CRM. The recipe id is
@@ -167,7 +157,18 @@ field definitions when editing the type with add-type. For any new or changed
 field, suggest a class of public, internal, confidential, restricted, or pii
 according to its intended data and any classification the person asked for.`
 
-const screenControlsGuide = `Put the controls on the screen where the person works. Use a Button with
+const screenControlsGuide = `A new record should be creatable with its title and the essential input
+the person supplied. Keep the person's field names as ids: a book's title
+is title, a person's name is name, and an imported post's text is text.
+Use the corresponding field as the record title. Give a required status
+an initial value, for example
+{"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
+Leave other fields optional unless the request requires a value at creation.
+Use a plain enum for status unless the request needs guarded transitions.
+Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
+"transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
+
+Put the controls on the screen where the person works. Use a Button with
 on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
 or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
 button, set the list id and selection mode and show the button when a row
