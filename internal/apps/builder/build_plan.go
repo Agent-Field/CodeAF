@@ -3,6 +3,7 @@ package builder
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -10,24 +11,36 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
-// A run address belongs to the plan that was approved for writing.
+// buildPlan carries approved run addresses and capability choices across edits.
 type buildPlan struct {
-	ask     string
-	runs    []schema.PlanLine
-	builtin []schema.PlanBuiltin
+	ask      string
+	runs     []schema.PlanLine
+	builtins []schema.PlanBuiltin
+	removed  []string
 }
 
-func plannedWork(ask string, plan schema.Plan, planning bool) buildPlan {
-	work := buildPlan{ask: ask, builtin: slices.Clone(plan.Builtins)}
-	if !planning {
-		work.runs = slices.Clone(plan.Automation)
+func plannedWork(ask string, plan schema.Plan) buildPlan {
+	work := buildPlan{ask: ask, builtins: slices.Clone(plan.Builtins)}
+	for _, line := range plan.Automation {
+		if removesRun(ask, line.ID) {
+			work.removed = append(work.removed, line.ID)
+		} else {
+			work.runs = append(work.runs, line)
+		}
 	}
 	for _, id := range explicitRunIDs(ask) {
-		if !hasPlanLine(work.runs, id) {
+		if !hasPlanLine(work.runs, id) && !slices.Contains(work.removed, id) {
 			work.runs = append(work.runs, schema.PlanLine{ID: id, Line: displayName(id, "Run")})
 		}
 	}
 	return work
+}
+
+func removesRun(ask, id string) bool {
+	name := "[`'\"]?" + regexp.QuoteMeta(id) + "[`'\"]?"
+	verb := `(?i)(?:^|[.!?;
+]\s*|please\s+)(?:remove|delete|drop)\s+(?:the\s+)?`
+	return regexp.MustCompile(verb + `(?:run\s+` + name + `|` + name + `\s+run)(?:[\s,.!?;]|$)`).MatchString(ask)
 }
 
 const runWord = "[`'\"]?[a-z][a-z0-9_-]*[`'\"]?"
@@ -60,24 +73,35 @@ func hasPlanLine(lines []schema.PlanLine, id string) bool {
 }
 
 func (w *buildPlan) apply(files map[string]string) error {
-	plan, err := schema.ParsePlan([]byte(files[schema.PlanFile]))
-	if err != nil || plan.Ask == "" {
+	original, err := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if err != nil || original.Ask == "" {
 		return nil
+	}
+	plan := original
+	plan.Automation = slices.Clone(plan.Automation)
+	plan.Actions = slices.Clone(plan.Actions)
+	plan.Builtins = slices.Clone(plan.Builtins)
+	for _, id := range w.removed {
+		removeRunFiles(files, id)
+		remove := func(line schema.PlanLine) bool { return line.ID == id }
+		plan.Automation = slices.DeleteFunc(plan.Automation, remove)
+		plan.Actions = slices.DeleteFunc(plan.Actions, remove)
+		plan.Builtins = slices.DeleteFunc(plan.Builtins, func(b schema.PlanBuiltin) bool { return b.Run == id })
+		w.builtins = slices.DeleteFunc(w.builtins, func(b schema.PlanBuiltin) bool { return b.Run == id })
 	}
 	for _, line := range w.runs {
 		if !hasPlanLine(plan.Automation, line.ID) {
 			plan.Automation = append(plan.Automation, line)
 		}
 	}
-	plan.Builtins = slices.Clone(w.builtin)
-	compileCapabilities(w.ask, &plan, files)
-	w.builtin = slices.Clone(plan.Builtins)
-	raw, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
+	if err := compileCapabilities(w.ask, &plan, w.builtins, w.runs, files); err != nil {
 		return err
 	}
-	files[schema.PlanFile] = string(raw)
-	return nil
+	w.builtins = slices.Clone(plan.Builtins)
+	if reflect.DeepEqual(original, plan) {
+		return nil
+	}
+	return saveJSON(files, schema.PlanFile, plan)
 }
 
 func (w buildPlan) checkEdit(verb string, args json.RawMessage, files map[string]string) error {
@@ -90,16 +114,19 @@ func (w buildPlan) checkEdit(verb string, args json.RawMessage, files map[string
 	}
 	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
 	if verb == "set_run" && slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool {
-		return b.ID == input.ID && (b.Kind == builtinCSV || b.Kind == builtinLifecycle)
+		return b.ID == input.ID && (b.Kind == schema.BuiltinCSV || b.Kind == schema.BuiltinLifecycle)
 	}) {
 		return errors.New("the plan already uses a built-in for this work. Supply its record settings instead of a run file")
 	}
 	if verb == "remove_run" && hasPlanLine(w.runs, input.ID) {
-		return errors.New("this run is reserved by the plan. Revise the plan before removing it")
+		return errors.New("this run is reserved by the plan. Keep it unless the person explicitly asks to remove it by its run ID")
 	}
 	if verb == "set_run" {
+		if slices.Contains(w.removed, input.ID) {
+			return errors.New("the person asked to remove this run")
+		}
 		if len(plan.Automation) == 0 && slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool {
-			return b.Kind == builtinLifecycle || b.Kind == builtinCSV
+			return b.Kind == schema.BuiltinLifecycle || b.Kind == schema.BuiltinCSV
 		}) {
 			return errors.New("the plan uses built-in record capabilities. Declare any separate automation in the plan before writing its run")
 		}
@@ -109,4 +136,12 @@ func (w buildPlan) checkEdit(verb string, args json.RawMessage, files map[string
 		}
 	}
 	return nil
+}
+
+func saveJSON(files map[string]string, path string, value any) error {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err == nil {
+		files[path] = string(raw)
+	}
+	return err
 }

@@ -3,12 +3,14 @@ package builder_test
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
@@ -102,5 +104,92 @@ func TestBuildUsesNativeImportAndLifecycle(t *testing.T) {
 	lifecycle := app.Records["item"].Lifecycle
 	if lifecycle.Initial != "Pending" || len(lifecycle.Transitions) != 1 || lifecycle.Transitions[0].ID != "publish" {
 		t.Fatalf("native lifecycle = %+v", lifecycle)
+	}
+}
+
+func TestBuildRunsLocalApprovalByReservedID(t *testing.T) {
+	home := t.TempDir()
+	const outline = `{"ask":"Draft a note and approve before it saves","data":[{"id":"note","line":"Notes"}],"screens":[{"id":"notes","line":"Notes"}],"automation":[{"id":"save-note","line":"Draft and save a note"}]}`
+	const run = `run: save-note
+title: Save the draft
+steps:
+  - id: save
+    records.create: {type: note, set: {title: Draft}}
+`
+	jobs, err := builder.OpenJobs(builder.Options{
+		Home: home,
+		Compiler: fixtureCompiler{schema.Definition{Files: map[string][]byte{
+			"screens/notes.json": []byte(`{"screen":"notes","title":"Notes","body":{"id":"root","part":"Stack"}}`),
+		}}},
+		Model: func() (builder.Completer, error) {
+			step := 0
+			return script(func(_ context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+				step++
+				planning := strings.Contains(messages[0].Content[0].Text, "CURRENT PHASE: planning")
+				switch {
+				case planning && step == 1:
+					return toolCalls(command("plan", map[string]any{"name": "Notes", "plan": json.RawMessage(outline)})), nil
+				case planning && step == 2:
+					return toolCalls(command("add-type", map[string]any{"name": "note", "access": "rw", "definition": json.RawMessage(`{"fields":{"title":{"type":"text"}}}`)})), nil
+				case !planning && step == 1:
+					return toolCalls(command("markup", map[string]string{"screen": "notes"})), nil
+				case !planning && step == 2:
+					return toolCalls(command("set-run", map[string]string{"id": "save-note", "text": run})), nil
+				}
+				return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Notes are ready."}}}, nil
+			}), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	draft, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Draft a note. I approve before it saves. Use the run ID save-note."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Build(draft.Draft); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, jobs, draft.Draft, builder.Ready)
+	app, err := jobs.Apply(draft.Draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writes := 0
+	engine, err := runs.Open(runs.Config{
+		Root: t.TempDir(), Load: runs.Files(filepath.Join(home, "apps")).Load,
+		Records: func(context.Context, runs.RecordCall) (runs.Reply, error) {
+			writes++
+			return runs.Reply{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	if _, err := engine.Start(app.ID, "Save the draft", nil); err == nil {
+		t.Fatal("the display title started a run")
+	}
+	started, err := engine.Start(app.ID, "save-note", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := engine.Get(started.ID)
+	if err != nil || pending.Approval == nil || pending.Approval.Kind != "proof" || writes != 0 {
+		t.Fatalf("before approval: %+v, writes %d, %v", pending.Approval, writes, err)
+	}
+	if err := engine.Answer(started.ID, pending.Approval.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if writes != 1 {
+		t.Fatalf("approved save wrote %d records", writes)
 	}
 }

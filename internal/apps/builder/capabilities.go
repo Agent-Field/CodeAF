@@ -7,12 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
-)
-
-const (
-	builtinCSV       = "csv-import"
-	builtinLifecycle = "lifecycle"
-	builtinApproval  = "approval"
+	"gopkg.in/yaml.v3"
 )
 
 type planCapability struct {
@@ -20,103 +15,233 @@ type planCapability struct {
 	match *regexp.Regexp
 }
 
-// Each entry selects existing native behavior. The draft supplies record,
-// state and run settings through their normal schema.
 var planCapabilities = []planCapability{
-	{builtinCSV, regexp.MustCompile(`(?i)\b(?:import|upload)(?:s|ed|ing)?\b[^.!?;]{0,45}\bcsv\b|\bcsv[ -]+import\b`)},
-	{builtinLifecycle, regexp.MustCompile(`(?i)\b(?:lifecycle(?:[ -]+transitions?)?|(?:state|stage)[ -]+transitions?)\b`)},
-	{builtinApproval, regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,40}\bbefore\b`)},
+	{schema.BuiltinCSV, regexp.MustCompile(`(?i)\b(?:import|upload)(?:s|ed|ing)?\b[^.!?;]{0,45}\bcsv\b|\bcsv[ -]+import\b`)},
+	{schema.BuiltinLifecycle, regexp.MustCompile(`(?i)\b(?:lifecycle(?:[ -]+transitions?)?|(?:state|stage)[ -]+transitions?)\b`)},
+	{schema.BuiltinApproval, regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:save\w*|writ\w*|updat\w*)\b`)},
 }
 
 var lifecycleMove = regexp.MustCompile(`(?i)\b(?:move|mark|transition|change|advance)\b[^.!?;]{0,60}\b(?:to|into)\b`)
 var transitionID = regexp.MustCompile("(?i)\\b(?:lifecycle |state |stage )?transition\\s+(?:with\\s+)?id\\s*:?\\s*(" + runWord + ")")
 var independentWork = regexp.MustCompile(`(?i)\b(?:connector|scheduled?|daily|hourly|notify|email|send|publish|draft|summari[sz]e|review)\b`)
 
-func compileCapabilities(request string, plan *schema.Plan, files map[string]string) {
-	ask := request + "\n" + plan.Ask
-	for _, capability := range planCapabilities {
-		if capability.match.MatchString(ask) {
-			addBuiltin(plan, schema.PlanBuiltin{ID: capability.kind, Kind: capability.kind, Record: builtinRecord(plan.Data, ask)})
+// Native record capabilities run through the data API. Approval configures an
+// existing run. Preserving the plan line gives the author its original settings.
+func compileCapabilities(request string, plan *schema.Plan, previous []schema.PlanBuiltin, reserved []schema.PlanLine, files map[string]string) error {
+	ask := request
+	if ask == "" {
+		ask = plan.Ask
+	}
+	settings := plan.Builtins
+	plan.Builtins = slices.Clone(previous)
+	used := make(map[string]bool, len(settings))
+	use := func(next schema.PlanBuiltin) {
+		for _, authored := range settings {
+			if authored.Kind != next.Kind || (authored.ID != next.ID && authored.ID != next.Kind) {
+				continue
+			}
+			used[authored.ID] = true
+			if next.Line == "" {
+				next.Line = authored.Line
+			}
+			if authored.Record != "" {
+				next.Record = authored.Record
+			}
+			if next.Transition == "" {
+				next.Transition = authored.Transition
+			}
+			if authored.Run != "" {
+				next.Run = authored.Run
+			}
+			break
+		}
+		i := slices.IndexFunc(plan.Builtins, func(old schema.PlanBuiltin) bool { return old.ID == next.ID && old.Kind == next.Kind })
+		if i == -1 {
+			plan.Builtins = append(plan.Builtins, next)
+		} else {
+			plan.Builtins[i] = next
 		}
 	}
-	requested := explicitRunIDs(request)
-	selectNative := func(line schema.PlanLine) bool {
-		if slices.Contains(requested, line.ID) {
+
+	selectRecordCapability := func(line schema.PlanLine) bool {
+		if hasPlanLine(reserved, line.ID) || independentWork.MatchString(line.Line) {
 			return false
 		}
 		words := strings.ReplaceAll(line.ID, "-", " ") + " " + line.Line
-		for _, cap := range planCapabilities[:2] {
-			selected := slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool { return b.Kind == cap.kind })
-			match := cap.match.MatchString(words)
-			if cap.kind == builtinLifecycle && selected && lifecycleMove.MatchString(words) {
-				match = true
+		for _, capability := range planCapabilities {
+			if capability.kind == schema.BuiltinApproval {
+				continue
 			}
-			if match && !independentWork.MatchString(line.Line) {
-				addBuiltin(plan, schema.PlanBuiltin{ID: line.ID, Kind: cap.kind, Record: builtinRecord(plan.Data, words)})
-				removeBuiltinRun(files, line.ID)
-				return true
+			matches := capability.match.MatchString(words)
+			if capability.kind == schema.BuiltinLifecycle && capability.match.MatchString(ask) && lifecycleMove.MatchString(words) {
+				matches = true
 			}
+			matches = matches || slices.ContainsFunc(settings, func(b schema.PlanBuiltin) bool {
+				return b.ID == line.ID && b.Kind == capability.kind
+			})
+			if !matches {
+				continue
+			}
+			use(schema.PlanBuiltin{
+				ID: line.ID, Kind: capability.kind, Line: line.Line,
+				Record: builtinRecord(plan.Data, words), Transition: plannedTransition(capability.kind, words, ask),
+			})
+			removeRunFiles(files, line.ID)
+			return true
 		}
-		return slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool {
-			return b.ID == line.ID && (b.Kind == builtinCSV || b.Kind == builtinLifecycle)
-		})
+		return false
 	}
-	plan.Automation = slices.DeleteFunc(plan.Automation, selectNative)
-	plan.Actions = slices.DeleteFunc(plan.Actions, selectNative)
+	plan.Automation = slices.DeleteFunc(plan.Automation, selectRecordCapability)
+	plan.Actions = slices.DeleteFunc(plan.Actions, selectRecordCapability)
 
-	for _, builtin := range plan.Builtins {
-		switch builtin.Kind {
-		case builtinLifecycle:
-			compileLifecycle(ask, builtin.Record, files)
-		case builtinApproval:
-			compileApproval(ask, plan.Automation, files)
+	// Existing selections are kept even when the writer replaces the plan.
+	for _, builtin := range slices.Clone(plan.Builtins) {
+		use(builtin)
+	}
+	for _, authored := range settings {
+		if !used[authored.ID] {
+			use(authored)
 		}
 	}
+	for _, capability := range planCapabilities {
+		if capability.kind == schema.BuiltinApproval {
+			for _, line := range plan.Automation {
+				if capability.match.MatchString(line.Line) {
+					if !slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool {
+						return b.Kind == schema.BuiltinApproval && b.Run == line.ID
+					}) {
+						use(schema.PlanBuiltin{ID: "approve-" + line.ID, Kind: schema.BuiltinApproval, Line: line.Line, Run: line.ID})
+					}
+				}
+			}
+		}
+		if slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool { return b.Kind == capability.kind }) {
+			continue
+		}
+		if !capability.match.MatchString(ask) {
+			continue
+		}
+		next := schema.PlanBuiltin{ID: capability.kind, Kind: capability.kind}
+		if capability.kind != schema.BuiltinApproval {
+			next.Record = builtinRecord(plan.Data, ask)
+			next.Transition = plannedTransition(next.Kind, ask, "")
+		}
+		use(next)
+	}
+
+	for i := range plan.Builtins {
+		builtin := &plan.Builtins[i]
+		switch builtin.Kind {
+		case schema.BuiltinCSV, schema.BuiltinLifecycle:
+			if builtin.Record == "" && len(plan.Data) == 1 {
+				builtin.Record = plan.Data[0].ID
+			}
+			if builtin.Kind == schema.BuiltinLifecycle {
+				if err := compileLifecycle(ask, *builtin, files); err != nil {
+					return err
+				}
+			}
+		case schema.BuiltinApproval:
+			if builtin.Run == "" && len(plan.Automation) == 1 {
+				builtin.Run = plan.Automation[0].ID
+			}
+			if err := compileApproval(builtin.Run, files); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-func addBuiltin(plan *schema.Plan, next schema.PlanBuiltin) {
-	if !slices.ContainsFunc(plan.Builtins, func(old schema.PlanBuiltin) bool { return old.ID == next.ID && old.Kind == next.Kind }) {
-		plan.Builtins = append(plan.Builtins, next)
+func plannedTransition(kind, line, ask string) string {
+	if kind == schema.BuiltinLifecycle {
+		if match := transitionID.FindStringSubmatch(line + "\n" + ask); len(match) != 0 {
+			return strings.ToLower(strings.Trim(match[1], "`'\""))
+		}
 	}
+	return ""
 }
 
 func builtinRecord(data []schema.PlanLine, words string) string {
 	if len(data) == 1 {
 		return data[0].ID
 	}
+	var target string
 	for _, line := range data {
 		term := strings.NewReplacer("-", " ", "_", " ").Replace(line.ID)
-		if regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(term) + `s?\b`).MatchString(words) {
-			return line.ID
+		if !regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(term) + `s?\b`).MatchString(words) {
+			continue
 		}
+		if target != "" {
+			return ""
+		}
+		target = line.ID
 	}
-	return ""
+	return target
 }
 
-func removeBuiltinRun(files map[string]string, id string) {
+func removeRunFiles(files map[string]string, id string) {
 	delete(files, "runs/"+id+".yaml")
 	delete(files, "runs/"+id+".yml")
 }
 
-func compileLifecycle(ask, recordID string, files map[string]string) {
-	match := transitionID.FindStringSubmatch(ask)
-	if recordID == "" || len(match) == 0 {
-		return
+func compileLifecycle(ask string, builtin schema.PlanBuiltin, files map[string]string) error {
+	if builtin.Record == "" || builtin.Transition == "" {
+		return nil
 	}
-	id := strings.ToLower(strings.Trim(match[1], "`'\""))
 	var app map[string]json.RawMessage
 	var records map[string]json.RawMessage
 	var record schema.RecordType
 	if json.Unmarshal([]byte(files[schema.AppFile]), &app) != nil ||
 		json.Unmarshal(app["records"], &records) != nil ||
-		json.Unmarshal(records[recordID], &record) != nil || record.Uses {
-		return
+		json.Unmarshal(records[builtin.Record], &record) != nil || record.Uses {
+		return nil
 	}
-	fields := []string{"status", "state", "stage"}
-	if record.Lifecycle != nil {
-		fields = []string{record.Lifecycle.Field}
+
+	// Preserve the writer's lifecycle settings. A single authored transition
+	// for this capability already supplies its source, destination and effects.
+	lifecycle := record.Lifecycle
+	if lifecycle != nil {
+		for _, transition := range lifecycle.Transitions {
+			if transition.ID == builtin.Transition {
+				return nil
+			}
+		}
+		if len(lifecycle.Transitions) == 1 {
+			lifecycle.Transitions[0].ID = builtin.Transition
+		} else {
+			return nil
+		}
+	} else {
+		var process schema.Process
+		if json.Unmarshal(app["process"], &process) == nil && process.Lifecycles[builtin.Record].Field != "" {
+			return nil
+		}
+		lifecycle = lifecycleFromRequest(record, builtin, ask)
+		if lifecycle == nil {
+			return nil
+		}
+		record.Lifecycle = lifecycle
 	}
-	for _, field := range fields {
+	var err error
+	records[builtin.Record], err = json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	app["records"], err = json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	if err := declareRecordAccess(app, builtin.Record, "rw"); err != nil {
+		return err
+	}
+	return saveJSON(files, schema.AppFile, app)
+}
+
+// A request with an explicit transition ID and states is already enough to
+// construct a native lifecycle once the author supplies the record fields.
+func lifecycleFromRequest(record schema.RecordType, builtin schema.PlanBuiltin, ask string) *schema.RecordLifecycle {
+	for _, field := range []string{"status", "state", "stage"} {
 		shape := record.Fields[field]
 		if shape.Type != "enum" {
 			continue
@@ -128,76 +253,67 @@ func compileLifecycle(ask, recordID string, files map[string]string) {
 			if regexp.MustCompile(`(?i)\bas\s+` + token + `\b`).MatchString(ask) {
 				initial = value
 			}
-			if regexp.MustCompile(`(?i)\b(?:to|into)\s+` + token + `\b`).MatchString(ask) {
+			if regexp.MustCompile(`(?i)\b(?:to|into)\s+` + token + `\b`).MatchString(builtin.Line + "\n" + ask) {
 				to = value
 			}
 		}
-		if initial == "" || to == "" || initial == to {
-			continue
-		}
-		if record.Lifecycle == nil {
-			record.Lifecycle = &schema.RecordLifecycle{Field: field, Initial: initial}
-		}
-		found := false
-		for i := range record.Lifecycle.Transitions {
-			transition := &record.Lifecycle.Transitions[i]
-			if transition.ID == id {
-				found = true
-				break
-			}
-			if transition.To == to && slices.Equal(transition.From, []string{initial}) {
-				transition.ID = id
-				found = true
-				break
+		if initial != "" && to != "" && initial != to {
+			return &schema.RecordLifecycle{
+				Field: field, Initial: initial,
+				Transitions: []schema.RecordTransition{{ID: builtin.Transition, Transition: schema.Transition{From: []string{initial}, To: to}}},
 			}
 		}
-		if !found {
-			record.Lifecycle.Transitions = append(record.Lifecycle.Transitions, schema.RecordTransition{
-				ID: id, Transition: schema.Transition{From: []string{initial}, To: to},
-			})
-		}
-		records[recordID], _ = json.Marshal(record)
-		app["records"], _ = json.Marshal(records)
-		if err := declareRecordAccess(app, recordID, "rw"); err != nil {
-			return
-		}
-		raw, _ := json.MarshalIndent(app, "", "  ")
-		files[schema.AppFile] = string(raw)
-		return
 	}
+	return nil
 }
 
-var localApproval = regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:save\w*|writ\w*|updat\w*)\b`)
-
-func compileApproval(ask string, lines []schema.PlanLine, files map[string]string) {
-	if len(lines) != 1 || !localApproval.MatchString(ask) {
-		return
+func compileApproval(id string, files map[string]string) error {
+	if id == "" {
+		return nil
 	}
-	id := lines[0].ID
 	for _, ext := range []string{".yaml", ".yml"} {
-		file := "runs/" + id + ext
-		run, err := schema.ParseRun([]byte(files[file]))
-		if err != nil || run.Run == "" {
+		path := "runs/" + id + ext
+		var root yaml.Node
+		if err := yaml.Unmarshal([]byte(files[path]), &root); err != nil || len(root.Content) == 0 {
 			continue
 		}
-		if holdLocalWrites(run.Steps) {
-			raw, _ := json.MarshalIndent(run, "", "  ")
-			files[file] = string(raw)
+		if !holdLocalWrites(yamlValue(root.Content[0], "steps")) {
+			continue
 		}
+		raw, err := yaml.Marshal(&root)
+		if err != nil {
+			return err
+		}
+		files[path] = string(raw)
 	}
+	return nil
 }
 
-func holdLocalWrites(steps []schema.Step) bool {
+func yamlValue(node *yaml.Node, key string) *yaml.Node {
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == key {
+				return node.Content[i+1]
+			}
+		}
+	}
+	return nil
+}
+
+func holdLocalWrites(steps *yaml.Node) bool {
+	if steps == nil || steps.Kind != yaml.SequenceNode {
+		return false
+	}
 	changed := false
-	for i := range steps {
-		step := &steps[i]
-		if step.Gate == nil && (step.RecordsCreate != nil || step.RecordsUpdate != nil) {
-			step.Gate = &schema.Gate{Approval: "proof"}
+	for _, step := range steps.Content {
+		if yamlValue(step, "gate") == nil && (yamlValue(step, "records.create") != nil || yamlValue(step, "records.update") != nil) {
+			gate := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle, Content: []*yaml.Node{
+				{Kind: yaml.ScalarNode, Value: "approval"}, {Kind: yaml.ScalarNode, Value: "proof"},
+			}}
+			step.Content = append(step.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "gate"}, gate)
 			changed = true
 		}
-		if holdLocalWrites(step.Steps) {
-			changed = true
-		}
+		changed = holdLocalWrites(yamlValue(step, "steps")) || changed
 	}
 	return changed
 }

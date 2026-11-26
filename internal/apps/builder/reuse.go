@@ -84,6 +84,7 @@ func reuseLocal(source string, typ schema.ExistingType, app schema.App, plan sch
 		return source
 	}
 	aliases := []string{}
+	referenced := false
 	for _, local := range slices.Sorted(maps.Keys(app.Records)) {
 		record := app.Records[local]
 		if typ.Common != "" && record.Common == typ.Common {
@@ -91,12 +92,15 @@ func reuseLocal(source string, typ schema.ExistingType, app schema.App, plan sch
 		}
 		for _, field := range record.Fields {
 			if (field.Type == "ref" || field.Type == "refs") && field.To == source {
-				return source
+				referenced = true
 			}
 		}
 	}
 	if len(aliases) == 1 {
 		return aliases[0]
+	}
+	if referenced {
+		return source
 	}
 	return ""
 }
@@ -112,53 +116,86 @@ func restoreReuse(files map[string]string, pins map[string]reuseBinding, types s
 	if err := json.Unmarshal([]byte(files[schema.AppFile]), &app); err != nil {
 		return err
 	}
+	if app == nil {
+		return fmt.Errorf("app.json must contain an app object")
+	}
 	var rawRecords map[string]json.RawMessage
-	_ = json.Unmarshal(app["records"], &rawRecords)
+	if raw := app["records"]; len(raw) != 0 {
+		if err := json.Unmarshal(raw, &rawRecords); err != nil {
+			return fmt.Errorf("read records for accepted reuse: %w", err)
+		}
+	}
 	if rawRecords == nil {
 		rawRecords = map[string]json.RawMessage{}
 	}
-	var caps schema.Capabilities
-	_ = json.Unmarshal(app["capabilities"], &caps)
-	if caps.Records == nil {
-		caps.Records = map[string]string{}
+	original, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil {
+		return fmt.Errorf("read capabilities and records for accepted reuse: %w", err)
 	}
-	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	plan, err := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if err != nil && files[schema.PlanFile] != "" {
+		return fmt.Errorf("read plan for accepted reuse: %w", err)
+	}
+	manifestChanged, planChanged := false, false
 	for _, local := range slices.Sorted(maps.Keys(pins)) {
 		pin := pins[local]
 		typ := types[pin.Type]
-		var record schema.RecordType
-		_ = json.Unmarshal(rawRecords[local], &record)
+		record := original.Records[local]
+		changed := !record.Uses || record.Common != pin.Common || record.Fields == nil
 		record.Uses, record.Common = true, pin.Common
 		if record.Fields == nil {
 			record.Fields = map[string]schema.Field{}
 		}
+		// The source owns inherited fields. A local definition would shadow them.
 		for field := range typ.Fields {
-			delete(record.Fields, field)
+			if _, exists := record.Fields[field]; exists {
+				delete(record.Fields, field)
+				changed = true
+			}
 		}
 		if _, ok := typ.Fields[record.Title]; !ok {
 			if _, ok := record.Fields[record.Title]; !ok {
+				changed = changed || record.Title != ""
 				record.Title = ""
 			}
 		}
-		rawRecords[local], _ = json.Marshal(record)
-		if caps.Records[local] != "rw" {
-			caps.Records[local] = pin.Access
+		if changed {
+			rawRecords[local], err = json.Marshal(record)
+			if err != nil {
+				return err
+			}
+			manifestChanged = true
+		}
+		access := original.Capabilities.Records[local]
+		if access != "rw" && access != pin.Access {
+			access = pin.Access
+			if err := declareRecordAccess(app, local, access); err != nil {
+				return err
+			}
+			manifestChanged = true
 		}
 		index := slices.IndexFunc(plan.Data, func(line schema.PlanLine) bool { return line.ID == local })
 		if index == -1 {
 			plan.Data = append(plan.Data, pin.Line)
+			planChanged = true
 		} else {
-			plan.Data[index].Uses = true
-			plan.Data[index].Create = plan.Data[index].Create && caps.Records[local] == "rw" || pin.Line.Create
+			line := &plan.Data[index]
+			create := line.Create && access == "rw" || pin.Line.Create
+			planChanged = planChanged || !line.Uses || line.Create != create
+			line.Uses, line.Create = true, create
 		}
 	}
-	app["records"], _ = json.Marshal(rawRecords)
-	app["capabilities"], _ = json.Marshal(caps)
-	raw, _ := json.MarshalIndent(app, "", "  ")
-	files[schema.AppFile] = string(raw)
-	if plan.Ask != "" {
-		raw, _ := json.MarshalIndent(plan, "", "  ")
-		files[schema.PlanFile] = string(raw)
+	if manifestChanged {
+		app["records"], err = json.Marshal(rawRecords)
+		if err != nil {
+			return err
+		}
+		if err := saveJSON(files, schema.AppFile, app); err != nil {
+			return err
+		}
+	}
+	if planChanged && plan.Ask != "" {
+		return saveJSON(files, schema.PlanFile, plan)
 	}
 	return nil
 }
@@ -169,6 +206,28 @@ func validateReuse(pins map[string]reuseBinding, types schema.TypeSet) error {
 		typ, ok := types[pin.Type]
 		if !ok || typ.Owner != pin.Owner || typ.Common != pin.Common {
 			return fmt.Errorf("the accepted source for %s is no longer available", displayName(local, "records"))
+		}
+	}
+	return nil
+}
+
+// validateReuseDefinition checks the binding in the exact files being kept.
+func validateReuseDefinition(files map[string]string, pins map[string]reuseBinding) error {
+	app, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil {
+		return err
+	}
+	plan, err := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if err != nil {
+		return err
+	}
+	for _, local := range slices.Sorted(maps.Keys(pins)) {
+		pin := pins[local]
+		record := app.Records[local]
+		access := app.Capabilities.Records[local]
+		line := slices.ContainsFunc(plan.Data, func(line schema.PlanLine) bool { return line.ID == local && line.Uses })
+		if !record.Uses || record.Common != pin.Common || !line || (access != "rw" && access != pin.Access) {
+			return fmt.Errorf("the accepted source for %s is missing from the draft", displayName(local, "records"))
 		}
 	}
 	return nil

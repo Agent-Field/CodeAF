@@ -257,6 +257,9 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 		if err := validateReuse(j.Reuse, externalTypes(catalog.Types, j.App, j.Draft)); err != nil {
 			return store.Meta{}, err
 		}
+		if err := validateReuseDefinition(j.Working.Files, j.Reuse); err != nil {
+			return store.Meta{}, err
+		}
 	}
 	if !j.Working.CheckComplete {
 		// A pre-Look build may have stopped after publishing but before

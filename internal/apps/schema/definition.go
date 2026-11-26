@@ -344,11 +344,20 @@ type Plan struct {
 	Needs      string          `json:"needs,omitempty"`
 }
 
-// PlanBuiltin names a capability implemented by the engine or the Desk.
+const (
+	BuiltinCSV       = "csv-import"
+	BuiltinLifecycle = "lifecycle"
+	BuiltinApproval  = "approval"
+)
+
+// PlanBuiltin names a native capability and its record or run settings.
 type PlanBuiltin struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	Record string `json:"record,omitempty"`
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Line       string `json:"line,omitempty"`
+	Record     string `json:"record,omitempty"`
+	Transition string `json:"transition,omitempty"`
+	Run        string `json:"run,omitempty"`
 }
 
 // PlanExtension names an extension the Builder needs to author and why.
@@ -460,6 +469,11 @@ type Step struct {
 	Workspace     string         `json:"workspace,omitempty"`
 	Repo          string         `json:"repo,omitempty"`
 	Branch        string         `json:"branch,omitempty"`
+}
+
+// IsLocalWrite tells the compiler and Check which steps can persist a local record.
+func (s Step) IsLocalWrite() bool {
+	return s.RecordsCreate != nil || s.RecordsUpdate != nil
 }
 
 // AIStep asks one model or harness for typed data.

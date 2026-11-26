@@ -116,15 +116,6 @@ func (f Files) Load(app, run string) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	if definition.Run != run {
-		planBytes, _ := root.ReadFile(schema.PlanFile)
-		plan, _ := schema.ParsePlan(planBytes)
-		for _, reserved := range plan.Automation {
-			if reserved.ID == run {
-				return Definition{}, fmt.Errorf("%w: the saved run must use its planned ID", ErrNotFound)
-			}
-		}
-	}
 	if manifest.Budget != nil && manifest.Budget.PerRun > 0 {
 		cap := manifest.Budget.PerRun
 		if definition.Budget == nil || definition.Budget.PerRun == 0 || cap < definition.Budget.PerRun {

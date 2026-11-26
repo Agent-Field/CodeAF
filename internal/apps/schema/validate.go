@@ -1184,19 +1184,79 @@ func (c *checker) checkPlan(p Plan) {
 	check("data", p.Data, types, "record type")
 	check("automation", p.Automation, c.runs, "run")
 	check("screens", p.Screens, c.screens, "screen")
+	seen := map[string]bool{}
 	for i, capability := range p.Builtins {
-		if capability.Record == "" || capability.Kind == "approval" {
+		at := fmt.Sprintf("/builtins/%d", i)
+		if seen[capability.ID] {
+			c.add(PlanFile, at+"/id", CodeDuplicateID, "The plan uses the same built-in name twice.")
+		}
+		seen[capability.ID] = true
+		if capability.Kind == BuiltinApproval {
+			c.checkLocalApproval(at+"/run", capability.Run, p.Automation)
 			continue
 		}
-		at := fmt.Sprintf("/builtins/%d/record", i)
+		if capability.Kind != BuiltinCSV && capability.Kind != BuiltinLifecycle {
+			c.add(PlanFile, at+"/kind", CodeSchema, "Choose a supported built-in.")
+			continue
+		}
+		if c.runs[capability.ID] {
+			c.add(PlanFile, at+"/id", CodeDuplicateID, "Keep the planned run and the built-in under separate names.")
+		}
+		at += "/record"
 		if !types[capability.Record] {
 			c.add(PlanFile, at, CodePlanUnknownID, "The plan's %s needs a declared record type.", capability.Kind)
-		} else if capability.Kind == "lifecycle" {
-			if _, ok := c.lifecycle(capability.Record); !ok {
+			continue
+		}
+		if c.app.Capabilities.Records[capability.Record] != "rw" {
+			c.add(PlanFile, at, CodeNotAllowed, "Allow editing %s to use the planned %s.", capability.Record, capability.Kind)
+		}
+		if capability.Kind == BuiltinLifecycle {
+			lifecycle, ok := c.lifecycle(capability.Record)
+			if !ok || len(lifecycle.Transitions) == 0 {
 				c.add(PlanFile, at, CodePlanUnknownID, "Give %s a lifecycle with a state field and its planned transitions.", capability.Record)
+			} else if _, ok := lifecycle.Transitions[capability.Transition]; capability.Transition != "" && !ok {
+				c.add(PlanFile, at, CodePlanUnknownID, "Add the planned transition %q to the lifecycle for %s.", capability.Transition, capability.Record)
 			}
 		}
 	}
+}
+
+func (c *checker) checkLocalApproval(at, id string, automation []PlanLine) {
+	planned := false
+	for _, line := range automation {
+		planned = planned || line.ID == id
+	}
+	if !planned || !c.runs[id] {
+		c.add(PlanFile, at, CodePlanUnknownID, "Choose the planned run whose record changes need your approval.")
+		return
+	}
+	for _, path := range c.def.RunFiles() {
+		if FileID(path) != id {
+			continue
+		}
+		run, err := ParseRun(c.def.Files[path])
+		if err != nil {
+			return
+		}
+		writes, unguarded := localWriteApprovals(run.Steps)
+		if !writes || unguarded {
+			c.add(PlanFile, at, CodeNotAllowed, "Make %s ask for approval before saving its record changes.", id)
+		}
+		return
+	}
+}
+
+func localWriteApprovals(steps []Step) (writes, unguarded bool) {
+	for _, step := range steps {
+		if step.IsLocalWrite() {
+			writes = true
+			unguarded = unguarded || step.Gate == nil
+		}
+		nestedWrites, nestedUnguarded := localWriteApprovals(step.Steps)
+		writes = writes || nestedWrites
+		unguarded = unguarded || nestedUnguarded
+	}
+	return writes, unguarded
 }
 
 // ---------- sample.json ----------

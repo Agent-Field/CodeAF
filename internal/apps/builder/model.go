@@ -44,6 +44,12 @@ Read reference {"schema":"app-2.json"} for app settings, process-2.json for life
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
 writes the outline. Use the actual type, screen and automation ids in the plan.
 Mark creatable types with "create":true and list manual actions by command or run id.
+The executor selects CSV import, lifecycle and approval for local writes.
+Keep the selected builtins on a plan edit. Supply their record or run setting
+in builtins. For lifecycle, declare the state field, initial value and planned
+transitions on the record with add-type. Use the planned transition ID. For
+approval in a plan with several runs, set the builtin's run to the run that
+saves the record. Use planned run IDs for all separately authored runs.
 Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}].
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
@@ -365,11 +371,11 @@ func briefText(text string, limit int) string {
 func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
 	in.Definition = maps.Clone(in.Definition)
 	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
-	work := plannedWork(in.Request, plan, in.Stage == Planning)
-	if err := work.apply(in.Definition); err != nil {
+	work := plannedWork(in.Request, plan)
+	if err := restoreReuse(in.Definition, in.Reuse, types); err != nil {
 		return nil, "", BuildCalls{}, err
 	}
-	if err := restoreReuse(in.Definition, in.Reuse, types); err != nil {
+	if err := work.apply(in.Definition); err != nil {
 		return nil, "", BuildCalls{}, err
 	}
 	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
@@ -527,15 +533,25 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			if err := restoreReuse(next, in.Reuse, types); err != nil {
 				return "", err
 			}
-			if err := work.apply(next); err != nil {
+			nextWork := work
+			nextWork.builtins = slices.Clone(work.builtins)
+			if err := nextWork.apply(next); err != nil {
 				return "", err
 			}
 			if err := progress(next); err != nil {
 				return "", err
 			}
-			files = next
+			files, work = next, nextWork
 			if verb == "plan" {
 				planSaved = true
+				compiled, _ := schema.ParsePlan([]byte(next[schema.PlanFile]))
+				if len(compiled.Builtins) > 0 {
+					settings, err := json.Marshal(compiled.Builtins)
+					if err != nil {
+						return "", err
+					}
+					return "Saved the plan. Selected built-ins and settings: " + string(settings), nil
+				}
 			}
 			return "Saved the definition change.", nil
 		}
