@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/url"
 	"strings"
 	"time"
 
@@ -53,14 +52,12 @@ func (b *appBackend) TranscribeMeeting(in appwire.MeetingAudioParams) (*appwire.
 	}
 	model := settings.VoiceModel
 	cfg := settings.ClientConfig(model)
-	route, routeErr := url.Parse(strings.TrimSuffix(cfg.BaseURL, "/") + "/audio/transcriptions")
+	route := cfg.TranscriptionDestination()
 	policy := appModelPolicy{
 		profile: b.localProfile(),
 		classes: func(context.Context) ([]schema.DataClass, error) { return []schema.DataClass{schema.ClassPII}, nil },
 		personal: func(destination provider.ModelDestination) bool {
-			return routeErr == nil && route.Host != "" && cfg.HTTPClient == nil &&
-				config.MediaSlotModelAt(settings.ProfileDir, "voice") == model &&
-				destination == (provider.ModelDestination{Model: model, Endpoint: route.String()})
+			return route.Endpoint != "" && cfg.HTTPClient == nil && destination == route
 		},
 		audit: func(decision string) error { return store.AuditPolicy(captureModelPolicyID, "", decision) },
 	}
@@ -76,7 +73,7 @@ func (b *appBackend) TranscribeMeeting(in appwire.MeetingAudioParams) (*appwire.
 		if _, denied := errors.AsType[*provider.ModelDestinationDenied](err); denied {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "%s", errAppModelRestricted.Error())
 		}
-		return nil, appwire.Errorf(appwire.CodeBadParams, "Cloud transcription could not finish this audio.")
+		return nil, errors.New("cloud transcription could not finish this audio")
 	}
 	return &appwire.MeetingAudioResult{Text: reply.Text}, nil
 }
@@ -132,7 +129,7 @@ func (b *appBackend) MeetingNotes(in appwire.MeetingNotesParams) (*data.MeetingN
 		if _, denied := errors.AsType[*provider.ModelDestinationDenied](err); denied {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "%s", errAppModelRestricted.Error())
 		}
-		return nil, appwire.Errorf(appwire.CodeBadParams, "The configured model could not finish the meeting notes.")
+		return nil, errors.New("the configured model could not finish the meeting notes")
 	}
 	if reply.HasToolCalls() {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "The model did not return meeting notes in the requested format.")

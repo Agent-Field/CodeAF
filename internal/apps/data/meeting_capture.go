@@ -49,7 +49,7 @@ const meetingCaptureRecords = `{"id":"meeting-capture","records":{
 	"meeting":{"common":"event","fields":{
 		"title":{"type":"text","class":"pii"},"starts_at":{"type":"datetime"},"ends_at":{"type":"datetime"},
 		"attendees":{"type":"refs","to":"person"},"calendar_event":{"type":"ref","to":"meeting"},"transcript":{"type":"ref","to":"document"},
-		"capture_tasks":{"type":"refs","to":"task"},"capture_status":{"type":"text"},
+		"capture_tasks":{"type":"refs","to":"task"},"capture_status":{"type":"text"},"capture_id":{"type":"text"},
 		"person_notes":{"type":"longtext","class":"pii"},"capture_summary":{"type":"longtext","class":"pii"},
 		"capture_decisions":{"type":"longtext","class":"pii"},"draft_subject":{"type":"text","class":"pii"},
 		"draft_body":{"type":"longtext","class":"pii"},"kept_audio":{"type":"bool"}
@@ -93,6 +93,9 @@ func (s *Store) IngestMeetingCapture(in MeetingCapture) (*MeetingCaptureReceipt,
 			return err
 		}
 		if saved {
+			if len(batch.rows) != 1 {
+				return errorf(CodeNotFound, "the saved meeting is no longer available")
+			}
 			row := batch.rows[0]
 			result.Meeting, result.Transcript = row.ID, asText(row.Data["transcript"])
 			result.Tasks = append([]string{}, asStrings(row.Data["capture_tasks"])...)
@@ -143,15 +146,23 @@ func (s *Store) IngestMeetingCapture(in MeetingCapture) (*MeetingCaptureReceipt,
 		}
 		// AI and person contributions have their own fields, and the person
 		// value is byte-for-byte the text submitted by the desk.
+		decisions, err := json.Marshal(in.Notes.Decisions)
+		if err != nil {
+			return err
+		}
 		fields := map[string]any{
 			"title": in.Title, "starts_at": in.Started.UTC().Format(time.RFC3339Nano),
 			"ends_at": in.Ended.UTC().Format(time.RFC3339Nano), "attendees": in.Attendees,
-			"calendar_event": in.Calendar, "transcript": result.Transcript, "capture_status": "ended", "capture_tasks": result.Tasks,
+			"calendar_event": in.Calendar, "capture_id": in.ID, "transcript": result.Transcript, "capture_status": "ended", "capture_tasks": result.Tasks,
 			"person_notes": in.PersonNotes, "capture_summary": in.Notes.Summary,
-			"capture_decisions": strings.Join(in.Notes.Decisions, "\n"),
+			"capture_decisions": string(decisions),
 			"draft_subject":     in.Notes.Subject, "draft_body": in.Notes.Draft, "kept_audio": in.KeptAudio,
 		}
-		row, err := w.createOne(meeting, scope, fields, op)
+		provenance := scope
+		provenance.aiFields = map[string]bool{
+			"capture_summary": true, "capture_decisions": true, "draft_subject": true, "draft_body": true,
+		}
+		row, err := w.createOne(meeting, provenance, fields, op)
 		if err != nil {
 			return err
 		}
@@ -166,7 +177,7 @@ func (s *Store) IngestMeetingCapture(in MeetingCapture) (*MeetingCaptureReceipt,
 }
 
 func (in MeetingCapture) validate() error {
-	if _, err := hex.DecodeString(in.ID); err != nil || len(in.ID) != 32 {
+	if _, err := hex.DecodeString(in.ID); !validID(in.ID) && (err != nil || len(in.ID) != 32) {
 		return errorf(CodeInvalid, "the desk recording needs a capture ID")
 	}
 	if in.Started.IsZero() || in.Ended.Before(in.Started) || in.Ended.Sub(in.Started) > 5*time.Hour {
@@ -176,8 +187,15 @@ func (in MeetingCapture) validate() error {
 		return errorf(CodeInvalid, "enter a meeting title of up to 256 bytes")
 	}
 	if len(in.Transcript) > 256<<10 || len(in.PersonNotes) > 32<<10 || len(in.Attendees) > IDsMax ||
-		len(in.Notes.Tasks) > IDsMax || len(in.Notes.Decisions) > IDsMax {
+		len(in.Notes.Tasks) > IDsMax || len(in.Notes.Decisions) > IDsMax ||
+		len(in.Notes.Summary) > 16<<10 || len(in.Notes.Subject) > 1024 || len(in.Notes.Draft) > 32<<10 ||
+		len(strings.Join(in.Notes.Decisions, "\n")) > 48<<10 {
 		return errorf(CodeInvalid, "the meeting is too large to save")
+	}
+	for _, task := range in.Notes.Tasks {
+		if strings.TrimSpace(task.Title) == "" || len(task.Title) > 1024 {
+			return errorf(CodeInvalid, "a meeting task needs a short title")
+		}
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ access. Windows capture is pending.
 **Recording** is visible in the title strip even when the notes panel is closed.
 Click **Stop** there once to stop both tracks. **Copy recording notice** copies a
 short message you can share with people in the meeting. A starting Calendar
-event with conferencing can offer **Meeting starting**. Opening that prompt
+event mirrored to the local app data store with conferencing can offer **Meeting starting**. Opening that prompt
 shows the capture controls. Only **Start recording** opens the audio devices.
 
 ## Live transcription, speaker labels, and local audio

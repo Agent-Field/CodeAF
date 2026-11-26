@@ -220,10 +220,6 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
 	client = providerhttp.Clone(client)
-	if config.AuthorizeDestination != nil {
-		// A redirect can change the destination after the policy check.
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	}
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
 		connection:       &Client{http: client, wait: waitContext},
@@ -513,14 +509,26 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 			// is inert anywhere it is not read.
 			ApplyAttribution(request.Header)
 		}
+		client := c.http
 		if authorize := c.config.AuthorizeDestination; authenticated && authorize != nil {
 			if err := authorize(ctx, modelDestination(model, request.URL)); err != nil {
 				refused := &ModelDestinationDenied{Cause: err}
 				finishMediaCall(ctx, 0, refused, nil)
 				return nil, refused
 			}
+			// A protected media payload may only reach an approved destination.
+			client = providerhttp.Clone(c.http)
+			client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				if err := providerhttp.CheckRedirect(req, via); err != nil {
+					return err
+				}
+				if err := authorize(req.Context(), modelDestination(model, req.URL)); err != nil {
+					return &ModelDestinationDenied{Cause: err}
+				}
+				return nil
+			}
 		}
-		response, err := providerhttp.Do(c.http, request)
+		response, err := providerhttp.Do(client, request)
 		if err != nil {
 			if authenticated && c.connection != nil && connectionFailure(err) && !sent.Load() && ctx.Err() == nil {
 				if err := c.connection.recoverBeforeSend(ctx, &recovery, model, endpoint); err != nil {
@@ -541,7 +549,11 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 }
 
 func (c *MediaClient) mediaEndpoint(path string) string {
-	return strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + path
+	return mediaEndpoint(c.config.BaseURL, path)
+}
+
+func mediaEndpoint(base, path string) string {
+	return strings.TrimSuffix(strings.TrimSpace(base), "/") + path
 }
 
 // sameHostAsBase scopes polling and download credentials to the configured

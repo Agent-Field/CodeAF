@@ -187,6 +187,8 @@ type Scope struct {
 	// recover it. Only the run engine supplies this key.
 	RunWriteKey string
 
+	// aiFields identifies model-authored fields in an otherwise person-authored capture.
+	aiFields          map[string]bool
 	intake            *IntakeTrigger
 	policyMaintenance bool
 	sync              bool
