@@ -149,3 +149,11 @@ func TestPersonalAppCheckLookRequestsAPinnedSyntheticViewport(t *testing.T) {
 		t.Fatal("Check did not receive the Desk finding")
 	}
 }
+
+func TestAppLookReportsPartTimeoutWithoutAPNG(t *testing.T) {
+	finding := "[proof] Braille labels (custom/tactile-proof) did not report that it rendered."
+	page, err := saveAppLook("", nil, appwire.AppLookCapture{Problems: []string{finding}})
+	if err != nil || page.PNGPath != "" || len(page.Problems) != 1 || page.Problems[0] != finding {
+		t.Fatalf("custom Look timeout = %+v, %v", page, err)
+	}
+}
