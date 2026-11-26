@@ -3,6 +3,7 @@ package connect
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"mime"
 	"net/http"
@@ -373,4 +374,13 @@ func firstError(errs []error) error {
 		}
 	}
 	return nil
+}
+
+// GmailBodyText decodes the textual MIME part of a delegated message read.
+func GmailBodyText(raw []byte) (string, error) {
+	var full message
+	if json.Unmarshal(raw, &full) != nil {
+		return "", fmt.Errorf("Google did not return a message body")
+	}
+	return bound(readableBody(full.Payload)), nil
 }

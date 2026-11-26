@@ -1,6 +1,7 @@
 package connect
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -36,7 +37,9 @@ func (s AppSourceStore) Register(id string, definition json.RawMessage, key, per
 		if person == "" {
 			entries[entry] = stored{Source: definition, SecretRef: ref}
 		}
-		entries[ref] = stored{Auth: AuthKey, Key: key}
+		if key != "" {
+			entries[ref] = stored{Auth: AuthKey, Key: key}
+		}
 	})
 	if err != nil {
 		return errors.New("the source could not be saved in the profile")
@@ -100,4 +103,26 @@ func (s AppSourceStore) PersonCredential(id, person string) (string, bool) {
 	entries, err := newStore(s.Profile).load()
 	entry := entries[personSourceCredential(id, person)]
 	return entry.Key, err == nil && entry.Auth == AuthKey && entry.Key != ""
+}
+
+// ChangeDefinition replaces a declaration only if the operator edited the
+// version it originally read. A concurrent change must be retried.
+func (s AppSourceStore) ChangeDefinition(id string, previous, updated json.RawMessage) error {
+	ref := appSourcePrefix + id
+	changed := false
+	err := newStore(s.Profile).replace(ref, func(entries map[string]stored) {
+		entry, ok := entries[ref]
+		if ok && bytes.Equal(entry.Source, previous) {
+			entry.Source = updated
+			entries[ref] = entry
+			changed = true
+		}
+	})
+	if err != nil {
+		return errors.New("the source could not be saved in the profile")
+	}
+	if !changed {
+		return errors.New("the connection changed; try again")
+	}
+	return nil
 }
