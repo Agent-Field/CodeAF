@@ -87,11 +87,8 @@ run's sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
-Use codeaf app common-types to find stable keys. The library's role labels
-describe fields. Copy type and relevant fields only, omit role in app.json,
-and point refs at the draft's local type names. Leave out optional fields and
-relations the app does not need, especially circular references in examples.
-Use common person and organization for new contacts and companies.
+Find common keys with codeaf app common-types. Copy only needed fields without
+role labels. Point refs at local type names and omit unused or circular relations.
 For existing records, copy the common key from context.common_bindings.
 If it lists no key for that type, omit common and keep its exact name.
 Reuse uses {"uses":true,"fields":{}}. Apply still confirms headless proposals.
@@ -100,7 +97,6 @@ For a shared type this app's Actions create or edit, use this shape:
 add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
 Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
-If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
 Keep screen and node ids. Claim marked nodes and preserve the rest of that
 screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
@@ -441,16 +437,12 @@ use add-field with just {"type":"number"} for an optional number. Keep the
 plan, screens and samples when the request leaves them alone. Then run check once and finish.`
 			break
 		}
-		prompt += `Complete the planned screens and samples before making refinements.
-Keep the planned type definitions and common keys. Only edit a type when
-the request needs a change or you are binding a shared type from using.
-Set record permissions and compile one recipe for each missing plan screen,
-using its exact screen id. Implement each planned run and its requested
-entry point before Check. Keep existing screens unless asked to edit them.
-Use markup only for a composition the request needs and recipes cannot do.
-Write the sample rows and run check once. When check reports no problems,
-finish immediately with a short summary. The engine tries sample data and
-Desk Look after this turn.`
+		prompt += `Keep planned types and common keys. Edit types only as requested or to bind types from using.
+Set record permissions, compile each missing screen with its planned id,
+and implement each planned run and entry point. Keep existing screens unless
+asked to edit them. Use markup when recipes cannot make the requested screen.
+Write samples, run check once and finish on success. The engine then tries the
+samples and Desk Look.`
 	}
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
