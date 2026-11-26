@@ -308,6 +308,8 @@ func (s *Store) deliver(c *Change) {
 		if inv := c.invalidation; inv != nil {
 			typeMatch := inv.typeID == "" || sub.typeID == inv.typeID || sub.related[inv.typeID] ||
 				sub.spec.Table != "" && sub.typeID == ""
+				// A primary-type watcher opened before a binding existed still
+			// needs its reset. Related inputs use their declared bindings.
 			reset = reset || typeMatch && (inv.binding == "" || sub.typeID == inv.typeID || sub.bindings[inv.binding])
 		}
 		touched := sub.spec.Table == "" && len(ids[sub.typeID]) > 0 || sub.spec.Table != "" && len(c.Items) > 0

@@ -2,8 +2,8 @@ package appwire
 
 import "encoding/json"
 
-// RunAppCommand uses the desktop method's decoder and implementation. This
-// door deliberately keeps direct data.*, connectors outside this command door, or conversations.
+// RunAppCommand shares the desktop decoder and implementation for owner
+// commands. Direct record and connector calls use their own scoped doors.
 func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, error) {
 	switch verb {
 	case "residency.show", "residency.preview", "residency.cutover":

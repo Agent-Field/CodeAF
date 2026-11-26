@@ -174,7 +174,14 @@ func TestPostgresCRMResidencyRoundTrip(t *testing.T) {
 	if err != nil || len(entry) == 0 || entry[0].ByKind != data.BySync {
 		t.Fatalf("source edit history: %+v %v", entry, err)
 	}
-	t.Log("mirror rows=2, source edit and brokered write-back observed, stale revision conflicted, tombstone left and re-entered with the same ID")
+	if err := svc.SyncResidency(ctx, "crm", "contact"); err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := store.History(scope, "contact", id)
+	if err != nil || len(repeated) != len(entry) || repeated[0].Seq != entry[0].Seq {
+		t.Fatalf("an overlapping poll duplicated source history: %+v %v", repeated, err)
+	}
+	t.Log("mirror rows=2, source edit and brokered write-back observed, repeated poll deduplicated, stale revision conflicted, tombstone left and re-entered with the same ID")
 	fenced := startEdit(t, crmRunConfig(t, svc), id, "3", func() {
 		cut(data.ResidencyNative, true)
 	})
