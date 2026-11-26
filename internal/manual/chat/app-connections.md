@@ -62,6 +62,24 @@ as a JSON object. Its optional `response` mapping selects scalar properties for 
 receives the run step's `Idempotency-Key`. When a version is declared, the endpoint must check it before applying
 the edit.
 
+## Read public JSON, SEC EDGAR filings or columnar results
+
+A public HTTP connection is registered with `"credential_mode": "public"`
+and a generic `"user_agent"` such as `"codeaf public data/1.0"`. Register
+from the declaration with no standard input. Public connections use GET
+only. Keep the origin and test path fixed in the declaration.
+
+Use a dotted `rows` path to select a nested array, or set `"columnar": true`
+when it selects parallel arrays. Include equally long arrays for the key,
+mapped fields and any version. For SEC EDGAR submissions, an example is
+`"rows": "filings.recent", "columnar": true, "key": "accessionNumber"`.
+
+A public read path can have a placeholder declared in `match`. For example,
+`"path": "/submissions/CIK{cik}.json", "match": {"company": "cik"}` uses
+the supplied `company` argument in the path. Supply a string to keep leading
+zeroes. Path arguments accept 1–64 letters, digits, hyphens or underscores.
+Use source keys that are unique across every response to the read.
+
 ## Write back to a database or API through an app Action
 
 Declare the exact tool name `connections.directory.edit` in the app's `capabilities.tools`. A screen starts

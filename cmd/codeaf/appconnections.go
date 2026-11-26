@@ -96,6 +96,9 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 			if err := decodeAppConnectionJSON(io.LimitReader(file, 128<<10), &cfg); err != nil {
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
+			if cfg.CredentialMode == connections.CredentialPublic {
+				return b.appConnections().Register(cfg, "")
+			}
 			credential, err := readAppSourceCredential(in)
 			if err != nil {
 				return err

@@ -212,3 +212,47 @@ func TestPersonCredentialNeverFallsBackToShared(t *testing.T) {
 		t.Fatalf("revoked read: %v", err)
 	}
 }
+
+func TestPublicHTTPReadUsesDeclaredIdentityAndNestedColumns(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "" ||
+			r.UserAgent() != "codeaf public data/1.0" || r.URL.Path != "/submissions/CIK0000000042.json" || r.URL.RawQuery != "" {
+			http.Error(w, "wrong HTTP request", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"filings":{"recent":{"accessionNumber":["2026-42","2026-43"],"form":["10-K","10-Q"],"unused":"ignored"}}}`))
+	}))
+	t.Cleanup(server.Close)
+	svc, _ := crm(t)
+	cfg := connections.Config{
+		ID: "filings", Kind: connections.HTTP, App: "crm",
+		CredentialMode: connections.CredentialPublic, UserAgent: "codeaf public data/1.0",
+		Origin: server.URL, TestPath: "/submissions/CIK0000000042.json",
+		Reads: map[string]connections.Read{"recent": {
+			Type: "contact", Key: "accessionNumber", Fields: map[string]string{"name": "form"},
+			Path: "/submissions/CIK{cik}.json", Rows: "filings.recent", Columnar: true, Match: map[string]string{"company": "cik"},
+		}},
+	}
+	withEmail := cfg
+	withEmail.UserAgent = "owner@example.test"
+	if err := svc.Register(withEmail, ""); err == nil {
+		t.Fatal("public connection accepted an email address as its client name")
+	}
+	if err := svc.Register(cfg, "unexpected-token"); err == nil {
+		t.Fatal("public connection accepted a credential")
+	}
+	if err := svc.Register(cfg, ""); err != nil {
+		t.Fatal(err)
+	}
+	query := connections.Query{App: "crm", Connection: "filings", Read: "recent", Args: map[string]any{"company": "0000000042"}}
+	page, err := svc.Read(context.Background(), query)
+	if err != nil || len(page.Rows) != 2 || page.Rows[0]["name"] != "10-K" || page.Rows[1]["name"] != "10-Q" {
+		t.Fatalf("public filings: %+v (%v)", page, err)
+	}
+	query.Args["company"] = "../other"
+	if _, err := svc.Read(context.Background(), query); err == nil || calls != 1 {
+		t.Fatalf("unsafe path reached server: %d calls (%v)", calls, err)
+	}
+}

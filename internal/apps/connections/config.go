@@ -21,9 +21,13 @@ const (
 	MySQL    Kind = "mysql"
 )
 
-const CredentialPerson = "person"
+const (
+	CredentialPerson = "person"
+	CredentialPublic = "public"
+)
 
 type Config struct {
+	UserAgent      string           `json:"user_agent,omitempty"`
 	CredentialMode string           `json:"credential_mode,omitempty"`
 	ID             string           `json:"id"`
 	Kind           Kind             `json:"kind"`
@@ -40,6 +44,7 @@ type Read struct {
 	Type      string            `json:"type"`
 	Table     string            `json:"table,omitempty"`
 	Path      string            `json:"path,omitempty"`
+	Columnar  bool              `json:"columnar,omitempty"`
 	Rows      string            `json:"rows,omitempty"`
 	Key       string            `json:"key"`
 	Version   string            `json:"version,omitempty"`
@@ -69,6 +74,11 @@ type Write struct {
 }
 
 var alias = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+var userAgent = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 ._/-]{0,79}$`)
+var pathParameter = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]{0,62})\}`)
+var pathValue = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+var propertyPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}(\.[A-Za-z_][A-Za-z0-9_-]{0,62}){0,11}$`)
+
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 func fixedPath(path string) bool {
@@ -81,8 +91,17 @@ func (c Config) validate() error {
 	if !alias.MatchString(c.ID) || (!alias.MatchString(c.App) && !cell.ValidID(c.App)) {
 		return errors.New("a connection needs a local name and one app scope")
 	}
-	if c.CredentialMode != "" && c.CredentialMode != "shared" && c.CredentialMode != CredentialPerson {
-		return errors.New("a connection credential mode is shared or person")
+	switch c.CredentialMode {
+	case "", "shared", CredentialPerson:
+	case CredentialPublic:
+		if c.Kind != HTTP || len(c.Writes) != 0 || c.UserAgent == "" {
+			return errors.New("a public connection needs an HTTP read, a declared User-Agent and no writes")
+		}
+	default:
+		return errors.New("a connection credential mode is shared, person or public")
+	}
+	if c.UserAgent != "" && (c.Kind != HTTP || !userAgent.MatchString(c.UserAgent)) {
+		return errors.New("use a generic client name and version for the User-Agent")
 	}
 	switch c.Kind {
 	case HTTP:
@@ -114,10 +133,11 @@ func (c Config) validate() error {
 			return errors.New("a read needs a name, bound record type, key and field mapping")
 		}
 		if c.Kind == HTTP {
-			if !fixedPath(read.Path) || read.Table != "" || read.OrderBy != "" || (read.Rows != "" && !identifier.MatchString(read.Rows)) {
-				return errors.New("an HTTP read needs a fixed path and may name a JSON rows property")
+			if !validReadPath(c.CredentialMode, read) || read.Table != "" || read.OrderBy != "" ||
+				(read.Rows != "" && !propertyPath.MatchString(read.Rows)) {
+				return errors.New("an HTTP read needs a declared path and may name a nested JSON rows property")
 			}
-		} else if !validTable(read.Table) || read.Path != "" || read.Rows != "" ||
+		} else if !validTable(read.Table) || read.Path != "" || read.Rows != "" || read.Columnar ||
 			(read.OrderBy != "" && !identifier.MatchString(read.OrderBy)) {
 			return errors.New("a database read needs a table and optional sort column")
 		}
@@ -188,6 +208,23 @@ func (c Config) validate() error {
 		}
 	}
 	return nil
+}
+
+func validReadPath(mode string, read Read) bool {
+	if mode != CredentialPublic {
+		return fixedPath(read.Path) && !strings.ContainsAny(read.Path, "{}")
+	}
+	path := pathParameter.ReplaceAllString(read.Path, "value")
+	if !fixedPath(path) || len(read.Path) > 120 || strings.ContainsAny(path, "{}") {
+		return false
+	}
+	targets := columnNames(read.Match)
+	for _, param := range pathParameter.FindAllStringSubmatch(read.Path, -1) {
+		if !slices.Contains(targets, param[1]) {
+			return false
+		}
+	}
+	return true
 }
 
 func validTable(table string) bool {
