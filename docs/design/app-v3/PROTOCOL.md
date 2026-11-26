@@ -1955,6 +1955,15 @@ removes them. The engine keeps them in memory for its lifetime and the chat's
 | `media.list` | `{agent, cursor, limit}` | `MediaPage` |
 | `media.resolve` | `{agent, expect_version, path}` | `MediaResult` |
 
+## meetings methods
+
+| method | params | result |
+|---|---|---|
+| `meetings.starting` | `{}` | `{meetings:[{id,title}]}` for starting conferences mirrored to the local app store. |
+| `meetings.notes` | `{transcript,person_notes,previous?,calendar_event?}` | `{summary,decisions,tasks,subject,draft}` from the configured model under PII destination policy. |
+| `meetings.transcribe` | `{wave}` | `{text}` from the approved voice model. The base64 WAV contains at most 480,044 decoded bytes. |
+| `meetings.ingest` | `{id,title,started_at,ended_at,attendees?,calendar_event?,transcript,person_notes,notes,kept_audio}` | `{meeting,transcript,tasks}`. A retry with the same capture ID returns the original links. |
+
 ## members methods
 
 | method | params | result |
