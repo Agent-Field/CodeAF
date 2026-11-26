@@ -70,7 +70,7 @@ func compilePart(p Part, source []byte) (PartProgram, error) {
 			break
 		}
 		if err != nil {
-			return fail("Use a single <part> with title, text, display, dot-cells or button elements.")
+			return fail("Use a single <part> with title, text, document, grid, board, slide, display, dot-cells or button elements.")
 		}
 		switch x := token.(type) {
 		case xml.StartElement:
@@ -99,21 +99,36 @@ func compilePart(p Part, source []byte) (PartProgram, error) {
 			return fail("Custom source only accepts presentation elements.")
 		}
 	}
+	native := slices.ContainsFunc(elements, func(element PartElement) bool { return usesNativeEditor(element, len(elements)) })
+	if native && (len(elements) != 1 || len(p.Bindings) != 1 || p.Bindings[0] != "record" ||
+		len(p.Events) > 1 || (len(p.Events) == 1 && p.Events[0] != "edit")) {
+		return fail("A native editor part binds one record and may declare an edit event.")
+	}
 	if len(elements) == 0 || depth != 0 {
 		return fail("Give the custom part a nonempty presentation.")
 	}
 	for _, event := range p.Events {
-		if !emits[event] {
+		if !emits[event] && !(native && event == "edit") {
 			return fail("Every declared event needs a matching button.")
 		}
 	}
 	return PartProgram{Manifest: p, Elements: elements}, nil
 }
 
+// Native editors are fixed Desk renderers. A custom declaration supplies
+// only a field address and its registered Action.
+func usesNativeEditor(element PartElement, siblings int) bool {
+	return nativeRecordPart(element.Kind) || siblings == 1 && element.Kind == "document" && element.Field != ""
+}
+
+func nativeRecordPart(kind string) bool {
+	return kind == "grid" || kind == "board" || kind == "slide"
+}
+
 func compilePartElement(x xml.StartElement, p Part) (PartElement, error) {
 	el := PartElement{Kind: x.Name.Local}
 	switch el.Kind {
-	case "title", "text", "display", "dot-cells", "button":
+	case "title", "text", "document", "grid", "board", "slide", "display", "dot-cells", "button":
 	default:
 		return el, fmt.Errorf("%q is not a custom presentation element", el.Kind)
 	}
@@ -143,6 +158,9 @@ func compilePartElement(x xml.StartElement, p Part) (PartElement, error) {
 			return el, fmt.Errorf("%q is not a presentation attribute", attr.Name.Local)
 		}
 	}
+	if nativeRecordPart(el.Kind) && el.Field == "" {
+		return el, errors.New("Bind the editor to a record field.")
+	}
 	if (el.Text == "") == (el.Field == "") || (el.Kind == "button") != (el.Event != "") {
 		return el, errors.New("Give each element text or a field. Give each button a declared event.")
 	}
@@ -152,6 +170,11 @@ func compilePartElement(x xml.StartElement, p Part) (PartElement, error) {
 func (c *checker) checkCustomPart(ctx actionCtx, n *Node, program PartProgram, at, typ string, query QueryIR) {
 	if typ != "" {
 		fields, _ := c.typeFields(typ)
+		for _, element := range program.Elements {
+			if usesNativeEditor(element, len(program.Elements)) && fields[element.Field].Type != "longtext" {
+				c.add(ctx.file, at+"/bind", CodeBindNotAccepted, "An editor needs a longtext field.")
+			}
+		}
 		for _, name := range program.Manifest.Inputs {
 			if !systemFields[name] {
 				if _, ok := fields[name]; !ok {

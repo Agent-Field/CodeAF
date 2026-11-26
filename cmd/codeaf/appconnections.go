@@ -19,6 +19,7 @@ import (
 func (b *appBackend) appConnections() connections.Service {
 	return connections.Service{
 		Profile:   b.crewProfile(),
+		Google:    b.pluginManager,
 		Microsoft: b.pluginManager,
 		Store:     func() (*data.Store, error) { return b.dataStore("") },
 	}
@@ -47,7 +48,7 @@ func appConnectionError(err error) error {
 		return nil
 	}
 	switch {
-	case errors.Is(err, connections.ErrTooLarge):
+	case errors.Is(err, connections.ErrTooLarge), errors.Is(err, connections.ErrPartialWindow):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
 	case errors.Is(err, connections.ErrConflict), errors.Is(err, connections.ErrGraphCursor):
 		return appwire.Errorf(appwire.CodeConflict, "%s", err)
@@ -60,7 +61,7 @@ func appConnectionError(err error) error {
 }
 
 func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Writer) error {
-	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] [CURSOR] | content APP CONNECTION READ ID | signin microsoft-365 | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON"
+	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] [CURSOR] | content APP CONNECTION READ ID | signin microsoft-365 | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture | link-google-identities APP CONNECTION READ"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -71,6 +72,20 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 		return json.NewEncoder(out).Encode(value)
 	}
 	switch args[0] {
+	case "daily-brief":
+		if len(args) == 1 || len(args) == 2 && args[1] == "--fixture" {
+			return installDailyBrief(b, len(args) == 2, out)
+		}
+	case "link-google-identities":
+		if len(args) == 4 {
+			return b.appConnections().LinkGoogleIdentities(context.Background(), connections.Query{
+				App: args[1], Connection: args[2], Read: args[3],
+			})
+		}
+	case "google-binding":
+		if len(args) == 4 && (args[3] == "fixture" || args[3] == "live") {
+			return b.appConnections().SetGoogleFixture(args[1], args[2], args[3] == "fixture")
+		}
 	case "list":
 		if len(args) == 2 {
 			return encode(b.ListAppConnections(appwire.ConnectionScope{App: args[1]}))
@@ -95,7 +110,7 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 	case "content":
 		if len(args) == 5 {
 			query := connections.Query{App: args[1], Connection: args[2], Read: args[3]}
-			return encode(b.appConnections().ReadGraphContent(context.Background(), query, args[4], connections.ContentPerson))
+			return encode(b.appConnections().ReadPersonalContent(context.Background(), query, args[4]))
 		}
 	case "signin":
 		if len(args) == 2 && args[1] == connect.Microsoft365 {
@@ -113,7 +128,7 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
 			credential := ""
-			if cfg.Kind != connections.Microsoft365 {
+			if cfg.Kind != connections.Google && cfg.Kind != connections.Microsoft365 {
 				credential, err = readAppSourceCredential(in)
 				if err != nil {
 					return err

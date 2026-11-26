@@ -52,9 +52,10 @@ type Manifest struct {
 }
 
 type Archive struct {
-	Format   int               `json:"format"`
-	Manifest Manifest          `json:"manifest"`
-	Files    map[string][]byte `json:"files"`
+	Format    int               `json:"format"`
+	Manifest  Manifest          `json:"manifest"`
+	Files     map[string][]byte `json:"files"`
+	Signature []byte            `json:"signature,omitempty"`
 }
 
 type PackOptions struct {
@@ -66,6 +67,13 @@ type PackOptions struct {
 // Pack includes only definition bytes. Live records and per-person grants
 // reside outside those files, so they cannot be embedded by the export.
 func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]byte, error) {
+	if p.Publisher == BuiltinPublisher {
+		return nil, fmt.Errorf("the %s publisher requires a release signature", BuiltinPublisher)
+	}
+	return pack(files, existing, p)
+}
+
+func pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]byte, error) {
 	a := Archive{Format: 1, Files: make(map[string][]byte, len(files))}
 	for path, raw := range files {
 		a.Files[path] = []byte(raw)
@@ -83,9 +91,7 @@ func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 	if p.Version == "" {
 		p.Version = fmt.Sprintf("%d.0.0", app.Version)
 	}
-	// Export an explicit common key that an owner bound after creating
-	// the app. A matching alias by itself conveys no permission to reuse.
-	normalized, err := withBoundCommon(a.Files[schema.AppFile], app, existing)
+	normalized, err := withPortableRecords(a.Files[schema.AppFile], app, existing)
 	if err != nil {
 		return nil, err
 	}
@@ -93,20 +99,6 @@ func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 	a.Manifest, err = describe(a.Files, p.Publisher, p.Version)
 	if err != nil {
 		return nil, err
-	}
-	for alias, rec := range app.Records {
-		if !rec.Uses {
-			continue
-		}
-		shape, ok := existing.ForRecord(alias, rec)
-		if !ok {
-			return nil, fmt.Errorf("app.json /records/%s: the type it uses is unavailable", alias)
-		}
-		for name, field := range shape.Fields {
-			if _, local := rec.Fields[name]; !local {
-				a.Manifest.Entities[alias].Fields[name] = fieldShape(field)
-			}
-		}
 	}
 	a.Manifest.Hash = a.digest()
 	raw, err := json.Marshal(a)
@@ -135,6 +127,9 @@ func Read(r io.Reader) (Archive, error) {
 	if a.Manifest.Hash != a.digest() {
 		return Archive{}, fmt.Errorf("the app package does not match its content hash")
 	}
+	if err := a.verifyPublisher(); err != nil {
+		return Archive{}, err
+	}
 	want, err := describe(a.Files, a.Manifest.Publisher, a.Manifest.Version)
 	if err != nil {
 		return Archive{}, err
@@ -159,6 +154,7 @@ func Read(r io.Reader) (Archive, error) {
 
 func (a Archive) digest() string {
 	a.Manifest.Hash = ""
+	a.Signature = nil
 	raw, _ := json.Marshal(a)
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
 }
@@ -198,7 +194,7 @@ func describe(files map[string][]byte, publisher, version string) (Manifest, err
 		for name, field := range record.Fields {
 			fields[name] = fieldShape(field)
 		}
-		manifest.Entities[alias] = Entity{Common: record.Common, Uses: record.Uses, Fields: fields}
+		manifest.Entities[alias] = Entity{Common: record.Common, Uses: record.Uses || record.PortableReuse, Fields: fields}
 	}
 	def := schema.Definition{Files: files}
 	for _, file := range def.RunFiles() {
@@ -206,34 +202,6 @@ func describe(files map[string][]byte, publisher, version string) (Manifest, err
 	}
 	manifest.Actions, err = actions(def, app)
 	return manifest, err
-}
-
-func withBoundCommon(raw []byte, app schema.App, existing schema.TypeSet) ([]byte, error) {
-	var common map[string]string
-	for alias, record := range app.Records {
-		if shape := existing[alias]; record.Common == "" && shape.Common != "" && (shape.Owner == app.ID || record.Uses) {
-			if common == nil {
-				common = map[string]string{}
-			}
-			common[alias] = shape.Common
-		}
-	}
-	if len(common) == 0 {
-		return raw, nil
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return nil, err
-	}
-	var records map[string]map[string]json.RawMessage
-	if err := json.Unmarshal(obj["records"], &records); err != nil {
-		return nil, err
-	}
-	for alias, key := range common {
-		records[alias]["common"], _ = json.Marshal(key)
-	}
-	obj["records"], _ = json.Marshal(records)
-	return json.MarshalIndent(obj, "", "  ")
 }
 
 func fieldShape(f schema.Field) Field {

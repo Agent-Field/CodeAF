@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"maps"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -45,7 +48,51 @@ func (s *Jobs) Pack(app string, options apppackage.PackOptions) ([]byte, error) 
 	if options.Version == "" {
 		options.Version = fmt.Sprintf("%d.0.0", live.Meta.Version)
 	}
-	return apppackage.Pack(live.Files(), catalog.Types, options)
+	raw, err := apppackage.Pack(live.Files(), catalog.Types, options)
+	if err != nil {
+		return nil, err
+	}
+	archive, err := apppackage.Read(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	if err := checkPackageInEmptyProfile(archive); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// Check the receiving definition and sample store without the exporting
+// profile's types or records. Exporting from a populated profile can hide
+// dependencies that would otherwise fail the first time someone installs it.
+func checkPackageInEmptyProfile(archive apppackage.Archive) error {
+	files, _, err := archive.Bind(nil, "", "")
+	if err != nil {
+		return err
+	}
+	def := definition(files)
+	if report := check.Definition(def, nil); !report.OK() {
+		return &apppackage.Findings{Report: report}
+	}
+	rows, err := check.Sample(def)
+	if err != nil {
+		return &apppackage.Findings{Report: schema.Report{Problems: []schema.Problem{
+			{File: schema.SampleFile, Code: "sample_invalid", Message: err.Error()},
+		}}}
+	}
+	root, err := os.MkdirTemp("", "codeaf-pack-check-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(root)
+	place := data.NewPlace(root, data.Options{NoRefresh: true})
+	defer place.Close()
+	if err := place.SeedSample("package", def.Files[schema.AppFile], rows); err != nil {
+		return &apppackage.Findings{Report: schema.Report{Problems: []schema.Problem{
+			{File: schema.SampleFile, Code: "package_clean_install", Message: "The package could not load in an empty profile. " + err.Error()},
+		}}}
+	}
+	return nil
 }
 
 // Install stages a checked copy. Only Apply can publish the definition and
@@ -99,7 +146,7 @@ func (s *Jobs) StartPackage(ctx context.Context, archive apppackage.Archive) (id
 			_ = os.RemoveAll(filepath.Join(s.root, j.Draft))
 		}
 	}()
-	files, _, err := archive.Bind(catalog.Types, j.Draft, true)
+	files, _, err := archive.Bind(catalog.Types, j.Draft, "")
 	if err != nil {
 		return "", err
 	}
@@ -184,6 +231,7 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 		if err != nil {
 			return Proposal{}, err
 		}
+		edit.Publication.Lineage.ForkedFrom = live.Meta.Lineage.ForkedFrom
 		card.Source = "package_update"
 	}
 
@@ -195,7 +243,11 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 	if target == "" {
 		target = j.Draft
 	}
-	upstream, bindings, err := archive.Bind(catalog.Types, target, fork != nil)
+	var forkFrom string
+	if parent := edit.Publication.Lineage.ForkedFrom; parent != nil {
+		forkFrom = parent.App
+	}
+	upstream, bindings, err := archive.Bind(catalog.Types, target, forkFrom)
 	if err != nil {
 		return Proposal{}, err
 	}
@@ -203,6 +255,36 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 	files := upstream
 	if edit.Publication.Lineage.Source != nil {
 		edit.Publication.Baseline = upstream
+	}
+	if fork != nil && fork.Source != nil && fork.Source.Publisher == apppackage.BuiltinPublisher {
+		parent, err := s.opts.Store.Get(fork.App)
+		if err != nil {
+			return Proposal{}, err
+		}
+		if parent.Meta.Version != fork.Version || parent.Meta.Lineage == nil {
+			return Proposal{}, store.ErrConflict
+		}
+		base, err := s.opts.Store.PackageBase(fork.App, parent.Meta.Lineage.PackageBaseVersion)
+		if err != nil {
+			return Proposal{}, err
+		}
+		// Rebind the publisher's baseline, not the locally edited parent.
+		// That difference is what a later update must preserve on the fork.
+		raw, err := apppackage.Pack(base, catalog.Types, apppackage.PackOptions{})
+		if err != nil {
+			return Proposal{}, err
+		}
+		publisher, err := apppackage.Read(strings.NewReader(string(raw)))
+		if err != nil {
+			return Proposal{}, err
+		}
+		edit.Publication.Lineage.Source = fork.Source
+		edit.Publication.Baseline, _, err = publisher.Bind(catalog.Types, target, forkFrom)
+		if err != nil {
+			return Proposal{}, err
+		}
+		// Show the signed upstream even though the fork itself is packed locally.
+		source = *fork.Source
 	}
 	if app != "" {
 		files, card.Package.Conflicts, err = apppackage.Merge(edit.Base, live.Files(), upstream, nil)

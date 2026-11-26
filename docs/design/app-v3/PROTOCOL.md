@@ -1955,6 +1955,15 @@ removes them. The engine keeps them in memory for its lifetime and the chat's
 | `media.list` | `{agent, cursor, limit}` | `MediaPage` |
 | `media.resolve` | `{agent, expect_version, path}` | `MediaResult` |
 
+## meetings methods
+
+| method | params | result |
+|---|---|---|
+| `meetings.starting` | `{}` | `{meetings:[{id,title}]}` for starting conferences mirrored to the local app store. |
+| `meetings.notes` | `{transcript,person_notes,previous?,calendar_event?}` | `{summary,decisions,tasks,subject,draft}` from the configured model under PII destination policy. |
+| `meetings.transcribe` | `{wave}` | `{text}` from the approved voice model. The base64 WAV contains at most 480,044 decoded bytes. |
+| `meetings.ingest` | `{id,title,started_at,ended_at,attendees?,calendar_event?,transcript,person_notes,notes,kept_audio}` | `{meeting,transcript,tasks}`. A retry with the same capture ID returns the original links. |
+
 ## members methods
 
 | method | params | result |
@@ -3246,20 +3255,30 @@ for these items.
 
 ### Kit app packages
 
-Package selectors take an absolute engine-side `path`, or a `builtin` filename from the bundled Kit. A bundled example name begins with `examples/`. Supply exactly one selector. `expected_hash` pins the selected release and returns `conflict` if the contents changed.
+Package selectors take an absolute engine-side `path`, a `builtin` filename from the bundled Kit, or a signed first-party template ID in `package`. A bundled example name begins with `examples/`. Supply exactly one selector. `expected_hash` pins the selected release and returns `conflict` if the contents changed.
 
 | method | params | result |
 |---|---|---|
 | `apps.pack` | `{app,path?,publisher?,version?,sample?}` | `{path,manifest}`. A format 1 archive contains the definition files, entity shapes, action and automation inventory, requested permissions, budget, and SHA-256 content hash. Publisher defaults to `local` and version to the live version followed by `.0.0`. An omitted path saves the release to the current Kit. An existing file at an explicit export path is preserved. |
 | `apps.browse` | `{app?}` | `{packages}` with the latest release per source ID and publisher. Each entry carries the source identity and hash, its selector, display metadata, and optional `installed_app`. With an app ID, only newer releases of its accepted source appear. |
-| `apps.preview_package` | `{path?,builtin?,expected_hash?}` | `{app,screens,scope,sample:true}`. Creates a transient isolated scope from the archive's own examples. The scope can be read by Look and the interactive sample preview. |
+| `apps.preview_package` | `{path?,builtin?,package?,expected_hash?}` | `{app,screens,scope,sample:true}`. Creates a transient isolated scope from the archive's own examples. The scope can be read by Look and the interactive sample preview. |
 | `apps.close_package_preview` | `{draft}` | `{}`. Releases the given package preview scope. |
-| `apps.start_package` | `{path?,builtin?,expected_hash?}` | `{draft}`. Opens a Builder draft seeded from the selected release without publishing. |
-| `apps.install` | `{path?,builtin?,expected_hash?}` | A proposal with `source:"package_install"`, the common-type bindings, and the requested permissions. Apply publishes the copy. |
-| `apps.fork` | `{app?,path?,builtin?,expected_hash?}` | A proposal with `source:"package_fork"`. Supply a saved app ID or a package selector. Apply gives the independent definition a new app ID and records `forked_from`. |
-| `apps.update` | `{app,path?,builtin?,expected_hash?}` | A proposal with `source:"package_update"`. The release must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
+| `apps.start_package` | `{path?,builtin?,package?,expected_hash?}` | `{draft}`. Opens a Builder draft seeded from the selected release without publishing. |
+| `apps.install` | `{path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_install"`, the common-type bindings, and the requested permissions. Apply publishes the copy. |
+| `apps.fork` | `{app?,path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_fork"`. Supply a saved app ID or a package selector. Apply gives the independent definition a new app ID and records `forked_from`. |
+| `apps.update` | `{app,path?,builtin?,package?,expected_hash?}` | A proposal with `source:"package_update"`. The release must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
 | `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
 | `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
+
+Format 1 packages can carry the field declarations of a shared type. An
+install binds compatible common keys to the receiving profile's records
+and adds missing declarations. When a shared type is missing, Apply
+creates it. Its local declaration keeps an optional `portable_reuse`
+flag so a subsequent export can offer the same binding. Older archives
+can supply those fields from the package manifest. If two different
+private types use the same alias, Apply stores the new type separately
+and preserves the app's alias and its references. The local
+`package_private` flag records that choice and is omitted on export.
 
 Package proposals are emitted on `apps.change_proposed` and persist in
 `apps.build_state.proposal` and `apps.list.builds[].proposal`. The
@@ -3335,9 +3354,14 @@ same notice. A structurally valid app can be applied.
 | `apps.render` | `{app,output,record?,inbox?}` | A saved file receipt. The engine uses the kept app's named output template and reads its declared record or query under the app's data grants. |
 | `apps.outputs` | `{app,inbox?,run?,before?}` | `{items,next?}`. Use `inbox:true` to list digest deliveries. Pass `next` as `before` to continue. |
 | `apps.output_file` | `{app,id}` | `{file,content}`. Content is the saved file as base64, up to 8 MiB before encoding. The ID is the saved receipt's ID. |
+| `apps.worksheet_window` | `{app,draft?,type,id,field,row,column,rows,columns,pin?}` | `{revision,total,columns,rows,columnIndexes}` for a scoped worksheet field. Offsets are zero-based. Pin includes row and column zero for ranges scrolled past them. Each cell may carry its formula, calculated value or issue. |
 
 A receipt carries `id`, `app`, `action`, `version`, `name`, `mime`, `blob`,
 `source_type`, `matched`, `actor`, `actor_kind`, and `at`. Record output receipts
 also carry `sources:[{id,rev}]` when rows were rendered. Run receipts add `run`
 and `step`. An inbox delivery has `inbox:true`. Refresh the receipt list on
 `apps.output_added` for the displayed app.
+
+The `txt` format returns the merged body as UTF-8 plain text. A screen can
+add `clipboard: true` to a `render` Action for `txt` or `csv`. Desk copies the
+same scoped file that `apps.output_file` returns.

@@ -1,0 +1,25 @@
+{
+  "automation": [
+    {
+      "id": "duplicate",
+      "line": "Duplicate a worksheet."
+    }
+  ],
+  "ask": "Open Sheets and work with worksheet records.",
+  "data": [
+    {
+      "id": "sheets_worksheet",
+      "line": "Each worksheet is a versioned record."
+    }
+  ],
+  "screens": [
+    {
+      "id": "library",
+      "line": "Browse and create worksheet records."
+    },
+    {
+      "id": "open",
+      "line": "Open a worksheet, edit it and export it."
+    }
+  ]
+}

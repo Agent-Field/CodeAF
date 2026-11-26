@@ -24,6 +24,7 @@ type packParams struct {
 type packageParams struct {
 	Path    string `json:"path,omitempty"`
 	Builtin string `json:"builtin,omitempty"`
+	Package string `json:"package,omitempty"`
 	Hash    string `json:"expected_hash,omitempty"`
 }
 
@@ -135,7 +136,7 @@ func init() {
 			card, err := b.ForkPackage(ctx, a)
 			return &card, packageError(err)
 		}
-		if p.Path != "" || p.Builtin != "" {
+		if p.Path != "" || p.Builtin != "" || p.Package != "" {
 			return nil, Errorf(CodeBadParams, "Choose either an installed app or an app package to fork.")
 		}
 		card, err := b.Fork(ctx, p.App)
@@ -172,14 +173,14 @@ func selectedPackage(p packageParams) (apppackage.Archive, error) {
 	var a apppackage.Archive
 	var err error
 	if p.Builtin == "" {
-		a, err = readPackage(p.Path)
+		a, err = packageFrom(p.Path, p.Package)
 	} else {
 		name, example := strings.CutPrefix(p.Builtin, "examples/")
 		directory := "firstparty"
 		if example {
 			directory = "examples"
 		}
-		if p.Path != "" || filepath.Base(name) != name || !strings.HasSuffix(name, packageSuffix) {
+		if p.Path != "" || p.Package != "" || filepath.Base(name) != name || !strings.HasSuffix(name, packageSuffix) {
 			return a, Errorf(CodeBadParams, "Choose one app package.")
 		}
 		catalog, fsErr := apppackage.CatalogFiles(directory)
@@ -194,6 +195,8 @@ func selectedPackage(p packageParams) (apppackage.Archive, error) {
 		a, err = apppackage.Read(f)
 		if err != nil {
 			err = Errorf(CodeBadParams, "%s", err)
+		} else if !example && a.Manifest.Publisher != apppackage.BuiltinPublisher {
+			err = Errorf(CodeBadParams, "This Kit template needs a release signature.")
 		} else if example && !exampleAccepted(catalog, name, a) {
 			err = Errorf(CodeBadParams, "This example isn't available in the Kit.")
 		}
@@ -202,6 +205,25 @@ func selectedPackage(p packageParams) (apppackage.Archive, error) {
 		return apppackage.Archive{}, Errorf(CodeConflict, "This package changed. Reopen Browse and try again.")
 	}
 	return a, err
+}
+
+func packageFrom(path, id string) (apppackage.Archive, error) {
+	if id == "" {
+		return readPackage(path)
+	}
+	if path != "" {
+		return apppackage.Archive{}, Errorf(CodeBadParams, "Choose a Kit template or an app package file.")
+	}
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		return apppackage.Archive{}, err
+	}
+	for _, archive := range archives {
+		if archive.Manifest.ID == id {
+			return archive, nil
+		}
+	}
+	return apppackage.Archive{}, Errorf(CodeBadParams, "This Kit template is unavailable.")
 }
 
 func readPackage(path string) (apppackage.Archive, error) {
