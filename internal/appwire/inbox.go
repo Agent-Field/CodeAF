@@ -211,7 +211,10 @@ var inboxMethods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
-		return &AgentTaskResult{agent, task}, nil
+		if draft, ok := strings.CutPrefix(agent, AppDraftInboxPrefix); ok {
+			return &AgentTaskResult{AppDraft: draft}, nil
+		}
+		return &AgentTaskResult{Agent: agent, Task: task}, nil
 	}),
 }
 
@@ -222,8 +225,9 @@ type (
 		Counts InboxCounts `json:"counts"`
 	}
 	AgentTaskResult struct {
-		Agent string `json:"agent"`
-		Task  string `json:"task,omitempty"`
+		AppDraft string `json:"app_draft,omitempty"`
+		Agent    string `json:"agent"`
+		Task     string `json:"task,omitempty"`
 	}
 )
 
