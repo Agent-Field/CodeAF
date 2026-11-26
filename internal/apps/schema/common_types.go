@@ -1,10 +1,19 @@
 package schema
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
 )
+
+// PrivateRecordName is the storage name for an imported type whose app
+// alias also names a different type in the receiving profile.
+func PrivateRecordName(app, alias string) string {
+	id := sha256.Sum256([]byte(app))
+	return fmt.Sprintf("pkg_%x_%s", id[:6], alias)
+}
 
 // CommonTypeLibrary is the versioned data vocabulary shipped in kit 2.
 type CommonTypeLibrary struct {
