@@ -16,7 +16,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
-	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -369,7 +368,7 @@ func briefText(text string, limit int) string {
 
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
-func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, preflight func(map[string]string) schema.Report, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
 	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
 	if err != nil {
 		return nil, "", BuildCalls{}, err
@@ -475,8 +474,15 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			}
 			return compact.String(), nil
 		case "check":
-			report := check.Definition(definition(files), types)
-			out, err := json.Marshal(briefReport(&report))
+			report := preflight(files)
+			status := "definition_only"
+			if slices.Contains(report.Codes(), "choose_reuse") {
+				status = NeedsYou
+			}
+			out, err := json.Marshal(struct {
+				Status string `json:"status"`
+				*modelReport
+			}{status, briefReport(&report)})
 			return string(out), err
 		case "look":
 			if look == nil {
@@ -556,6 +562,7 @@ Use markup only for a composition the request needs and recipes cannot do.
 Write the sample rows and finish with a short summary. The engine runs Check,
 tries the sample data and asks Desk to draw the screens after this turn.`
 	}
+	prompt += "\nThe check command returns preliminary definition findings or a reuse question (needs_you). Only the engine's Check after this turn can confirm the result. Leave reuse decisions to the person."
 	if in.Continued {
 		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
 	}
