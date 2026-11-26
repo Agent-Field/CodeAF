@@ -119,7 +119,7 @@ func scriptedApp(t *testing.T, home string) builder.Options {
 					}
 					return message, nil
 				}
-				return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I set up your CRM."}}}, nil
+				return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: technicalBuilderReply}}}, nil
 			}), nil
 		},
 	}
@@ -185,6 +185,8 @@ func TestPlanRestartsWithTranscriptAndCheckpoint(t *testing.T) {
 	if state.Published || state.App != "" {
 		t.Fatal("an agent published its own draft")
 	}
+	assertPublicBuilderState(t, state)
+	assertBuilderActivity(t, state, builder.Planning, 1)
 }
 
 func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
@@ -215,6 +217,8 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 	if len(state.Checkpoints) != 2 || len(state.Screens) == 0 || state.Published {
 		t.Fatalf("expected a plan and one checked build, got %+v", state)
 	}
+	assertPublicBuilderState(t, state)
+	assertBuilderActivity(t, state, builder.Writing, 3)
 	preview, err := jobs.Preview(builder.PreviewRequest{Draft: plan.Draft})
 	if err != nil {
 		t.Fatal(err)
@@ -310,6 +314,8 @@ func TestInterruptedJobResumesAfterEngineOpens(t *testing.T) {
 	if state.State != builder.Planning || len(state.Screens) != 0 || len(state.Transcript) != 2 || len(state.Checkpoints) != 1 {
 		t.Fatalf("resuming should complete the same turn once: %+v", state)
 	}
+	assertPublicBuilderState(t, state)
+	assertBuilderActivity(t, state, builder.Planning, 1)
 }
 
 func waitState(t *testing.T, jobs *builder.Jobs, draft, state string) builder.State {
@@ -433,7 +439,10 @@ func TestDeskLayoutFindingBlocksCheckpointAndApply(t *testing.T) {
 		return nil, nil
 	})
 	state := waitState(t, jobs, draft, builder.NeedsYou)
-	if len(state.Checkpoints) != 1 || !strings.Contains(state.Problem, "light at 800 px: [deal-list] value truncates") {
+	detail := slices.ContainsFunc(state.Progress, func(event builder.Event) bool {
+		return event.Report != nil && strings.Contains(event.Report.String(), "light at 800 px: [deal-list] value truncates")
+	})
+	if len(state.Checkpoints) != 1 || !detail || strings.Contains(state.Problem, "deal-list") {
 		t.Fatalf("the layout finding must block the writing checkpoint: %+v", state)
 	}
 	if _, err := jobs.Apply(draft); err == nil {
@@ -679,6 +688,8 @@ func TestBuildContinuesFromSavedWorkAfterTheCallLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := waitState(t, jobs, plan.Draft, builder.Ready)
+	assertPublicBuilderState(t, state)
+	assertBuilderActivity(t, state, builder.Writing, 1)
 	if !strings.HasPrefix(state.Name, "Working title ") {
 		t.Fatalf("automatic continuation lost the working title: %q", state.Name)
 	}
@@ -758,9 +769,37 @@ func TestPlanRecoversWhenTheProviderTimesOut(t *testing.T) {
 	}
 }
 
+const technicalBuilderReply = `On the deals screen, set {"uses":true,"common":"organization","fields":{}} with access:"r" and contact: rw. The fields are classed ` + "`internal`."
+
+func assertPublicBuilderState(t *testing.T, state builder.State) {
+	t.Helper()
+	assertHumanBuilderCopy(t, state.Problem)
+	for _, message := range state.Transcript {
+		if message.Role == "assistant" {
+			assertHumanBuilderCopy(t, message.Text)
+		}
+	}
+	for _, saved := range state.Checkpoints {
+		assertHumanBuilderCopy(t, saved.Summary)
+	}
+}
+
+func assertBuilderActivity(t *testing.T, state builder.State, stage string, rounds int) {
+	t.Helper()
+	found := 0
+	for _, event := range state.Progress {
+		if event.Stage == stage && strings.Contains(event.Detail, technicalBuilderReply) {
+			found++
+		}
+	}
+	if found != rounds {
+		t.Fatalf("wanted %d technical replies in Build activity for %s, got %d", rounds, stage, found)
+	}
+}
+
 func assertHumanBuilderCopy(t *testing.T, text string) {
 	t.Helper()
-	for _, internal := range []string{"node-", "RecordList", "board_by", `"views"`, "app check", "app look", "the deals screen"} {
+	for _, internal := range []string{"node-", "RecordList", "board_by", `"views"`, "app check", "app look", "the deals screen", `"uses"`, `"common"`, `"fields"`, `"access"`, "contact: rw", "classed `internal`"} {
 		if strings.Contains(text, internal) {
 			t.Errorf("person-facing builder copy contains %q: %q", internal, text)
 		}
