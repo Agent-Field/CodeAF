@@ -289,7 +289,7 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		needs := stack("needs-attention", node("needs-title", "Text", "", map[string]any{"text": "Needs you", "role": "section", "tone": "primary"}), pair)
 		work := needs
 		if len(supporting) != 0 {
-			work = node("brief-work", "Row", "", map[string]any{"wrap": true, "gap": 2},
+			work = node("brief-work", "Row", "", map[string]any{"workspace": "brief", "gap": 2},
 				needs, stack("around-the-queue", supporting...))
 		}
 		s.Body = stack("brief", hero, work)

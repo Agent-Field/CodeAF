@@ -63,7 +63,11 @@ func (b *appBackend) wireProcess(s *data.Store, scope appwire.DataScope, v *data
 	for _, c := range v.Checklists {
 		check := appwire.ProcessChecklist{ID: c.ID}
 		for _, step := range c.Steps {
-			entry := appwire.ProcessChecklistStep{ID: step.ID, Label: step.Label, Done: step.Done, Who: step.Who, At: step.At, Evidence: step.Evidence}
+			who := step.Who
+			if who != "" && who == s.Person() {
+				who = "You"
+			}
+			entry := appwire.ProcessChecklistStep{ID: step.ID, Label: step.Label, Done: step.Done, Who: who, At: step.At, Evidence: step.Evidence}
 			if e := step.Attached; e != nil {
 				entry.Attached = &appwire.ChecklistEvidence{Kind: e.Kind, Text: e.Text,
 					Record: (*appwire.DataRecordRef)(e.Record)}

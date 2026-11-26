@@ -116,31 +116,38 @@
             "when": "$selection.work.count == 1"
           },
           {
-            "part": "FileViewer",
-            "label": "Identity evidence",
-            "props": {
-              "regionMasking": true
-            },
-            "bind": {
-              "file": "$selection.work.id",
-              "type": "case",
-              "field": "identity"
-            },
-            "id": "fileviewer",
-            "when": "$selection.work.count == 1"
-          },
-          {
-            "part": "Checklist",
-            "label": "Review checklist",
-            "props": {
-              "checklist": "checks"
-            },
-            "bind": {
-              "record": "$selection.work.id",
-              "type": "case"
-            },
-            "id": "checklist",
-            "when": "$selection.work.count == 1"
+            "part": "Row",
+            "id": "review-evidence",
+            "props": { "workspace": "evidence", "gap": 2 },
+            "children": [
+              {
+                "part": "FileViewer",
+                "label": "Identity evidence",
+                "props": {
+                  "regionMasking": true
+                },
+                "bind": {
+                  "file": "$selection.work.id",
+                  "type": "case",
+                  "field": "identity"
+                },
+                "id": "fileviewer",
+                "when": "$selection.work.count == 1"
+              },
+              {
+                "part": "Checklist",
+                "label": "Review checklist",
+                "props": {
+                  "checklist": "checks"
+                },
+                "bind": {
+                  "record": "$selection.work.id",
+                  "type": "case"
+                },
+                "id": "checklist",
+                "when": "$selection.work.count == 1"
+              }
+            ]
           },
           {
             "part": "SignOff",
@@ -175,7 +182,7 @@
       "filter": [{ "field": "stage", "op": "ne", "value": "Done" }],
       "window": {
         "order_by": [
-          "risk"
+          "-risk"
         ]
       }
     }
