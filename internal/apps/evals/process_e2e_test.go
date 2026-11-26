@@ -19,6 +19,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -221,15 +223,34 @@ func (p *appProcess) Build(ctx context.Context, prompt string, _ bool, onPlan fu
 	return p.build(ctx, prompt, reuse, onPlan)
 }
 
-func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, onPlan func(BuildState) error) (BuildState, error) {
+func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, onPlan func(BuildState) error) (result BuildState, err error) {
 	body, err := p.cli(ctx, "plan", map[string]string{"ask": prompt})
 	plan, err := readReply[draftReply](body, err)
 	if err != nil {
 		return BuildState{}, err
 	}
-	if plan.Draft == "" {
+	if !cell.ValidID(plan.Draft) {
 		return BuildState{}, errors.New("app plan did not return a draft")
 	}
+	// The draft journal keeps both completed and timed-out work for inspection.
+	defer func() {
+		var saved struct {
+			Working      struct{ Files map[string]string }
+			WritingFiles map[string]string
+		}
+		raw, err := os.ReadFile(filepath.Join(p.home, "apps", "_drafts", plan.Draft, "build.json"))
+		if err != nil || json.Unmarshal(raw, &saved) != nil {
+			return
+		}
+		files := saved.Working.Files
+		if saved.WritingFiles != nil {
+			files = saved.WritingFiles
+		}
+		if files[schema.AppFile] != "" {
+			depth := measureDepth(files)
+			result.Depth = &depth
+		}
+	}()
 	if err := onPlan(BuildState{Plan: body}); err != nil {
 		return BuildState{}, err
 	}
@@ -337,5 +358,19 @@ func (p *appProcess) Usage(ctx context.Context) (Usage, error) {
 		"to":          time.Now().AddDate(0, 0, 1).Format(time.DateOnly),
 		"destination": filepath.Join(p.home, "eval-usage.csv"),
 	}))
-	return result.Totals, err
+	if err == nil {
+		return result.Totals, nil
+	}
+	// A deadline can stop the engine before the export. Count the durable
+	// receipts that survived so expensive failed builds remain measurable.
+	ledger := filepath.Join(p.home, "v3", session.UsageLedgerName)
+	totals, _, ledgerErr := session.EachUsageCall(ledger, session.UsageQuery{}, func(session.UsageCall) error { return nil })
+	if ledgerErr != nil {
+		return Usage{}, errors.Join(err, ledgerErr)
+	}
+	usage := Usage{Calls: totals.Requests, TokensIn: totals.Input, TokensOut: totals.Output, Unpriced: totals.Unpriced}
+	if totals.Priced() {
+		usage.Cost = &totals.USD
+	}
+	return usage, nil
 }

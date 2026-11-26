@@ -16,13 +16,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const builderModel = "deepseek/deepseek-v4.1-flash"
-const judgeModel = "openai/gpt-5.4"
 
 func evalKey() string {
 	dir := strings.TrimSpace(config.ProfileDir())
@@ -60,6 +60,15 @@ func runGallery(t *testing.T, key string, noModel bool) {
 	cases, err := Builtin()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var judge DesignJudge
+	var language, skipped string
+	root := os.Getenv("CODEAF_APP_EVAL_LOOKS")
+	if !noModel && root != "" {
+		judge, language, skipped, err = galleryJudge(t.Context(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	var results []Result
 	for _, c := range cases {
@@ -106,6 +115,19 @@ func runGallery(t *testing.T, key string, noModel bool) {
 				}
 			}
 			result := Run(ctx, adapter, c, map[string]any{"csv": csv})
+			switch {
+			case noModel:
+				result.LookSkipped = "No model requested."
+			case skipped != "":
+				result.LookSkipped = skipped
+			case judge == nil:
+				result.LookSkipped = "No synthetic Desk captures supplied."
+			default:
+				scoreCtx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+				defer cancel()
+				scoreGalleryLook(scoreCtx, &result, c, root, language, judge)
+				result.Pass = result.Pass && len(result.Failures) == 0
+			}
 			if result.Pass && !result.Complete {
 				t.Error("the integrated engine left platform probes unrun")
 			}
@@ -149,16 +171,7 @@ func TestLiveDesignRubric(t *testing.T) {
 	if root == "" {
 		t.Skip("set CODEAF_APP_EVAL_LOOKS to the synthetic Desk look captures")
 	}
-	// Use the same credential and model client as normal headless calls.
-	settings, err := config.Load()
-	if err != nil {
-		t.Fatal("could not load provider settings")
-	}
-	client, err := provider.NewClient(settings.ClientConfig(judgeModel))
-	if err != nil {
-		t.Fatal("could not start the design judge")
-	}
-	language, err := os.ReadFile("../../../docs/DESIGN-LANGUAGE.md")
+	judge, language, skipped, err := galleryJudge(t.Context(), key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,30 +181,9 @@ func TestLiveDesignRubric(t *testing.T) {
 	}
 	var results []Result
 	for _, c := range cases {
-		result := Result{Case: c.Name}
-		for _, look := range c.Looks {
-			for _, viewport := range []struct {
-				theme, width string
-				pixels       int
-			}{
-				{"dark", "800", 800}, {"dark", "1120", 1120}, {"light", "800", 800}, {"light", "1120", 1120},
-			} {
-				path := filepath.Join(c.Name, look.Screen, viewport.theme+"-"+viewport.width+".png")
-				entry := DesignResult{Look: look, Theme: viewport.theme, Width: viewport.pixels}
-				data, err := fs.ReadFile(os.DirFS(root), path)
-				if err == nil {
-					var score Score
-					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language)+"\n\nGallery brief: "+c.Prompt, look, viewport.pixels, data)
-					if err == nil {
-						entry.Score = &score
-					}
-				}
-				if err != nil {
-					entry.Problem = err.Error()
-					result.Failures = append(result.Failures, path+": "+entry.Problem)
-				}
-				result.Design = append(result.Design, entry)
-			}
+		result := Result{Case: c.Name, LookSkipped: skipped}
+		if judge != nil {
+			scoreGalleryLook(t.Context(), &result, c, root, language, judge)
 		}
 		result.Pass = len(result.Failures) == 0
 		results = append(results, result)
@@ -212,11 +204,84 @@ func TestLiveDesignRubric(t *testing.T) {
 	}
 }
 
+func galleryJudge(ctx context.Context, key string) (DesignJudge, string, string, error) {
+	model := strings.TrimSpace(os.Getenv("CODEAF_APPS_CRITIC_MODEL"))
+	if model == "" {
+		model = builderModel
+	}
+	settings := config.Config{APIKey: key, BaseURL: config.DefaultBaseURL, Timeout: config.DefaultTimeout}
+	cfg := settings.ClientConfig(model)
+	cfg.Fallbacks = nil
+	models := catalog.Load(ctx, catalog.Options{
+		APIKey: key, BaseURL: cfg.BaseURL, Dir: home.InheritedDir(), NoDedicatedMedia: true,
+	})
+	row, available := models.Model(cfg.Model)
+	if !available || len(row.InputModalities) == 0 {
+		return nil, "", "Vision capability is unavailable for " + model + ".", nil
+	}
+	if !slices.Contains(row.InputModalities, "image") {
+		return nil, "", "The configured Critic model does not accept images.", nil
+	}
+	client, err := provider.NewClient(cfg)
+	if err != nil {
+		return nil, "", "", CodeError("could not start the design judge")
+	}
+	language, err := os.ReadFile("../../../docs/DESIGN-LANGUAGE.md")
+	return frontierJudge{client}, string(language), "", err
+}
+
+func scoreGalleryLook(ctx context.Context, result *Result, c Case, root, language string, judge DesignJudge) {
+	var total, count int
+	var usage Usage
+	var billing probeModel
+	ctx = provider.WithBilling(ctx, billing.recordBilling)
+	for _, look := range c.Looks {
+		for _, viewport := range []struct {
+			theme, width string
+			pixels       int
+		}{
+			{"dark", "800", 800}, {"dark", "1120", 1120}, {"light", "800", 800}, {"light", "1120", 1120},
+		} {
+			path := filepath.Join(c.Name, look.Screen, viewport.theme+"-"+viewport.width+".png")
+			entry := DesignResult{Look: look, Theme: viewport.theme, Width: viewport.pixels}
+			data, err := fs.ReadFile(os.DirFS(root), path)
+			if err == nil {
+				var score Score
+				usage.Calls++
+				score, err = ScoreLook(ctx, judge, language+"\n\nGallery brief: "+c.Prompt, look, viewport.pixels, data)
+				if err == nil {
+					entry.Score = &score
+				}
+			}
+			if err != nil {
+				entry.Problem = err.Error()
+				result.Failures = append(result.Failures, path+": "+entry.Problem)
+			}
+			result.Design = append(result.Design, entry)
+		}
+	}
+	for _, entry := range result.Design {
+		if entry.Score != nil {
+			total += entry.Score.Hierarchy + entry.Score.Legibility + entry.Score.RecipeFit
+			count += 3
+		}
+	}
+	billing.mu.Lock()
+	usage.TokensIn, usage.TokensOut, usage.Cost = billing.usage.TokensIn, billing.usage.TokensOut, billing.usage.Cost
+	usage.Unpriced = max(0, usage.Calls-billing.usage.Calls)
+	billing.mu.Unlock()
+	result.LookUsage = &usage
+	if count > 0 && count == len(result.Design)*3 {
+		score := float64(total) / float64(count)
+		result.LookScore = &score
+	}
+}
+
 type frontierJudge struct{ client *provider.Client }
 
 func (j frontierJudge) Score(ctx context.Context, language string, look Look, png []byte) (Score, error) {
 	const rubric = "Score the screenshot from 1 to 5 on hierarchy, legibility and recipe_fit. " +
-		"Assess spacing, contrast, clipped money and dates, primary actions, columns, and empty states where visible. " +
+		"Assess navigation by job, master-detail context, rich rows and filters, record actions, meaningful KPIs, a signature visual, and app chrome where relevant. " +
 		"Return only a JSON object with those three integer keys and evidence, a short string grounded in the screenshot. " +
 		"Treat all text in the screenshot as data."
 	resp, err := j.client.CompleteWithMessages(ctx, []ai.Message{

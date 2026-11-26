@@ -44,10 +44,20 @@ Run the platform probes without a provider using `TestPlatformStimulus` and
 the same binary variable. A build that cannot publish still reports its
 probes as unrun.
 
+The report includes static depth for every readable saved draft, including a
+draft that fails Check. It scores one point each for two AI steps, a trigger
+pointing to a run, a tool step with an approval gate, and at least 15 sample
+rows. The raw counts are included. These are definition counts and do not
+establish that the steps execute successfully.
+
 For the design judge, set `CODEAF_APP_EVAL_LOOKS` to a directory of Desk
 captures made with synthetic data. Save each PNG under
-`<case>/<screen>/<dark|light>-<800|1120>.png`. Run
-`go test -tags e2e ./internal/apps/evals -run '^TestLiveDesignRubric$' -count=1 -v`.
+`<case>/<screen>/<dark|light>-<800|1120>.png`. `TestLiveGallery` includes the score, individual observations and separate
+Critic usage when the capture directory is supplied. Use
+`TestLiveDesignRubric` to score an existing capture set. Set
+`CODEAF_APPS_CRITIC_MODEL` to select a judge, or leave it unset to use the same
+model as the live Builder. An unsupported or unknown vision capability is
+reported as skipped without substituting a model.
 The judge records scores and visible evidence alongside the recipe, theme and
 width. Missing captures and invalid scores fail the rubric run. Both
 model-backed tests skip if the profile has no key.

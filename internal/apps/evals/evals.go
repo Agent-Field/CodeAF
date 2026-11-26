@@ -74,6 +74,7 @@ type BuildState struct {
 	Checked    bool
 	RecipeGaps []string
 	Passes     []BuildPass
+	Depth      *Depth
 }
 
 type BuildPass struct {
@@ -92,7 +93,11 @@ type Result struct {
 	RecipeGaps  []string       `json:"recipe_gaps,omitempty"`
 	Failures    []string       `json:"failures,omitempty"`
 	Adversarial []ProbeResult  `json:"adversarial,omitempty"`
+	Depth       *Depth         `json:"static_depth,omitempty"`
 	Design      []DesignResult `json:"design,omitempty"`
+	LookScore   *float64       `json:"look_score,omitempty"`
+	LookUsage   *Usage         `json:"look_usage,omitempty"`
+	LookSkipped string         `json:"look_skipped,omitempty"`
 }
 
 // Adapter owns the isolated engine. Build gives the oracle the planning reply
@@ -190,6 +195,7 @@ func Run(ctx context.Context, app Adapter, c Case, variables ...map[string]any) 
 		result.Failures = append(result.Failures, checkReply(state.Plan, c.Plan)...)
 		return nil
 	})
+	result.Depth = build.Depth
 	result.Rounds, result.RecipeGaps, result.Passes = build.Rounds, build.RecipeGaps, build.Passes
 	if len(c.Plan) > 0 && !sawPlan {
 		result.Failures = append(result.Failures, "the planning reply was missing")
@@ -424,15 +430,16 @@ func WriteReport(report, table io.Writer, results []Result) error {
 		return err
 	}
 	out := tabwriter.NewWriter(table, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(out, "CASE\tRESULT\tROUNDS\tTOKENS\tUSD\tRECIPE GAPS")
+	fmt.Fprintln(out, "CASE\tRESULT\tROUNDS\tCALLS\tTOKENS\tUSD\tLOOK\tSTATIC DEPTH\tRECIPE GAPS")
 	for _, r := range results {
-		status, tokens, price := "PASS", "—", "—"
+		status, calls, tokens, price, look, depth := "PASS", "—", "—", "—", "—", "—"
 		if !r.Pass {
 			status = "FAIL"
 		} else if !r.Complete {
 			status = "INCOMPLETE"
 		}
 		if r.Usage != nil {
+			calls = strconv.Itoa(r.Usage.Calls)
 			tokens = strconv.FormatInt(r.Usage.TokensIn+r.Usage.TokensOut, 10)
 			if r.Usage.Cost != nil {
 				price = fmt.Sprintf("%.6f", *r.Usage.Cost)
@@ -441,7 +448,13 @@ func WriteReport(report, table io.Writer, results []Result) error {
 				}
 			}
 		}
-		fmt.Fprintf(out, "%s\t%s\t%d\t%s\t%s\t%d\n", r.Case, status, r.Rounds, tokens, price, len(r.RecipeGaps))
+		if r.LookScore != nil {
+			look = fmt.Sprintf("%.2f/5", *r.LookScore)
+		}
+		if r.Depth != nil {
+			depth = fmt.Sprintf("%d/%d", r.Depth.Score, maxStaticDepth)
+		}
+		fmt.Fprintf(out, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%d\n", r.Case, status, r.Rounds, calls, tokens, price, look, depth, len(r.RecipeGaps))
 	}
 	return out.Flush()
 }
