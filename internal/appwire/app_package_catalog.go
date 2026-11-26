@@ -1,11 +1,11 @@
 package appwire
 
 import (
-	"bytes"
+	"encoding/json"
 	"errors"
-	"image/png"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,18 +17,24 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-const (
-	packageSuffix     = ".codeaf-app"
-	maxPreviewBytes   = 256 << 10
-	maxBrowsePreviews = 2 << 20
-)
+const packageSuffix = ".codeaf-app"
+
+type packagePresentation struct {
+	Job          string   `json:"job"`
+	Role         string   `json:"role,omitempty"`
+	Featured     bool     `json:"featured,omitempty"`
+	Screen       string   `json:"screen,omitempty"`
+	Before       string   `json:"before,omitempty"`
+	After        string   `json:"after,omitempty"`
+	Sources      []string `json:"sources,omitempty"`
+	ReadyMinutes int      `json:"ready_minutes,omitempty"`
+}
 
 type catalogPackage struct {
 	apppackage.Source
 	packageParams
-	Job          string `json:"job"`
+	packagePresentation
 	InstalledApp string `json:"installed_app,omitempty"`
-	Preview      []byte `json:"preview,omitempty"`
 }
 
 type packageCatalog struct {
@@ -53,15 +59,20 @@ func init() {
 			}
 		}
 		personal := os.DirFS(kitPackagesDir())
-		builtin, err := apppackage.CatalogFiles()
+		builtin, err := apppackage.CatalogFiles("firstparty")
+		if err != nil {
+			return nil, err
+		}
+		examples, err := apppackage.CatalogFiles("examples")
 		if err != nil {
 			return nil, err
 		}
 		packages := map[[2]string]catalogPackage{}
 		for _, catalog := range []struct {
-			files   fs.FS
-			builtin bool
-		}{{personal, false}, {builtin, true}} {
+			files     fs.FS
+			directory string
+		}{{personal, ""}, {builtin, "firstparty"}, {examples, "examples"}} {
+			embedded := catalog.directory != ""
 			entries, err := fs.ReadDir(catalog.files, ".")
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -75,8 +86,11 @@ func init() {
 					continue
 				}
 				p := packageParams{Path: filepath.Join(kitPackagesDir(), name)}
-				if catalog.builtin {
+				if embedded {
 					p = packageParams{Builtin: name}
+					if catalog.directory == "examples" {
+						p.Builtin = "examples/" + name
+					}
 				}
 				a, err := selectedPackage(p)
 				if err != nil || (source != nil && !apppackage.Newer(a.Manifest.Source, *source)) {
@@ -85,13 +99,13 @@ func init() {
 				key := [2]string{a.Manifest.Publisher, a.Manifest.ID}
 				old, ok := packages[key]
 				// An embedded release wins over a file with the same publisher and ID.
-				if ok && ((!catalog.builtin && old.Builtin != "") ||
-					(catalog.builtin == (old.Builtin != "") && !apppackage.Newer(a.Manifest.Source, old.Source))) {
+				if ok && ((!embedded && old.Builtin != "") ||
+					(embedded == (old.Builtin != "") && !apppackage.Newer(a.Manifest.Source, old.Source))) {
 					continue
 				}
-				entry := catalogPackage{Source: a.Manifest.Source, packageParams: p, Job: packageJobLine(catalog.files, name, a)}
+				entry := catalogPackage{Source: a.Manifest.Source, packageParams: p, packagePresentation: packageDisplay(catalog.files, name, a)}
 				// Bundled apps may already be published under their stable ID.
-				if source == nil && catalog.builtin {
+				if source == nil && catalog.directory == "firstparty" {
 					if app, err := s.Get(entry.ID); err == nil && !app.Meta.Archived && app.Meta.Lineage != nil {
 						if installed := app.Meta.Lineage.Source; installed != nil && installed.ID == entry.ID && installed.Publisher == entry.Publisher {
 							entry.InstalledApp = app.Meta.ID
@@ -118,21 +132,31 @@ func init() {
 			}
 			return a.ID < b.ID
 		})
-		remaining := maxBrowsePreviews
-		for i := range out.Packages {
-			p := &out.Packages[i]
-			files, name := personal, filepath.Base(p.Path)
-			if p.Builtin != "" {
-				files, name = builtin, p.Builtin
-			}
-			image := readPackageCompanion(files, name+".png", min(maxPreviewBytes, remaining))
-			if validPreview(image) {
-				p.Preview = image
-				remaining -= len(image)
-			}
-		}
 		return &out, nil
 	})
+}
+
+func packageDisplay(files fs.FS, name string, a apppackage.Archive) packagePresentation {
+	p := packagePresentation{}
+	if raw := readPackageCompanion(files, name+".json", 4096); len(raw) != 0 {
+		_ = json.Unmarshal(raw, &p)
+	}
+	switch p.Role {
+	case "founders", "sales", "engineering", "finance-legal", "everyone":
+	default:
+		p.Role = "everyone"
+	}
+	if p.Job == "" {
+		p.Job = packageJobLine(files, name, a)
+	}
+	// Declared connectors are shown when a package has no authored catalog card.
+	if len(p.Sources) == 0 {
+		for id := range maps.Keys(a.Manifest.Permissions.Connectors) {
+			p.Sources = append(p.Sources, id)
+		}
+		sort.Strings(p.Sources)
+	}
+	return p
 }
 
 func packageJobLine(files fs.FS, name string, a apppackage.Archive) string {
@@ -165,9 +189,4 @@ func readPackageCompanion(files fs.FS, name string, limit int) []byte {
 		return nil
 	}
 	return data
-}
-
-func validPreview(image []byte) bool {
-	cfg, err := png.DecodeConfig(bytes.NewReader(image))
-	return err == nil && cfg.Width <= 2048 && cfg.Height <= 2048
 }

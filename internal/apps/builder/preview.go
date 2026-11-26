@@ -32,6 +32,7 @@ type previewScope struct {
 	job, checkpoint string
 	revision        uint64
 	real            bool
+	packagePreview  bool
 	files           map[string]string
 }
 
@@ -83,12 +84,14 @@ func (s *Jobs) PreviewKept(def store.Definition) (Preview, func(), error) {
 }
 
 // PreviewPackage draws the exported definition in an isolated sample scope.
-func (s *Jobs) PreviewPackage(def schema.Definition) (Preview, func(), error) {
+func (s *Jobs) PreviewPackage(def schema.Definition) (Preview, error) {
 	files := make(map[string]string, len(def.Files))
 	for name, content := range def.Files {
 		files[name] = string(content)
 	}
-	return s.previewDefinition(files)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.openPreview(previewScope{files: files, packagePreview: true})
 }
 
 func (s *Jobs) previewDefinition(files map[string]string) (Preview, func(), error) {
@@ -103,6 +106,15 @@ func (s *Jobs) previewDefinition(files map[string]string) (Preview, func(), erro
 		defer s.mu.Unlock()
 		s.removeScope(p.Scope)
 	}, nil
+}
+
+// ClosePackagePreview releases a transient sample scope without touching a Builder draft.
+func (s *Jobs) ClosePackagePreview(scope string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if current, ok := s.scopes[scope]; ok && current.packagePreview {
+		s.removeScope(scope)
+	}
 }
 
 func (s *Jobs) openPreview(current previewScope) (Preview, error) {

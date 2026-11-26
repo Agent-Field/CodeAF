@@ -1,0 +1,9 @@
+{
+  "role": "finance-legal",
+  "screen": "filings",
+  "job": "Compare public filings and prepare a one-page research brief.",
+  "sources": [
+    "edgar"
+  ],
+  "ready_minutes": 2
+}

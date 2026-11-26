@@ -1,0 +1,11 @@
+{
+  "role": "everyone",
+  "screen": "brief",
+  "job": "See the meetings, messages and promises that need you today.",
+  "sources": [
+    "gmail",
+    "google_calendar",
+    "slack"
+  ],
+  "ready_minutes": 2
+}

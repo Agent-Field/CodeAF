@@ -329,7 +329,9 @@ an engine restart with `codeaf app build_state '{"draft":"<draft>"}'`.
 
 ## Browse the Kit, use an app package, or start from a template
 
-Open **Kit** above Canvases and choose an app in Browse. **Use** checks the
+Open **Kit** above Canvases to Browse packages by role. **Preview** opens
+a full app screen on sample data. **Use this app** opens the same Install
+card as **Use** on the tile. **Use** checks the
 package and opens an Install card. The card names the screens, new types,
 existing types it uses, and requested access. Choose **Install** to publish.
 **Start from** opens the new app builder with the package already loaded.
@@ -337,13 +339,13 @@ You can ask for changes and preview them before keeping the app. **Fork**
 opens a card for a separate copy and records where it came from.
 
 In a saved app's **App** menu, **Pack to Kit** puts the current definition
-in Browse. A connected desktop draws its thumbnail using sample data.
+in Browse. A connected desktop draws its sample screen in the current theme.
 On the engine machine, shared package files use the `.codeaf-app` suffix
 and go in `<codeaf home>/kit/apps/`. Browse's **Refresh** reads that folder
 again. The command-line equivalent is `codeaf app browse`. Run
 `codeaf app start-package '{"path":"/absolute/crm.codeaf-app"}'` to seed a draft.
-An optional adjacent file ending in `.codeaf-app.txt` supplies the
-one-line description. A companion `.codeaf-app.png` supplies the preview.
+An adjacent `.codeaf-app.txt` can supply the job, and `.codeaf-app.json` can set
+the job, role, main screen, and before and after lines.
 
 For a package you installed, **App** names the publisher and accepted package
 version. **Check for update** reads the Kit for a newer release. Choose a

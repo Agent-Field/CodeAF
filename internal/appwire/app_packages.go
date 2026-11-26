@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
@@ -43,27 +43,18 @@ type packResult struct {
 	Manifest apppackage.Manifest `json:"manifest"`
 }
 
-type packageThumbnailer interface {
-	AppPackageThumbnail(apppackage.Archive) []byte
-}
-
 type lineageResult struct {
 	Lineage *store.Lineage `json:"lineage,omitempty"`
 }
 
 func init() {
-	methods["apps.pack"] = typed(func(e Engine, p packParams) (*packResult, error) {
-		b, err := openBuilds(e)
-		if err != nil {
-			return nil, err
-		}
-		toKit := p.Path == ""
+	methods["apps.pack"] = buildCall(func(b *builder.Jobs, p packParams) (*packResult, error) {
 		if p.Path != "" && !filepath.IsAbs(p.Path) {
 			return nil, Errorf(CodeBadParams, "Choose an absolute path for the exported app package.")
 		}
 		raw, err := b.Pack(p.App, p.PackOptions)
 		if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrBadInput) {
-			return nil, buildError(err)
+			return nil, err
 		}
 		if err != nil {
 			return nil, Errorf(CodeBadParams, "%s", err)
@@ -78,7 +69,6 @@ func init() {
 			}
 			p.Path = filepath.Join(kitPackagesDir(), strings.TrimPrefix(result.Manifest.Hash, "sha256:")+packageSuffix)
 			if existing, err := readPackage(p.Path); err == nil && existing.Manifest.Hash == result.Manifest.Hash {
-				addPackageThumbnail(e, p.Path, existing)
 				result.Path = p.Path
 				return &result, nil
 			}
@@ -88,11 +78,6 @@ func init() {
 				return nil, Errorf(CodeConflict, "A file already exists at the package path. Choose a new filename.")
 			}
 			return nil, Errorf(CodeBadParams, "The app package could not be written to the selected path.")
-		}
-		if toKit {
-			if a, err := apppackage.Read(bytes.NewReader(raw)); err == nil {
-				addPackageThumbnail(e, p.Path, a)
-			}
 		}
 		result.Path = p.Path
 		return &result, nil
@@ -116,6 +101,18 @@ func init() {
 		defer cancel()
 		card, err := b.Update(ctx, p.App, a)
 		return &card, packageError(err)
+	})
+	methods["apps.preview_package"] = buildCall(func(b *builder.Jobs, p packageParams) (*builder.Preview, error) {
+		a, err := selectedPackage(p)
+		if err != nil {
+			return nil, err
+		}
+		preview, err := b.PreviewPackage(schema.Definition{Files: a.Files})
+		return &preview, packageError(err)
+	})
+	methods["apps.close_package_preview"] = buildCall(func(b *builder.Jobs, p draftParams) (*Empty, error) {
+		b.ClosePackagePreview(p.Draft)
+		return &Empty{}, nil
 	})
 	methods["apps.start_package"] = buildCall(func(b *builder.Jobs, p packageParams) (*draftParams, error) {
 		a, err := selectedPackage(p)
@@ -171,38 +168,27 @@ func packageError(err error) error {
 	return err
 }
 
-// A thumbnail is optional for a headless export. It only uses sample data from the saved archive.
-func addPackageThumbnail(e Engine, path string, a apppackage.Archive) {
-	look, ok := e.(packageThumbnailer)
-	if !ok {
-		return
-	}
-	path += ".png"
-	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	picture := look.AppPackageThumbnail(a)
-	if len(picture) <= maxPreviewBytes && validPreview(picture) {
-		_ = writePackage(path, picture)
-	}
-}
-
 func selectedPackage(p packageParams) (apppackage.Archive, error) {
 	var a apppackage.Archive
 	var err error
 	if p.Builtin == "" {
 		a, err = readPackage(p.Path)
 	} else {
-		if p.Path != "" || filepath.Base(p.Builtin) != p.Builtin || !strings.HasSuffix(p.Builtin, packageSuffix) {
+		name, example := strings.CutPrefix(p.Builtin, "examples/")
+		directory := "firstparty"
+		if example {
+			directory = "examples"
+		}
+		if p.Path != "" || filepath.Base(name) != name || !strings.HasSuffix(name, packageSuffix) {
 			return a, Errorf(CodeBadParams, "Choose one app package.")
 		}
-		catalog, fsErr := apppackage.CatalogFiles()
+		catalog, fsErr := apppackage.CatalogFiles(directory)
 		if fsErr != nil {
 			return a, fsErr
 		}
-		f, openErr := catalog.Open(p.Builtin)
+		f, openErr := catalog.Open(name)
 		if openErr != nil {
-			return a, Errorf(CodeBadParams, "This first-party app package isn't available.")
+			return a, Errorf(CodeBadParams, "This Kit package isn't available.")
 		}
 		defer f.Close()
 		a, err = apppackage.Read(f)

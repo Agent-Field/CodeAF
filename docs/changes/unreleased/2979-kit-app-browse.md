@@ -7,4 +7,4 @@ invalidates:
   - "Portable apps were reachable only by an explicit file path or a saved app ID. The Kit now lists packed definitions, finds newer releases, and opens a package as a new editable draft."
 ---
 
-Browse follows the accepted package's publisher and version when checking for updates. Pack to Kit includes a sample-only screenshot when a desktop renderer is connected.
+Browse groups packages by role and draws each preview from its sample data in the active theme. Preview opens the interactive sample without publishing. Browse follows the accepted package's publisher and version when checking for updates.

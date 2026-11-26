@@ -123,6 +123,14 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		if !found {
 			t.Fatalf("CRM missing from Browse: %+v", browse)
 		}
+		var sample builder.Preview
+		wire.must("apps.preview_package", map[string]string{"path": catalogPath}, &sample)
+		if !sample.Sample || sample.Scope == "" || len(sample.Screens) != 1 || sample.Screens[0] != "main" {
+			t.Fatalf("browse preview was not an isolated sample screen: %+v", sample)
+		}
+		wire.must("apps.close_package_preview", map[string]string{"draft": sample.Scope}, &struct{}{})
+		wire.mustFail("apps.preview", map[string]string{"draft": sample.Scope}, appwire.CodeNotFound)
+
 		var start struct{ Draft string }
 		wire.must("apps.start_package", map[string]string{"path": catalogPath}, &start)
 		var seeded builder.State

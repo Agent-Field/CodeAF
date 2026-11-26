@@ -5,10 +5,10 @@ import (
 	"io/fs"
 )
 
-//go:embed firstparty/*
+//go:embed firstparty/* examples/*
 var catalogFiles embed.FS
 
-// CatalogFiles exposes the release archives and their display companions.
-func CatalogFiles() (fs.FS, error) {
-	return fs.Sub(catalogFiles, "firstparty")
+// CatalogFiles exposes one embedded catalog with its display companions.
+func CatalogFiles(directory string) (fs.FS, error) {
+	return fs.Sub(catalogFiles, directory)
 }
