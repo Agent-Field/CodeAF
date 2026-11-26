@@ -130,7 +130,7 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 		}
 		return
 	}
-	if elsewhere.said != "" {
+	if a.hosted == nil && elsewhere.said != "" {
 		// A person speaking in another window breaks the same automatic-resume
 		// streak as a send through this app; a private wake never does.
 		b.resetCloseResumes(id)
@@ -159,7 +159,7 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 			live.msgBase, live.noteBase = msgs, notes
 		})
 	}
-	if b.crewPaused(id) {
+	if a.hosted == nil && b.crewPaused(id) {
 		// The person paused this member: the turn ends before it does anything,
 		// and the line that woke it stays on the crew's log.
 		live.conn.Conv.Interrupt()
@@ -177,7 +177,9 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 	defer long.Stop()
 	defer tails()
 	b.pump(a, id, live, turn, n, elsewhere.said, nil, events)
-	b.sendQueued(a, live)
+	if a.hosted == nil {
+		b.sendQueued(a, live)
+	}
 }
 
 // appAnswersUnder counts the answers the transcript already holds under the

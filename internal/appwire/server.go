@@ -205,6 +205,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withSlashCatalogFeature(hello, engine)
 	hello = withSyncFeatures(hello, engine)
 	hello = withSkillsFeatures(hello, engine)
+	hello = withHostedFeatures(hello, engine)
 	hello = withPluginsFeature(hello, engine)
 	hello = withHealthFeature(hello, engine)
 	hello = withManualCorpusFeature(hello, engine)
@@ -315,6 +316,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryOrgFilesFeature(hello, engine)
 	hello = withFactoryOrgMySpaceFeature(hello, engine)
 	hello = withFactoryOrgAccessFeature(hello, engine)
+	hello = withFactoryOrgBotsFeature(hello, engine)
 	hello = withFactoryOrgAgentsFeature(hello, engine)
 	hello = withFactoryOrgLibraryFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
@@ -431,7 +433,11 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 	inflight.Add(1)
 	go func() {
 		defer inflight.Done()
-		result, err := method.call(engine, params)
+		var result any
+		err := hostedActionRefusal(engine, req.Method, params)
+		if err == nil {
+			result, err = method.call(engine, params)
+		}
 		if ctx.Err() != nil && err != nil {
 			err = Errorf(CodeClosed, "codeaf is shutting down")
 		}
@@ -478,7 +484,11 @@ var methods = map[string]method{
 		if p.BudgetUSD != nil && *p.BudgetUSD < 0 {
 			return nil, Errorf(CodeBadParams, "budget_usd cannot be negative")
 		}
-		if err := CheckAttachSources(p.Attachments); err != nil {
+		if p.Org != "" {
+			if _, ok := e.(HostedChats); !ok {
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve organization chats")
+			}
+		} else if err := CheckAttachSources(p.Attachments); err != nil {
 			return nil, err
 		}
 		if p.Effort != "" {

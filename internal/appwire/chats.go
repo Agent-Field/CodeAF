@@ -23,8 +23,23 @@ const (
 	// computer puts in the chat's queue, so it runs when the turn there ends.
 	// It is absent while the account's hosted sync storage is off ([ChatsSendOffer]).
 	FeatureChatsSend = "chats.send"
-	// FeatureChatsRead says agents.entries follows saved remote heads without taking the chat.
+	// FeatureChatsRead says agents.entries follows saved remote heads without
+	// taking the chat. It means that and nothing else: a client that sees it
+	// has NOT been told the chats.read method exists (that is
+	// [FeatureChatsReadPaged]), so the word keeps the one meaning it was
+	// shipped with.
 	FeatureChatsRead = "chats.read"
+	// FeatureChatsReadPaged says the chats.read method exists: the transcript
+	// of a chat another computer holds, read page by page from what that
+	// computer last sealed, fetching only the chunks under the page and
+	// keeping them in the store a later agents.take fetches into, without
+	// taking the chat and without downloading its project folder. It is a
+	// word of its own, added beside [FeatureChatsRead] and never in its place,
+	// because the two arrived on different branches and a client must be able
+	// to tell which one it got. It is absent unless a relay is configured AND
+	// the engine codeaf seals with can read one path of a snapshot (a
+	// capability that cannot work is absent).
+	FeatureChatsReadPaged = "chats.read.paged"
 	// FeatureChatsCrew says chat rows carry crew, crew_name, crew_manager and
 	// crew_kind: the crew a chat belongs to on the computer that holds it, so a
 	// client can show a crew made on another computer as one crew. A row from
@@ -249,6 +264,43 @@ type ChatsTaker interface {
 	TakeAgent(TakeParams) (Agent, error)
 }
 
+// ChatReadParams asks for one page of a remote chat's transcript. Before is the
+// cursor a previous page answered; empty is the newest page. Limit is the
+// fewest entries a page holds before it reaches the start (a turn is never
+// split, so a page can hold more); zero or less is ChatReadLimit.
+type ChatReadParams struct {
+	Cell   string `json:"cell"`
+	Before string `json:"before,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// ChatReadLimit is the page size when a client names none.
+const ChatReadLimit = 50
+
+// ChatReadResult is one page, oldest to newest within it, newest page first.
+// Entries are the same Entry agents.entries answers for a chat on this
+// computer. Before is the cursor of the next older page and More is false once
+// the page reaches the start of the transcript. Head is the snapshot the page
+// was read at, and SealedAtMs when that turn was sealed, when known. The
+// transcript is what the holder last sealed: a turn running there now is not
+// on it. FetchedBytes is what this call pulled from the relay, 0 when this
+// computer already held every byte it needed.
+type ChatReadResult struct {
+	Entries      []Entry `json:"entries"`
+	More         bool    `json:"more"`
+	Before       string  `json:"before,omitempty"`
+	Head         string  `json:"head"`
+	SealedAtMs   int64   `json:"sealed_at_ms,omitempty"`
+	FetchedBytes int64   `json:"fetched_bytes"`
+}
+
+// ChatsReader reads chats other computers hold. CanReadChats is asked at every
+// hello, so the feature appears and disappears with the relay and the engine.
+type ChatsReader interface {
+	CanReadChats() bool
+	ReadChat(ChatReadParams) (ChatReadResult, error)
+}
+
 // ChatsMover cancels a move agents.take is running or has queued.
 type ChatsMover interface {
 	CancelTake(TakeCancelParams) (TakeCancelResult, error)
@@ -311,6 +363,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 		if offer, asked := e.(ChatsLiveOffer); asked && offer.ChatsLiveOffered() {
 			h = withFeature(h, FeatureChatsLive)
 		}
+	}
+	if d, ok := e.(ChatsReader); ok && d.CanReadChats() {
+		h = withFeature(h, FeatureChatsReadPaged)
 	}
 	if d, ok := e.(ChatsCrewer); ok && d.ChatRowsCarryCrews() {
 		h = withFeature(h, FeatureChatsCrew)
@@ -389,6 +444,21 @@ func init() {
 			return nil, err
 		}
 		got, err := d.LiveKeyboard(p)
+		return &got, err
+	})
+	methods["chats.read"] = typed(func(e Engine, p ChatReadParams) (*ChatReadResult, error) {
+		d, ok := e.(ChatsReader)
+		if !ok || !d.CanReadChats() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not read chats on other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		if p.Limit <= 0 {
+			p.Limit = ChatReadLimit
+		}
+		got, err := d.ReadChat(p)
+		got.Entries = nonNil(got.Entries)
 		return &got, err
 	})
 	methods["agents.take_cancel"] = typed(func(e Engine, p TakeCancelParams) (*TakeCancelResult, error) {

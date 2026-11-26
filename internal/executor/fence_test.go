@@ -171,6 +171,38 @@ func TestAvoidingGrantsEverythingBesideTheAvoidedPath(t *testing.T) {
 	}
 }
 
+// A folder on the way to the avoided path that can be passed through but not
+// listed must not end the walk: the grants BELOW it are still the chat's own
+// files, and losing them made a hosted chat's commands unable to read its own
+// git settings (P1 item 0, found on the first run of the hosted smoke).
+func TestAvoidingKeepsGrantingBelowAFolderItCannotList(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root lists every folder")
+	}
+	root := canon(t, t.TempDir())
+	for _, d := range []string{"people/p/chat/home/keep", "people/p/chat/home/secret"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "people", "p", "chat", "home", "settings"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "people"), 0o711); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "people"), 0o700) })
+	var got []string
+	for p := range avoiding(root, []string{filepath.Join(root, "people", "p", "chat", "home", "secret")}) {
+		rel, _ := filepath.Rel(root, p)
+		got = append(got, rel)
+	}
+	sort.Strings(got)
+	if strings.Join(got, " ") != "people/p/chat/home/keep people/p/chat/home/settings" {
+		t.Fatalf("grants %q", got)
+	}
+}
+
 func TestTheSeatbeltFenceProfileRefusesWhatTheFenceRefuses(t *testing.T) {
 	f, home, main, work := fenceFixture(t, FenceAllow{})
 	profile := fenceProfile(f)

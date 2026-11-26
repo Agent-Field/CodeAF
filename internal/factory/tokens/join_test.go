@@ -225,3 +225,78 @@ func TestPlainTokensAndOperatorClaimsAreNotHumanLinks(t *testing.T) {
 		t.Fatalf("second handle on a plain token = %v", err)
 	}
 }
+
+// VALIDATION CONTRACT for ending a person's standing on a link (a removed person who joined by an anonymous link was
+// left in People, because nothing named them on the row):
+//   - The row stops counting that person as a member, but their use stays spent: it never reopens for someone else.
+//   - Nobody else on the row is touched, and a row written before Joiners existed (one person, named only by Profile)
+//     is ended the same way and survives a save and a load.
+//   - A person already counted who signs in through the same link again is back in, with nothing spent.
+func TestEndingAMemberKeepsTheirUseSpent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	legacy := `{"tokens":[{"access_link":true,"id":"tok_old","token":"s1","joined":"2026-10-02T00:00:00Z","profile":{"handle":"raj"}}]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows[0].EndMember("RAJ", t0) || rows[0].EndMember("raj", t0) {
+		t.Fatal("ending a legacy row's one person must change it once, whatever the case of the handle")
+	}
+	if err := Save(path, rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err = Load(path); err != nil {
+		t.Fatal(err)
+	}
+	got := rows[0].Members()
+	if len(got) != 1 || got[0].Removed.IsZero() || rows[0].Used() != 1 || rows[0].Remaining() != 0 || rows[0].Reason(t0) != "used_up" {
+		t.Fatalf("the ended legacy row = %+v (used %d, %s)", got, rows[0].Used(), rows[0].Reason(t0))
+	}
+
+	two := humanLink(t, path, 2, nil)
+	for _, name := range []string{"ann", "ben"} {
+		if _, err := Join(path, two.ID, who(name), t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Edit(path, func(rows []Token) ([]Token, error) {
+		for i := range rows {
+			rows[i].EndMember("ann", t0.Add(time.Hour))
+		}
+		return rows, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = Load(path)
+	var row Token
+	for _, r := range rows {
+		if r.ID == two.ID {
+			row = r
+		}
+	}
+	members := row.Members()
+	if len(members) != 2 || members[0].Removed.IsZero() || !members[1].Removed.IsZero() || row.Remaining() != 0 {
+		t.Fatalf("after ending ann: %+v, remaining %d", members, row.Remaining())
+	}
+	if _, err := Join(path, two.ID, who("cat"), t0.Add(time.Hour)); !errors.Is(err, ErrUsedUp) {
+		t.Fatalf("the use ann gave up reopened the link: %v", err)
+	}
+
+	// Ann signs in through the same link again: counted already, so nothing is spent, and she is back in.
+	if got, err := Join(path, two.ID, who("ann"), t0.Add(2*time.Hour)); err != nil || got.Consumed {
+		t.Fatalf("returning through the same link = %+v, %v", got, err)
+	}
+	rows, _ = Load(path)
+	for _, r := range rows {
+		if r.ID == two.ID {
+			for _, m := range r.Members() {
+				if !m.Removed.IsZero() {
+					t.Fatalf("%s is still marked removed after signing in again", m.Profile.Handle)
+				}
+			}
+		}
+	}
+}

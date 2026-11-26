@@ -293,8 +293,26 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	public := secure.publicURL(listener.Addr().String())
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
+	// Hosted chats are an organization server's opt-in: they are read only
+	// for the explicit server, never for a window serving in-process, and a
+	// setting that is half written stops the start with a sentence instead of
+	// running chats on a secret nobody checked.
+	var hosted *serve.HostedConfig
+	if servedBy == "factory" {
+		hosted, err = serve.ParseHostedConfig(env.Get("CODEAF_HOSTED_URL"), env.Get("CODEAF_HOSTED_SECRET"),
+			env.Get("CODEAF_HOSTED_MODEL_URL"), env.Get("CODEAF_HOSTED_MODEL_UPSTREAM"), env.Get("CODEAF_HOSTED_MODEL_KEY"), true)
+		if err != nil {
+			return nil, err
+		}
+		if hosted != nil {
+			if err := hostedFactorySettings(hosted, st, env.Get); err != nil {
+				return nil, err
+			}
+		}
+	}
 	handlerConfig := serve.Config{
-		GitHubToken: jobWrites.Token,
+		GitHubToken:   jobWrites.Token,
+		LoopbackTrust: host.LoopbackTrust,
 
 		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,
@@ -304,7 +322,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A drop deletes the job's local branch and folder on this machine,
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
-		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Hosted: hosted, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
 		// The organization's workstream agents, when the operator runs them
@@ -361,7 +379,11 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			return nil, err
 		}
 		served, s.notes = local, notes
-	} else if !factoryLoopbackListen(listener.Addr().String()) && host.secure != nil {
+	} else if !factoryLoopbackListen(listener.Addr().String()) && host.secure != nil && len(secure.proxies) == 0 {
+		// A LISTED PROXY IS THE OPERATOR SAYING HTTPS ENDS IN FRONT OF THIS
+		// PROCESS, so the warning would only tell them what they set up on
+		// purpose, at every start of a Compose or Railway stack. With none
+		// listed the plain socket is the only way in and the warning stands.
 		s.notes = append(s.notes, "warning: serving plain HTTP on "+listener.Addr().String()+
 			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
 			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")
@@ -381,6 +403,19 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		return nil, err
 	}
 	return s, nil
+}
+
+// The hosted settings are checked before the organization server starts accepting connections.
+func hostedFactorySettings(hosted *serve.HostedConfig, st *store.Store, get func(string) string) error {
+	hosted.Heartbeat = serve.DefaultHostedHeartbeat
+	if raw := strings.TrimSpace(get("CODEAF_HOSTED_HEARTBEAT")); raw != "" {
+		interval, err := time.ParseDuration(raw)
+		if err != nil || interval < time.Second || interval > time.Minute {
+			return errors.New("CODEAF_HOSTED_HEARTBEAT must be a duration from 1s to 1m, such as 5s")
+		}
+		hosted.Heartbeat = interval
+	}
+	return hostedP1Settings(hosted, st, get)
 }
 
 // serveTLS serves HTTPS on the public listener, and answers the plain-HTTP

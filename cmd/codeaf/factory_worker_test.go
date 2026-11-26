@@ -298,7 +298,7 @@ func TestFactoryWorkerLeasesTheJobItsForgePersonTook(t *testing.T) {
 			}
 			var clock atomic.Int64
 			clock.Store(time.Now().UnixNano())
-			h := serve.New(person, serve.Config{Mode: api.FactoryTeam, Store: st, Record: rec, PullWait: time.Millisecond, Now: func() time.Time { return time.Unix(0, clock.Load()) }})
+			h := serve.New(person, serve.Config{Mode: api.FactoryTeam, LoopbackTrust: boolPtr(true), Store: st, Record: rec, PullWait: time.Millisecond, Now: func() time.Time { return time.Unix(0, clock.Load()) }})
 			t.Cleanup(h.Close)
 			server := httptest.NewServer(h)
 			defer server.Close()

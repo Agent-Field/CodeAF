@@ -10,6 +10,9 @@ import "github.com/Agent-Field/codeaf/internal/appwire"
 // and this refuses an ask that never asked for a secret, because the words of
 // an ordinary question go to the model.
 func (b *appBackend) AnswerAskSecret(agent, id, secret string) error {
+	if _, _, hosted := appwire.ParseHostedAgentID(agent); hosted {
+		return b.answerHostedAsk(agent, id, "", secret, "", true)
+	}
 	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err

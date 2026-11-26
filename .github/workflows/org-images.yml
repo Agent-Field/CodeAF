@@ -1,0 +1,281 @@
+name: org images
+
+# THE IMAGES OF THE SELF-HOSTED ORGANIZATION STACK (deploy/org), built from the pushed commit, scanned for leaks, and
+# pushed to Docker Hub only when the repository has been given credentials to push with.
+#
+# WHY THEY ARE PUBLISHED. A Railway template takes its services from a GitHub repository through Railway's GitHub App,
+# which this organization does not have installed. A template also accepts public Docker images, so the stack is
+# published as images and the template (deploy/org/railway/make-template.sh) names them. `docker compose pull && up`
+# runs from the same images (deploy/org/images.env).
+#
+# THE ORDER IS THE POINT: build, then the leak gate (deploy/org/gate/image-gate.py) on the built image, then, and only if
+# the gate passed, push THAT SAME LOCAL IMAGE. The bytes the gate read are the bytes that are pushed; nothing is rebuilt
+# between the two. A failed gate stops the job before any login.
+#
+# PUSHING IS OPT-IN. With no DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secret (a fork, a repository that has not been given
+# them yet) every job builds and scans and is green, and nothing logs in anywhere. DOCKERHUB_NAMESPACE (a repository
+# variable, default `agentfield`) says whose namespace the images go to, so a test run can point at a personal one with no
+# code edit. Image names carry the codeaf-org prefix so they cannot be mistaken for agentfield/control-plane.
+#
+# PLATFORMS: linux/amd64 and linux/arm64, each built and scanned NATIVELY on its own runner (GitHub's arm64 runners), so there
+# is no emulation and no cross-compiling to get wrong. Each leg pushes `<short sha>-<arch>`; once every leg of every image has
+# passed its gate, the `manifest` job joins the two into the multi-platform tags (`<short sha>`, `dev`, `branch-<name>`), so a
+# gate that fails on either platform keeps every public tag where it was.
+#
+# THIRD-PARTY ACTIONS ARE PINNED TO A COMMIT, not a tag: this workflow can hold a registry token, and a tag can be moved.
+# The comment beside each is the release it was resolved from.
+# A pull request into `org/main` that touches the stack builds and scans every image without pushing, so the leak gate and
+# the context checks are proven before the line moves rather than after; a push to `org/main` builds, scans and (with
+# credentials) publishes `branch-org-main`.
+on:
+  push:
+    branches:
+      - dev
+      - org/main
+  pull_request:
+    branches:
+      - org/main
+    paths:
+      - "deploy/org/**"
+      - ".github/workflows/org-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per ref at a time and none cancelled half way: a run cancelled between two image pushes would leave `:dev` on two
+# different commits. A newer push waits, and only the newest waiting one runs.
+concurrency:
+  group: org-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || 'agentfield' }}
+
+jobs:
+  # The gate is proven before it is trusted: throwaway images with fake keys planted in them must FAIL it, a clean one must
+  # pass, and a planted .env or key file must not be able to enter the codeaf build context. Nothing here is tagged for a
+  # registry or pushed.
+  gate-selftest:
+    name: gate self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every base image is pinned by digest
+        run: deploy/org/gate/pins-check.sh
+      - name: Tracked symlinks resolve for Railway uploads
+        run: deploy/org/gate/upload-check.sh
+      - name: Railway scripts pass offline tests
+        run: deploy/org/railway/railway_scripts_test.sh
+      - name: The operator link script passes offline tests
+        run: deploy/org/operator_link_test.sh
+      - name: Compose profiles turn on the services they should
+        run: deploy/org/compose_profiles_test.sh
+      - name: Planted fake secrets must fail the gate
+        run: deploy/org/gate/selftest.sh
+      - name: Planted files must not enter the build context
+        run: deploy/org/gate/context-check.sh
+
+  # The commit's short id, the tags it earns, and whether this run may push at all. Nothing secret leaves this job: `push` is
+  # only the words true or false.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAVE_PUSH_SECRETS: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    outputs:
+      short: ${{ steps.plan.outputs.short }}
+      tags: ${{ steps.plan.outputs.tags }}
+      push: ${{ steps.plan.outputs.push }}
+    steps:
+      - name: Names and tags
+        id: plan
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::12}"
+          tags="${short}"
+          if [ "${GITHUB_REF}" = "refs/heads/dev" ]; then
+            tags="${tags} dev"
+          else
+            # branch-<name>: lower case, anything outside [a-z0-9._-] (the slash of a branch name) becomes a dash.
+            branch="$(printf '%s' "${GITHUB_REF_NAME}" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._\n-' '-' | cut -c1-100)"
+            tags="${tags} branch-${branch}"
+          fi
+          echo "short=${short}" >> "${GITHUB_OUTPUT}"
+          echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
+          # A pull request never publishes, even from a branch of this repository that can read the secrets: only a push
+          # or a person's dispatch moves a public tag.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "push=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "push=${HAVE_PUSH_SECRETS}" >> "${GITHUB_OUTPUT}"
+          fi
+          if [ "${HAVE_PUSH_SECRETS}" != "true" ]; then
+            echo "No registry credentials here (DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are not both set): every image is built and scanned, none is pushed." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+  images:
+    name: ${{ matrix.image }} (${{ matrix.arch }})
+    needs: [gate-selftest, plan]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        image:
+          - codeaf-org
+          - codeaf-org-agentfield
+          - codeaf-org-swe-af
+          - codeaf-org-pr-af
+          - codeaf-org-modelstub
+          - codeaf-org-gitstub
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          # The codeaf image is built from THIS commit's source with `make build` (the organization server, the factory
+          # runner and the hosted chats' sessionhost all run from it); the build context is the repository root.
+          - image: codeaf-org
+            file: deploy/org/codeaf.Dockerfile
+            context: .
+            build_args: |
+              ORG_DIR=deploy/org
+              CODEAF_BINARY_FROM=source
+              SOURCE_COMMIT=${{ github.sha }}
+          # The AgentField control plane: the published, digest-pinned image plus a health check and a volume hand-off.
+          - image: codeaf-org-agentfield
+            file: deploy/org/agentfield.Dockerfile
+            context: deploy/org
+          - image: codeaf-org-swe-af
+            file: deploy/org/swe-af.Dockerfile
+            context: deploy/org
+          - image: codeaf-org-pr-af
+            file: deploy/org/pr-af.Dockerfile
+            context: deploy/org
+          # The two stubs of the keyless smoke test (compose profile `stub`).
+          - image: codeaf-org-modelstub
+            file: deploy/org/modelstub.Dockerfile
+            context: deploy/org
+          - image: codeaf-org-gitstub
+            file: deploy/org/gitstub.Dockerfile
+            context: deploy/org
+    env:
+      SHORT: ${{ needs.plan.outputs.short }}
+      # Never a registry name: the image exists only on this runner until the gate has passed.
+      LOCAL_IMAGE: org-gate/${{ matrix.image }}:${{ needs.plan.outputs.short }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Loaded into the local engine, not pushed. The labels name the commit: org.opencontainers.image.revision is the
+      # one a self-hoster checks (README.md "Published images").
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build_args }}
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: ${{ env.LOCAL_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.short }}
+            org.opencontainers.image.ref.name=${{ github.ref_name }}
+            org.opencontainers.image.vendor=Agent-Field
+          cache-from: type=gha,scope=org-images-${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=org-images-${{ matrix.image }}-${{ matrix.arch }},mode=max
+
+      # The codeaf image only: the binary is this commit's, and the sessionhost is in it.
+      - name: The codeaf binary is this commit's and has the sessionhost
+        if: matrix.image == 'codeaf-org'
+        run: |
+          set -euo pipefail
+          out="$(docker run --rm --entrypoint codeaf "${LOCAL_IMAGE}" version)"
+          echo "${out}"
+          case "${out}" in *"${GITHUB_SHA::10}"*) ;; *) echo "codeaf version does not name ${GITHUB_SHA::10}" >&2; exit 1 ;; esac
+          # The sessionhost refuses to start without its shared secret, and says which variable: that line proves the
+          # subcommand is in this binary (an unknown subcommand prints something else) without starting a server.
+          refusal="$(docker run --rm --entrypoint codeaf "${LOCAL_IMAGE}" sessionhost serve 2>&1 || true)"
+          echo "${refusal}"
+          case "${refusal}" in *CODEAF_SESSIONHOST_SECRET*) ;; *) echo "codeaf sessionhost did not ask for its secret" >&2; exit 1 ;; esac
+
+      # THE LEAK GATE. A finding fails the job here, before any login. What it checks is written at the top of
+      # deploy/org/gate/image-gate.py and in deploy/org/README.md "Published images".
+      - name: Leak gate
+        run: |
+          python3 deploy/org/gate/image-gate.py "${LOCAL_IMAGE}" \
+            --expect-commit "${GITHUB_SHA}" --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Not pushing (no registry credentials in this repository)
+        if: needs.plan.outputs.push != 'true'
+        run: |
+          echo "### ${{ matrix.image }} (${{ matrix.arch }}): built and scanned, not pushed" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Log in to Docker Hub
+        if: needs.plan.outputs.push == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The gate passed, so the image it read is the image that goes out: tag it and push it, no rebuild. Only the
+      # per-platform tag is pushed here; the public tags are made by the `manifest` job once every image has passed.
+      - name: Push
+        if: needs.plan.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          target="${DOCKERHUB_NAMESPACE}/${{ matrix.image }}:${SHORT}-${{ matrix.arch }}"
+          docker tag "${LOCAL_IMAGE}" "${target}"
+          docker push "${target}"
+          echo "pushed ${target}" >> "${GITHUB_STEP_SUMMARY}"
+
+  # The public tags: one multi-platform manifest per image, made from the two per-platform images that passed the gate. It
+  # runs only when every leg of every image succeeded and the run may push, so a failed gate leaves every public tag where it
+  # was. No image bytes move: a manifest list names the pushed ones.
+  manifest:
+    name: ${{ matrix.image }} tags
+    needs: [plan, images]
+    if: needs.plan.outputs.push == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - codeaf-org
+          - codeaf-org-agentfield
+          - codeaf-org-swe-af
+          - codeaf-org-pr-af
+          - codeaf-org-modelstub
+          - codeaf-org-gitstub
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tag
+        env:
+          SHORT: ${{ needs.plan.outputs.short }}
+          TAGS: ${{ needs.plan.outputs.tags }}
+        run: |
+          set -euo pipefail
+          repo="${DOCKERHUB_NAMESPACE}/${{ matrix.image }}"
+          for tag in ${TAGS}; do
+            docker buildx imagetools create -t "${repo}:${tag}" "${repo}:${SHORT}-amd64" "${repo}:${SHORT}-arm64"
+            echo "tagged ${repo}:${tag}" >> "${GITHUB_STEP_SUMMARY}"
+          done

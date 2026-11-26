@@ -199,6 +199,8 @@ func (f *actsFloor) open() {
 	}
 	if f.team {
 		config.Mode = api.FactoryTeam
+		// These tests act as the host's person on this computer, which a team's default no longer allows.
+		config.LoopbackTrust = boolPtr(true)
 	}
 	f.h = New(seam, config)
 	f.t.Cleanup(f.h.Close)

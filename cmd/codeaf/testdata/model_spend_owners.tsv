@@ -22,6 +22,7 @@ internal/exec/media.go:Toolbox.generateMusic:GenerateMusic	exception: music
 internal/exec/media.go:Toolbox.generateVideo:GenerateVideo	exception: video
 internal/exec/media.go:Toolbox.speak:Speak	exception: speech
 internal/exec/media.go:Toolbox.viewImage:CompleteWithMessages	exception: untraced image and media transport
+internal/factory/serve/model_route.go:Handler.openHostedModel:CompleteWithMessages	owner: Hosted chat metering (modelapi Bank -> postHostedSpend -> My space AddSpend, the chat cap and the monthly limit checked before each call)
 internal/head/absorb.go:Head.deliveryAnswer:CompleteWithMessages	exception: untraced resident assistants
 internal/head/aside.go:Head.Ask:CompleteWithMessages	exception: untraced resident assistants
 internal/head/loop.go:Head.runTurn:CompleteWithMessages	exception: untraced resident assistants

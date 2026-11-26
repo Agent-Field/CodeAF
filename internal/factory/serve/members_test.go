@@ -114,6 +114,7 @@ func TestTwoViewersSeeDifferentQueuesAndCounts(t *testing.T) {
 		"raj":   {"acme/web": true},
 		"mina":  {},
 	})
+	h.config.LoopbackTrust = boolPtr(true)
 	ctx := context.Background()
 	if _, err := h.config.Record.Append(ctx, record.Event{Kind: record.Took, Job: 1, Handle: "priya", Detail: "api-secret-detail"}); err != nil {
 		t.Fatal(err)

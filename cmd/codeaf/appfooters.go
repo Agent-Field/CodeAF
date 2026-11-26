@@ -107,6 +107,9 @@ func (b *appBackend) keepAppFailure(a *appAgent, entry appwire.Entry, words stri
 }
 
 func (b *appBackend) keepAppEntriesWith(a *appAgent, entries []appwire.Entry, afterCall, retry string) error {
+	if a.hosted != nil {
+		return nil
+	}
 	var transcript, id string
 	b.locked(func() { transcript, id = a.transcript, a.view.ID })
 	b.footerMu.Lock()

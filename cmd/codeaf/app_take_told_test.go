@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -56,5 +57,14 @@ func TestAppTakeTellsThePersonWhenTheAfterWorkFailsBehindTheOpen(t *testing.T) {
 		entry, ok := data.(appwire.EntryAdded)
 		return name == appwire.EventEntryAdded && ok && entry.Entry.Kind == appwire.EntryNotice &&
 			strings.Contains(entry.Entry.Text, "part of its state could not be updated yet")
+	})
+	// THE NOTICE COMES FROM THE MIDDLE OF THE AFTER-WORK, NOT FROM ITS END. The
+	// rest of the hooks and the look at the folder still follow it, and a test
+	// that returns on the notice leaves them writing into folders the
+	// temporary-directory cleanup is removing ("directory not empty" on the full
+	// suite). The arrival is complete only after all of that is done.
+	appSyncWait(t, "the after-work behind the open to finish", func() bool {
+		a := cell.LookupWorkspaceArrival(takeRootForAt(h.b.Home, h.c.ID))
+		return a == nil || a.Ready()
 	})
 }

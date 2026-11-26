@@ -1035,6 +1035,51 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // planner internals. They are listed read-only in the sheet's environment
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
+	// The hosted-chat service an organization runs (internal/sessionhost) is
+	// configured by its operator at launch: where its chats keep their state,
+	// the uid range each chat is given, the shared secret the org server signs
+	// with, which outbound ports a chat may reach, how long an idle chat lives,
+	// and whether the machine may run chats on the user switch alone. Server
+	// plumbing an operator sets once in the deployment, never a person's
+	// preference.
+	"CODEAF_SESSIONHOST_CONNECT_PORTS",
+	"CODEAF_SESSIONHOST_DATA",
+	"CODEAF_SESSIONHOST_FORCE_PROBE",
+	"CODEAF_SESSIONHOST_IDLE",
+	"CODEAF_SESSIONHOST_REQUIRE",
+	"CODEAF_SESSIONHOST_SECRET",
+	"CODEAF_SESSIONHOST_UID_BASE",
+	"CODEAF_SESSIONHOST_UID_COUNT",
+	// The prefix internal/sessionhost/config.go joins each of those names to.
+	"CODEAF_SESSIONHOST_",
+	// What sessionhost hands each chat's engine when it launches it
+	// (internal/sessionhost/launcher_linux.go): how long the chat may sit idle,
+	// whether its fence is required, which outbound ports the fence leaves open,
+	// and where the org's git helper answers for which hosts. The launcher sets
+	// them; nobody chooses them.
+	"CODEAF_ENGINE_IDLE",
+	"CODEAF_FENCE_REQUIRE",
+	"CODEAF_FENCE_CONNECT_PORTS",
+	"CODEAF_HOSTED_GIT_URL",
+	"CODEAF_HOSTED_GIT_HOSTS",
+	// The org server's side of hosted chats (cmd/codeaf's factory_command.go and
+	// factory_hosted_model.go): where its sessionhost answers and the secret they
+	// share, the org's model door and the provider behind it with the org's key,
+	// the server key that seals each person's own keys, the per-chat spending
+	// cap, and how often a guest's access is decided again. Deployment
+	// credentials and endpoints an operator writes into the stack's
+	// environment, never a profile row.
+	"CODEAF_HOSTED_URL",
+	"CODEAF_HOSTED_SECRET",
+	"CODEAF_HOSTED_MODEL_URL",
+	"CODEAF_HOSTED_MODEL_UPSTREAM",
+	"CODEAF_HOSTED_MODEL_KEY",
+	"CODEAF_SERVER_KEY",
+	"CODEAF_HOSTED_SESSION_CAP_USD",
+	"CODEAF_HOSTED_HEARTBEAT",
+	// The sign-in `codeaf chat --org` uses when no saved one is at hand
+	// (cmd/codeaf/chatv3_org.go): a credential, so plumbing.
+	"CODEAF_ORG_TOKEN",
 	// The factory page's developer switch. CODEAF_FACTORY_FIXTURE puts a still,
 	// made-up floor on the page in place of the person's own. It is for the
 	// people who build the page; a row offering to hide your real floor behind a

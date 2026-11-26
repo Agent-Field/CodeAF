@@ -180,6 +180,7 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
+	Hosted        *HostedFacts           `json:"hosted,omitempty"`
 	Location      *Location              `json:"location,omitempty"`
 	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
@@ -1191,6 +1192,7 @@ type ProviderConnector interface {
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
+	Org             string                      `json:"org,omitempty"`
 	Models          *session.ConversationModels `json:"models,omitempty"`
 	AutomaticModels *bool                       `json:"automatic_models,omitempty"`
 	Workspace       string                      `json:"workspace"`

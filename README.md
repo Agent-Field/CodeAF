@@ -278,6 +278,14 @@ Still local over a connection: spend, search and memory. Reaching a machine
 with no ssh at all, through a relay and a pairing code, is built and switches on
 when the hosted relay does. [How it works](docs/REMOTE.md).
 
+## Run it for a team: an organization
+
+An organization is a codeaf server your company hosts. People join it from the desktop app, keep their work in a
+separate organization account, and run their chats on the organization's machines: every chat in its own sandbox,
+private until its owner shares it, with the model key and git access kept out of the chat. One `docker compose up` in
+[`deploy/org`](deploy/org/README.md) brings up the server, the AgentField control plane, SWE-AF and PR-AF.
+[What an organization is, and a ten-minute path to a first hosted chat](docs/organizations.md).
+
 ## What a copilot does, and what CodeAF does
 
 | | a copilot | CodeAF |
@@ -308,6 +316,7 @@ Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
 - [Documentation map](docs/README.md): product manuals, developer architecture, contracts and history.
+- [Organizations](docs/organizations.md): host one for your team, or join one; [`deploy/org`](deploy/org/README.md) is the operator's walkthrough.
 - [Contributing](CONTRIBUTING.md): setup, validation and pull requests.
 
 ## Telemetry

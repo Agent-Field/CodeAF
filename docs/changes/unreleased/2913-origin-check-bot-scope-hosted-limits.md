@@ -1,0 +1,15 @@
+---
+kind: fixed
+title: Another site cannot open a chat connection, a bot needs run to start a chat, and limits are stated
+pr: 2913
+surface: [factory, docs, build]
+invalidates:
+  - "The hosted chat's websocket was believed safe from a hostile web page because the sign-in cookie is SameSite=Strict, but a WebSocket is exempt from the same-origin policy and a page on a sibling name of the same site is still sent that cookie, and the server checked no Origin. Now any request that upgrades the connection and carries an Origin other than the server's own (the host the request was sent to, or the host of its public address) answers 403 with This page is from another site, so it cannot open a chat connection here. A request with no Origin, which is every request the command line and the desktop app's engine make, is accepted as before."
+  - "A bot narrowed to the view scope was believed unable to act beyond that scope, but it could still start a hosted chat, which it could then only watch. Now starting a chat needs the bot to hold run on the chat it would own, narrowed by its scope and the policy's agent scope, and a bot without it answers 403 with This bot's scope does not let it run chats, so it cannot start one. Ask the person who made it."
+  - "The manual said a chat that makes as many requests as it may at once, four, reads the busy sentence, as though four were the only way to read it. Four calls in flight is the limit for a priced model. For a model with no price the model door also holds half the spending limit that was left for every call in flight, so a second call at the same time reads the same sentence as soon as the chat has spent anything."
+  - "The manual and the operator README said a chat's model and git access ends when the chat is stopped or deleted and after seven days, and that a stopped chat's files stay and a deleted one's folder goes. It also ends when the operator removes the person, and whatever the chat's user left in /tmp, /dev/shm, /var/tmp and in System V shared memory, queues and semaphores is removed on stop, delete and start."
+  - "The network limit was documented as a limit by port, which read as keeping a chat off other machines. It filters by port and not by address, so ports 80 and 443 reach any host the chats' machine can reach, including a cloud instance metadata address such as 169.254.169.254, and UDP is not filtered. The operator README, the trust model and the manual now say so, with the guardrails to apply outside codeaf, and say there is no per-chat disk or memory quota, that a removal while the chats' machine is down closes the chats but needs the removal repeated, that the sessionhost relies on the container runtime's default seccomp profile, and that a front proxy and a priced model were not tested end to end."
+---
+
+Found by the ship-ready test round on the organization line. The sessionhost now also logs one warning line at start when this machine answers on a cloud metadata address;
+it never refuses to start over it, because the network closes that gap and codeaf cannot.
