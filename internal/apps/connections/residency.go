@@ -387,7 +387,7 @@ func (r residencyRoute) checkEpoch() error {
 // Refresh polls configured mirrors under the engine lifecycle. It also
 // invalidates live watches periodically because N1 source reads are uncached.
 func (s Service) Refresh(ctx context.Context) {
-	s.refresh(ctx, make(map[string]time.Time))
+	s.refresh(ctx, make(map[string]time.Time), false)
 }
 
 // WatchResidency owns the runtime's polling cadence for both routes.
@@ -397,13 +397,12 @@ func (s Service) WatchResidency(ctx context.Context) {
 	lastLive := make(map[string]time.Time)
 	nextPrune := time.Time{}
 	for {
-		if s.Store != nil && time.Now().After(nextPrune) {
-			if store, err := s.Store(); err == nil {
-				_ = store.PruneSourceIndexes()
-			}
-			nextPrune = time.Now().Add(time.Minute)
+		now := time.Now()
+		prune := now.After(nextPrune)
+		if prune {
+			nextPrune = now.Add(time.Minute)
 		}
-		s.refresh(ctx, lastLive)
+		s.refresh(ctx, lastLive, prune)
 		select {
 		case <-ctx.Done():
 			return
@@ -412,7 +411,7 @@ func (s Service) WatchResidency(ctx context.Context) {
 	}
 }
 
-func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
+func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time, prune bool) {
 	defs, err := s.vault().Definitions()
 	if err != nil {
 		return
@@ -421,6 +420,14 @@ func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 		var cfg registration
 		if decodeJSON(raw, &cfg) != nil {
 			continue
+		}
+		// An unused home must stay joinable. Only a profile with a
+		// Workspace binding can have a source index to prune.
+		if prune && cfg.Kind == Google && s.Store != nil {
+			prune = false
+			if store, err := s.Store(); err == nil {
+				_ = store.PruneSourceIndexes()
+			}
 		}
 		for _, read := range cfg.Reads {
 			if ctx.Err() != nil {
