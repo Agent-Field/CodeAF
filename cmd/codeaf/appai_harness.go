@@ -29,7 +29,7 @@ func (b *appBackend) appAIHarnesses(files runs.Files) runs.Harnesses {
 // restricted app request.
 func (b *appBackend) appExternalModelCall(run func(context.Context, runs.AgentCall) (runs.Reply, error)) func(context.Context, runs.AgentCall) (runs.Reply, error) {
 	return func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {
-		if err := b.appModelAuthorizer(call.App, false)(ctx, provider.ModelDestination{}); err != nil {
+		if err := b.appModelAuthorizer(call.App)(ctx, provider.ModelDestination{}); err != nil {
 			return runs.Reply{}, err
 		}
 		return run(ctx, call)

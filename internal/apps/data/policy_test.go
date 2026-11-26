@@ -187,3 +187,69 @@ func TestGrantedAgentCannotCreateOutsideLaunchersRowPolicy(t *testing.T) {
 		t.Fatalf("scoped create: %+v", rows)
 	}
 }
+
+func TestPersonalAmountAndMaskedTotals(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp([]byte(`{"id":"finance","records":{"transaction":{
+		"fields":{"owner":{"type":"text"},"amount":{"type":"money","class":"confidential"},"secret":{"type":"number"},"name":{"type":"text","class":"pii"},"pin":{"type":"number"}},
+		"policy":{"row":{"field":"owner","attribute":"id"},"fields":{"secret":"hide","pin":"mask"}}
+	}},"capabilities":{"records":{"transaction":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	owner := Scope{App: "finance", Person: PersonPrincipal{ID: s.Person()}}
+	viewer := Scope{App: "finance", Person: PersonPrincipal{ID: "viewer"}}
+	rows := mustCreate(t, s, owner, "transaction", map[string]any{"owner": s.Person(), "amount": 100, "secret": 90, "name": "My Name", "pin": 12})
+	for _, amount := range []float64{2.50, 12.75} {
+		mustCreate(t, s, viewer, "transaction", map[string]any{"owner": "viewer", "amount": amount, "secret": 90})
+	}
+	row, err := s.Get(owner, "transaction", rows[0].ID(), false)
+	if err != nil || row["amount"] != float64(100) || row["name"] != masked || row["pin"] != masked {
+		t.Errorf("the owner's data = %v, %v", row, err)
+	}
+	audit, err := os.ReadFile(filepath.Join(filepath.Dir(s.path), "policy.jsonl"))
+	if err != nil || !bytes.Contains(audit, []byte(`"decision":"owner_field_read"`)) || bytes.Contains(audit, []byte("My Name")) {
+		t.Fatalf("the owner's read needs a decision without record values: %v", err)
+	}
+
+	page, err := s.Query(viewer, "transaction", "", "", 10)
+	if err != nil || len(page.Rows) != 2 || page.Rows[0]["amount"] != masked || page.Rows[1]["amount"] != masked {
+		t.Fatalf("viewer rows: %+v, %v", page, err)
+	}
+	if _, err := s.Get(viewer, "transaction", rows[0].ID(), false); err == nil {
+		t.Error("viewer read another person's row")
+	}
+	agg, err := s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "amount"}, {Fn: "avg", Field: "amount"}}})
+	if err != nil || len(agg.Groups) != 1 || agg.Groups[0].Values["sum_amount"] != float64(15.25) || agg.Groups[0].Values["avg_amount"] != float64(7.63) {
+		t.Errorf("viewer totals: %+v, %v", agg, err)
+	}
+	for _, actor := range []Scope{
+		{App: "finance", Person: viewer.Person, Principal: AgentPrincipal{ID: "assistant"}},
+		{App: "finance", Person: viewer.Person, Flow: true},
+	} {
+		for _, fn := range []string{"sum", "avg"} {
+			_, err := s.Aggregate(actor, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: fn, Field: "amount"}}})
+			if err == nil || !strings.Contains(err.Error(), "Choose an unmasked field") {
+				t.Errorf("masked %s for automated scope: %v", fn, err)
+			}
+		}
+	}
+
+	live, err := s.WithSourceScans(viewer, QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "amount"}}}, []SourceScan{{
+		Type: "transaction", Rows: []Row{{"id": "source-row", "owner": "viewer", "amount": masked}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Aggregate(viewer, &live); err == nil || !strings.Contains(err.Error(), "Choose an unmasked field") {
+		t.Errorf("masked source total: %v", err)
+	}
+
+	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "secret"}}})
+	if err == nil || !strings.Contains(err.Error(), "Choose a field you can access") {
+		t.Errorf("denied total: %v", err)
+	}
+	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Group: []string{"amount"}, Aggregate: []Agg{{Fn: "count"}}})
+	if err == nil {
+		t.Error("viewer grouped by masked amounts")
+	}
+}

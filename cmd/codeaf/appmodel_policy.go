@@ -10,33 +10,38 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const appModelPolicyFile = "app-model-policy.json"
 const appModelPolicyMax = 64 << 10
 
-var errAppModelRestricted = errors.New("This app has restricted or PII fields. Choose an approved model for this data.")
+var errAppModelRestricted = errors.New("This app can use restricted or PII data. Choose an approved model in codeaf, or ask the data owner to approve a destination.")
 
 type appModelPolicy struct {
-	profile string
-	classes func(context.Context) ([]schema.DataClass, error)
-	audit   func(string) error
+	personal func(provider.ModelDestination) bool
+	profile  string
+	classes  func(context.Context) ([]schema.DataClass, error)
+	audit    func(string) error
 }
 
-// authorize is the Personal policy for every app model request. A run can
-// contain whole previous step results and a builder can read draft files, so
-// the policy refuses the full call when any class in scope lacks approval.
+// A run can contain previous step results from any type in scope. Check the
+// actual destination before each send, including after routing changes.
 func (p appModelPolicy) authorize(ctx context.Context, destination provider.ModelDestination) error {
 	classes, err := p.classes(ctx)
 	if err == nil && len(classes) == 0 {
 		return nil
 	}
-	if err == nil {
+	if err == nil && destination.Model != "" && destination.Endpoint != "" {
 		routes, readErr := readAppModelPolicy(filepath.Join(p.profile, appModelPolicyFile))
+		if errors.Is(readErr, os.ErrNotExist) && p.personal != nil && p.personal(destination) {
+			return nil
+		}
 		if readErr == nil {
 			for _, class := range classes {
 				if !slices.Contains(routes[class], destination) {
@@ -50,23 +55,26 @@ func (p appModelPolicy) authorize(ctx context.Context, destination provider.Mode
 		}
 	}
 	if err := p.audit("model_refused"); err != nil {
-		return errors.New("Could not record the app's model policy decision.")
+		return errors.New("Could not record the app's model policy decision. Check the profile's data directory and try again.")
 	}
 	return errAppModelRestricted
 }
 
-func (b *appBackend) appModelAuthorizer(app string, draft bool) func(context.Context, provider.ModelDestination) error {
+func (b *appBackend) appModelAuthorizer(app string) func(context.Context, provider.ModelDestination) error {
 	policy := appModelPolicy{
 		profile: b.localProfile(),
-		classes: func(ctx context.Context) ([]schema.DataClass, error) {
-			if draft {
-				return builder.ModelDataClasses(ctx)
-			}
+		classes: func(context.Context) ([]schema.DataClass, error) {
 			s, err := b.dataStore("")
 			if err != nil {
 				return nil, err
 			}
 			return s.ModelDataClasses(app), nil
+		},
+		personal: func(destination provider.ModelDestination) bool {
+			// A connected app can carry source data in its prior step results.
+			// Keep approvals explicit whenever that provenance is possible.
+			sources, err := b.appConnections().List(app)
+			return err == nil && len(sources) == 0 && personalProfileModel(b.localProfile(), destination)
 		},
 		audit: func(decision string) error {
 			s, err := b.dataStore("")
@@ -77,6 +85,37 @@ func (b *appBackend) appModelAuthorizer(app string, draft bool) func(context.Con
 		},
 	}
 	return policy.authorize
+}
+
+// A choice comes from the profile or process configuration. App manifests,
+// router picks, and outside harnesses cannot supply it.
+func personalProfileModel(profile string, destination provider.ModelDestination) bool {
+	settings, err := config.LoadKeyless()
+	if err != nil || factoryProfile(settings.ProfileDir) != profile {
+		return false
+	}
+	model := config.ChatModelAt(settings.ProfileDir)
+	if model == "" {
+		model = strings.TrimSpace(env.Get(config.ModelEnv))
+	}
+	matches := func(model, source string) bool {
+		if model == "" {
+			return false
+		}
+		client := settings.ClientConfig(model)
+		return client.HTTPClient == nil && (source == "" || strings.EqualFold(client.SourceID, source)) &&
+			client.CompletionDestination() == destination
+	}
+	if matches(model, "") {
+		return true
+	}
+	for _, tier := range config.ModelTiers {
+		seat := config.TierSeatAt(settings.ProfileDir, tier)
+		if seat.Source == config.SeatPinned && matches(seat.Model, seat.Provider) {
+			return true
+		}
+	}
+	return false
 }
 
 func readAppModelPolicy(path string) (map[schema.DataClass][]provider.ModelDestination, error) {
