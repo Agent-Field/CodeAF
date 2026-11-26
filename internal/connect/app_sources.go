@@ -31,6 +31,9 @@ func (s AppSourceStore) Register(id string, definition json.RawMessage, key, per
 			return
 		}
 		entries[entry] = stored{Source: definition}
+		if key == "" {
+			return
+		}
 		if person == "" {
 			entries[entry] = stored{Source: definition, SecretRef: ref}
 		}

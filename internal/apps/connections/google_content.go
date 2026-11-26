@@ -89,3 +89,15 @@ func googleProtectedFields(typ *data.Type) bool {
 	}
 	return false
 }
+
+// ReadPersonalContent dispatches the local CLI content command to the registered source.
+func (s Service) ReadPersonalContent(ctx context.Context, q Query, id string) (any, error) {
+	c, err := s.scoped(q.App, q.Connection)
+	if err != nil {
+		return nil, err
+	}
+	if c.Kind == Microsoft365 {
+		return s.ReadGraphContent(ctx, q, id, ContentPerson)
+	}
+	return s.ReadGoogleContent(ctx, q, id, GooglePerson)
+}

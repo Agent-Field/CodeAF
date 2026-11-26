@@ -24,6 +24,7 @@ type Effect struct {
 	values  map[string]any
 	fence   string
 	google  *googleEffect
+	graph   *graphEffect
 }
 
 type Receipt struct {
@@ -34,7 +35,7 @@ type Receipt struct {
 
 // PrepareEffect resolves the write declaration, current grants and canonical
 // row identity before the broker asks for approval. Callers pass no source key.
-func (s Service) PrepareEffect(app, connection, operation string, args map[string]any) (*Effect, error) {
+func (s Service) PrepareEffect(ctx context.Context, app, connection, operation string, args map[string]any) (*Effect, error) {
 	c, err := s.scoped(app, connection)
 	if err != nil {
 		return nil, err
@@ -54,6 +55,9 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 	}
 	if c.Kind == Google {
 		return s.prepareGoogleEffect(c, read, write, operation, args, store, binding, typ)
+	}
+	if c.Kind == Microsoft365 {
+		return s.prepareGraphEffect(ctx, c, read, write, operation, args, store, binding, typ)
 	}
 	id, _ := args["id"].(string)
 	set, _ := args["set"].(map[string]any)
@@ -158,7 +162,7 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 	for name, column := range e.read.Fields {
 		if _, writing := e.values[column]; writing {
 			field, err := typ.LiveField(name, true)
-			if err != nil || typ.FieldPolicy(field) != "" {
+			if err != nil || (e.graph == nil && typ.FieldPolicy(field) != "" || e.graph != nil && !typ.AllowsLiveSourceContent(field)) {
 				_ = store.AuditPolicy(c.App, typ.ID, "source_write_refused")
 				return Receipt{}, errors.New("this source write cannot set a protected field")
 			}
@@ -166,6 +170,9 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 	}
 	if e.google != nil {
 		return e.applyGoogle(ctx)
+	}
+	if e.graph != nil {
+		return e.applyGraph(ctx, idempotencyKey)
 	}
 	secret, err := e.service.credential(c, e.service.person(ctx))
 	if err != nil {
@@ -227,7 +234,11 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 func (e *Effect) Fence() string { return e.fence }
 
 func effectFence(c registration, epochs data.TypeEpochs, pub data.AppPublication) string {
-	return fmt.Sprintf("%s/%d/%d/%d/%x", c.Binding, epochs.Mapping, epochs.Residency, pub.Version, sha256.Sum256(pub.Metadata))
+	fence := fmt.Sprintf("%s/%d/%d/%d/%x", c.Binding, epochs.Mapping, epochs.Residency, pub.Version, sha256.Sum256(pub.Metadata))
+	if c.Kind == Microsoft365 {
+		fence += fmt.Sprintf("/%x", sha256.Sum256([]byte(c.graphGrant)))
+	}
+	return fence
 }
 
 func (e *Effect) checkRoute() error {

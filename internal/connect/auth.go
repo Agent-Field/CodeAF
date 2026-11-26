@@ -206,6 +206,9 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 			if _, googleApp := plug.(workspaceGoogle); googleApp {
 				err = googleAuthError(err)
 			} else {
+				if _, ok := plug.(microsoft); ok {
+					err = microsoftSignInError(err)
+				}
 				err = fmt.Errorf("connect %s: %w", service.Name, err)
 			}
 		}
@@ -322,11 +325,26 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 				entry.Subject, err = googleApp.identity(ctx, staticClient(ctx, result.keys))
 			}
 		}
-		// The identity probe may fail without failing the connection; only its label is lost.
 		if err == nil {
-			if account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys)); probeErr == nil {
+			// The identity probe may fail without failing the connection; only its label is lost.
+			account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys))
+			if probeErr == nil {
 				entry.Account = account
 			}
+			if p, ok := f.plug.(microsoft); ok {
+				entry.GrantID = oauth2.GenerateVerifier()
+				entry.RegistrationID = p.registrationID()
+				for i, scope := range entry.Scopes {
+					entry.Scopes[i] = strings.TrimPrefix(scope, "https://graph.microsoft.com/")
+				}
+				if probeErr != nil || strings.TrimSpace(result.keys.RefreshToken) == "" {
+					err = entraFailure("Microsoft 365 could not confirm an account with renewable access.")
+				} else if !entry.covers(p.Service().Scopes) {
+					err = entraFailure("Microsoft 365 did not grant the requested permissions.")
+				}
+			}
+		}
+		if err == nil {
 			err = waitContext.Err()
 		}
 		if err == nil {

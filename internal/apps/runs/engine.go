@@ -77,15 +77,16 @@ type ChangeEvent struct {
 
 type Config struct {
 	// OwnerName supplies the name only when a run template binds owner.name.
-	OwnerName     string
-	ResolveParams func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
-	RecordInput   func(app string, change Change) (Change, error)
-	ReadRecords   func(app string, recordType string) ([]any, error)
-	Root          string
-	Now           func() time.Time
-	Load          func(app, run string) (Definition, error)
-	Triggers      func() ([]Trigger, error)
-	GooglePoll    func(context.Context, connections.GoogleTrigger, connections.GoogleCheckpoint, time.Time) (connections.GoogleCheckpoint, []connections.GoogleEvent, error)
+	OwnerName      string
+	ResolveParams  func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
+	RecordInput    func(app string, change Change) (Change, error)
+	ReadRecords    func(app string, recordType string) ([]any, error)
+	Root           string
+	Now            func() time.Time
+	Load           func(app, run string) (Definition, error)
+	Triggers       func() ([]Trigger, error)
+	SourceTriggers func(context.Context, connections.SourceTrigger) (connections.SourceTriggerBatch, error)
+	GooglePoll     func(context.Context, connections.GoogleTrigger, connections.GoogleCheckpoint, time.Time) (connections.GoogleCheckpoint, []connections.GoogleEvent, error)
 	// Records applies local writes. The live and sample engines use Data.Write,
 	// which commits a receipt for each declared write's stable Call.Key.
 	Records    func(context.Context, RecordCall) (Reply, error)
@@ -110,7 +111,7 @@ type Engine struct {
 	// The clock serializes schedule scanning. Each runnable instance also
 	// claims a worker before it can make any effects.
 	clock       sync.Mutex
-	googleClock sync.Mutex
+	sourceClock sync.Mutex
 	outbox      sync.Mutex
 	mu          sync.Mutex
 	checkpoints map[string]json.RawMessage

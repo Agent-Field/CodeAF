@@ -84,7 +84,8 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 			return route, err
 		}
 		for name, read := range cfg.Reads {
-			if (read.Residency == nil && cfg.Kind != Google) || state.Binding.App != "" && state.Binding.Read != name {
+			graphScan := cfg.Kind == Microsoft365 && graphListSupportsType(read)
+			if read.Residency == nil && !graphScan && cfg.Kind != Google || state.Binding.App != "" && state.Binding.Read != name {
 				continue
 			}
 			bound, err := store.Type(scope, read.Type)
@@ -328,6 +329,10 @@ func (s Service) SyncResidency(ctx context.Context, app, alias string) error {
 }
 
 func (r residencyRoute) source() Source {
+	if r.read.Residency == nil && r.config.Kind == Microsoft365 {
+		return Source{Connection: r.config.ID, Read: r.name, Residency: "live", Freshness: "live",
+			MappingEpoch: r.state.Epochs.Mapping, ResidencyEpoch: r.state.Epochs.Residency}
+	}
 	freshness := string(r.state.Mode)
 	freshFor := 0
 	if r.read.Residency != nil {
@@ -516,6 +521,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 }
 
 func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, filters map[string]any) (data.SourceScan, error) {
+	if r.config.Kind == Microsoft365 {
+		return s.graphScan(ctx, r, typ)
+	}
 	page, err := s.Read(ctx, Query{App: r.config.App, Connection: r.config.ID, Read: r.name, Limit: maxRows, filters: filters})
 	if err != nil {
 		return data.SourceScan{}, err
@@ -633,6 +641,9 @@ func UnbindCursor(source Source, cursor string) (string, bool) {
 }
 
 func sourceField(read Read, typ *data.Type, name string) (*data.Field, error) {
+	if read.GraphMeetingRead != "" && read.Fields[name] == "meeting" {
+		return typ.SourceReferenceField(name)
+	}
 	if read.Residency != nil && read.Residency.References[name] != nil {
 		return typ.SourceReferenceField(name)
 	}

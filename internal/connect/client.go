@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -141,16 +142,22 @@ func (p *persisting) Token() (*oauth2.Token, error) {
 	if sameKeys(p.last, fresh) {
 		return fresh, nil
 	}
-	saved := false
+	stale := false
 	if err := p.store.replace(p.id, func(entries map[string]stored) {
-		entry, ok := entries[p.id]
-		if !ok || entry.GrantID != p.grant || !sameKeys(entry.Keys, p.last) {
+		entry, exists := entries[p.id]
+		if !exists || entry.GrantID != p.grant {
+			stale = true
 			return
 		}
-		entry.Keys = fresh
-		entries[p.id], saved = entry, true
-	}); err != nil || !saved {
+		if sameKeys(p.last, entry.Keys) {
+			entry.Keys = fresh
+			entries[p.id] = entry
+		}
+	}); err != nil {
 		return fresh, nil
+	}
+	if stale {
+		return nil, errors.New("the account connection changed")
 	}
 	p.last = fresh
 	return fresh, nil

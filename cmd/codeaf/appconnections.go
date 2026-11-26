@@ -5,19 +5,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 func (b *appBackend) appConnections() connections.Service {
 	return connections.Service{
-		Profile: b.crewProfile(),
-		Google:  b.pluginManager,
-		Store:   func() (*data.Store, error) { return b.dataStore("") },
+		Profile:   b.crewProfile(),
+		Google:    b.pluginManager,
+		Microsoft: b.pluginManager,
+		Store:     func() (*data.Store, error) { return b.dataStore("") },
 	}
 }
 
@@ -46,18 +50,18 @@ func appConnectionError(err error) error {
 	switch {
 	case errors.Is(err, connections.ErrTooLarge), errors.Is(err, connections.ErrPartialWindow):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
-	case errors.Is(err, connections.ErrConflict):
+	case errors.Is(err, connections.ErrConflict), errors.Is(err, connections.ErrGraphCursor):
 		return appwire.Errorf(appwire.CodeConflict, "%s", err)
 	case errors.Is(err, connections.ErrSourcePermission), errors.Is(err, connections.ErrPersonCredential):
 		return appwire.Errorf(appwire.CodeNotAllowed, "%s", err)
-	case errors.Is(err, connections.ErrUnavailable):
+	case errors.Is(err, connections.ErrUnavailable), errors.Is(err, connections.ErrGraphThrottle):
 		return appwire.Errorf(appwire.CodeUnreachable, "%s", err)
 	}
 	return appDataError(err)
 }
 
 func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Writer) error {
-	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | content APP CONNECTION READ ID | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture | link-google-identities APP CONNECTION READ"
+	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] [CURSOR] | content APP CONNECTION READ ID | signin microsoft-365 | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture | link-google-identities APP CONNECTION READ"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -91,19 +95,26 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 			return encode(b.TestAppConnection(appwire.ConnectionTest{App: args[1], Connection: args[2]}))
 		}
 	case "read":
-		if len(args) == 4 || len(args) == 5 {
+		if len(args) >= 4 && len(args) <= 6 {
 			query := connections.Query{App: args[1], Connection: args[2], Read: args[3]}
-			if len(args) == 5 {
+			if len(args) >= 5 {
 				if err := decodeAppConnectionJSON(bytes.NewBufferString(args[4]), &query.Args); err != nil {
 					return errors.New("read arguments must be a JSON object")
 				}
+			}
+			if len(args) == 6 {
+				query.Cursor = args[5]
 			}
 			return encode(b.ReadAppConnection(query))
 		}
 	case "content":
 		if len(args) == 5 {
 			query := connections.Query{App: args[1], Connection: args[2], Read: args[3]}
-			return encode(b.appConnections().ReadGoogleContent(context.Background(), query, args[4], connections.GooglePerson))
+			return encode(b.appConnections().ReadPersonalContent(context.Background(), query, args[4]))
+		}
+	case "signin":
+		if len(args) == 2 && args[1] == connect.Microsoft365 {
+			return microsoftAppSignIn(b, out)
 		}
 	case "register":
 		if len(args) == 2 {
@@ -117,7 +128,7 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
 			credential := ""
-			if cfg.Kind != connections.Google {
+			if cfg.Kind != connections.Google && cfg.Kind != connections.Microsoft365 {
 				credential, err = readAppSourceCredential(in)
 				if err != nil {
 					return err
@@ -167,5 +178,26 @@ func decodeAppConnectionJSON(in io.Reader, value any) error {
 	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return errors.New("expected one JSON value")
 	}
+	return nil
+}
+
+func microsoftAppSignIn(b *appBackend, out io.Writer) error {
+	manager, err := b.pluginManager()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	flow, err := manager.BeginAuth(ctx, connect.Microsoft365, "")
+	if err != nil {
+		return errors.New("Set CODEAF_MICROSOFT_CLIENT_ID to a Microsoft application registration ID and use its tenant ID or common.")
+	}
+	defer flow.Cancel()
+	fmt.Fprintln(out, flow.URL())
+	status, err := flow.Wait(ctx)
+	if err != nil {
+		return errors.New(connect.SignInFailureReason(err))
+	}
+	fmt.Fprintln(out, status.Account)
 	return nil
 }

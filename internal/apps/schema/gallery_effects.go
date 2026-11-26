@@ -261,7 +261,7 @@ func (c *checker) checkRecordWrite(ctx actionCtx, at string, body map[string]any
 }
 
 func (c *checker) checkConnectorDeclaration(name, verb string, connector Connector) {
-	if GoogleEvent(name, verb) {
+	if GoogleEvent(name, verb) || GraphSourceTrigger(name, verb) {
 		return
 	}
 	at := "/capabilities/connectors/" + name

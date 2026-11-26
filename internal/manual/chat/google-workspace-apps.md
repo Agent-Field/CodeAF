@@ -60,7 +60,7 @@ operator sets `google_link_identities: true` and maps those columns to a
 Person ref or refs field. Run
 `codeaf app connections link-google-identities APP CONNECTION READ` to reserve
 keys from the scoped source. Normal reads resolve those keys and leave an
-unknown Person unset. A fixture binding cannot reserve identities. Connect the live account first.
+unknown Person unset. The refusal says “a fixture connection cannot reserve identities. Connect the live account first.”
 The operation does not merge people by display name.
 Gmail's `sender_domain` can map to Company, whose
 common type key is `organization`. Bind attachment metadata as Documents

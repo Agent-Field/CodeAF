@@ -141,3 +141,8 @@ with your credential”. Attach or renew the source credential for the local
 profile if its access has expired. A live row-policy type can be read through
 a mapped owner field. Write-back for that type requires source support for
 checking the same row policy during the update.
+
+## Connect Microsoft 365, Outlook, OneDrive or Teams to an app
+
+Use a Microsoft public client registration and your profile's browser connection. See the Microsoft 365
+apps page for scopes, delta cursors, content review, triggers and approval-gated Outlook or Calendar Actions.

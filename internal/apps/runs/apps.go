@@ -214,7 +214,7 @@ func (f Files) Triggers() ([]Trigger, error) {
 			}
 		}
 		for _, trigger := range app.Triggers {
-			if trigger.On == "connector" && schema.GoogleEvent(trigger.Connector, trigger.Event) &&
+			if trigger.On == "connector" && (schema.GoogleEvent(trigger.Connector, trigger.Event) || schema.GraphSourceTrigger(trigger.Connector, trigger.Event)) &&
 				!slices.Contains(app.Capabilities.Connectors[trigger.Connector].Can, trigger.Event) {
 				continue
 			}

@@ -475,6 +475,8 @@ func (c *checker) checkApp() {
 		seen[t.ID] = true
 		if t.On == "connector" && GoogleEvent(t.Connector, t.Event) {
 			c.checkGoogleTrigger(t, at)
+		} else if t.On == "connector" && GraphSourceTrigger(t.Connector, t.Event) {
+			c.checkGraphSourceTrigger(t, at)
 		} else if a.Kit == 2 {
 			c.checkGalleryTrigger(i, at)
 		} else {

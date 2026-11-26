@@ -53,6 +53,12 @@ func (s *Store) ClaimAppRun(seq int64, trigger, key string, payload json.RawMess
 	})
 }
 
+// ClaimSourceTrigger consumes a filtered-out source event without starting a run.
+func (s *Store) ClaimSourceTrigger(seq int64, trigger string) error {
+	_, err := s.withAppRunClaim(seq, trigger, func(*sql.Tx) error { return nil })
+	return err
+}
+
 // AppRunClaimed lets a replay skip trigger evaluation for a committed run.
 func (s *Store) AppRunClaimed(seq int64, trigger string) (bool, error) {
 	var exists bool

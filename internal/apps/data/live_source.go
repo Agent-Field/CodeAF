@@ -47,6 +47,13 @@ func (t *Type) LiveField(name string, write bool) (*Field, error) {
 	}
 }
 
+// AllowsLiveSourceContent separates explicit visibility rules from the
+// automatic class mask. A trusted, audited source content action can honor
+// the class without overriding an explicit hide or mask.
+func (t *Type) AllowsLiveSourceContent(f *Field) bool {
+	return !f.Hidden && !f.Masked && t.fieldRules[f.Name] == ""
+}
+
 // LiveValue applies the same scalar rules and mask as local record reads.
 func (f *Field) LiveValue(value any, write bool) (any, error) {
 	if f.Masked && !write && value != nil {

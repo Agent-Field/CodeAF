@@ -16,16 +16,18 @@ import (
 type Kind string
 
 const (
-	HTTP     Kind = "http"
-	Postgres Kind = "postgres"
-	MySQL    Kind = "mysql"
-	Google   Kind = "google"
+	HTTP         Kind = "http"
+	Postgres     Kind = "postgres"
+	MySQL        Kind = "mysql"
+	Google       Kind = "google"
+	Microsoft365 Kind = "microsoft-365"
 )
 
 const CredentialPerson = "person"
 
 type Config struct {
 	GoogleFixture  bool             `json:"google_fixture,omitempty"`
+	GraphFixture   bool             `json:"graph_fixture,omitempty"`
 	CredentialMode string           `json:"credential_mode,omitempty"`
 	ID             string           `json:"id"`
 	Kind           Kind             `json:"kind"`
@@ -53,6 +55,10 @@ type Read struct {
 	Match                map[string]string `json:"match,omitempty"`
 	Residency            *ResidencyConfig  `json:"residency,omitempty"`
 	OrderBy              string            `json:"order_by,omitempty"`
+	GraphDrive           string            `json:"graph_drive,omitempty"`
+	GraphStart           string            `json:"graph_start,omitempty"`
+	GraphEnd             string            `json:"graph_end,omitempty"`
+	GraphMeetingRead     string            `json:"graph_meeting_read,omitempty"`
 }
 
 // ResidencyConfig admits a Personal fixed export to the type's existing
@@ -90,7 +96,7 @@ func (c Config) validate() error {
 	if c.CredentialMode != "" && c.CredentialMode != "shared" && c.CredentialMode != CredentialPerson {
 		return errors.New("a connection credential mode is shared or person")
 	}
-	if c.GoogleFixture && c.Kind != Google {
+	if c.GoogleFixture && c.Kind != Google || c.GraphFixture && c.Kind != Microsoft365 {
 		return ErrRejected
 	}
 	switch c.Kind {
@@ -110,12 +116,16 @@ func (c Config) validate() error {
 		if c.Origin != "" || c.TestPath != "" || c.CredentialMode != CredentialPerson {
 			return errors.New("Google Workspace needs a personal connection with Google's fixed endpoints")
 		}
+	case Microsoft365:
+		if c.CredentialMode != CredentialPerson || c.Origin != "" || c.TestPath != "" {
+			return errors.New("Microsoft 365 uses your profile's browser sign-in and the fixed Graph endpoint")
+		}
 	case Postgres, MySQL:
 		if c.Origin != "" || c.TestPath != "" {
 			return errors.New("put the database connection string in the credential")
 		}
 	default:
-		return errors.New("a connection kind is http, postgres, mysql or google")
+		return errors.New("a connection kind is http, postgres, mysql, google or microsoft-365")
 	}
 	if len(c.Reads) == 0 || len(c.Reads) > 32 || len(c.Writes) > 32 {
 		return errors.New("a connection needs 1 to 32 reads and can have up to 32 writes")
@@ -125,6 +135,12 @@ func (c Config) validate() error {
 			(read.Version != "" && (!identifier.MatchString(read.Version) || read.Version == read.Key)) ||
 			len(read.Fields) == 0 || len(read.Fields) > 32 || len(read.Match) > 16 {
 			return errors.New("a read needs a name, bound record type, key and field mapping")
+		}
+		if c.Kind != Microsoft365 && (read.GraphDrive != "" || read.GraphStart != "" || read.GraphEnd != "" || read.GraphMeetingRead != "") {
+			return errors.New("Graph options require a Microsoft 365 source")
+		}
+		if c.Kind != Google && (read.GoogleQuery != "" || read.GoogleIndex || read.GoogleLinkIdentities || read.GoogleLimit != 0) {
+			return ErrRejected
 		}
 		if c.Kind == Google {
 			if !slices.Contains([]string{"gmail", "attachments", "calendar", "drive", "transcripts"}, read.Table) ||
@@ -139,8 +155,10 @@ func (c Config) validate() error {
 					return errors.New("only Gmail accepts a search query")
 				}
 			}
-		} else if read.GoogleQuery != "" || read.GoogleIndex || read.GoogleLinkIdentities || read.GoogleLimit != 0 {
-			return ErrRejected
+		} else if c.Kind == Microsoft365 {
+			if err := c.validateGraphRead(read); err != nil {
+				return err
+			}
 		} else if c.Kind == HTTP {
 			if !fixedPath(read.Path) || read.Table != "" || read.OrderBy != "" || (read.Rows != "" && !identifier.MatchString(read.Rows)) {
 				return errors.New("an HTTP read needs a fixed path and may name a JSON rows property")
@@ -184,7 +202,7 @@ func (c Config) validate() error {
 
 		matched := map[string]bool{}
 		for arg, target := range read.Match {
-			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && c.Kind != Google && read.Fields[arg] != target) {
+			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && c.Kind != Google && c.Kind != Microsoft365 && read.Fields[arg] != target) {
 				return errors.New("a read argument must map to a distinct query parameter or its mapped SQL field")
 			}
 			matched[target] = true
@@ -201,6 +219,10 @@ func (c Config) validate() error {
 		if c.Kind == Google {
 			if write.Path != "" || len(write.Response) != 0 || !googleOperation(read.Table, name) || name == "update-event" && read.Version == "" {
 				return errors.New("choose a supported Google write for this read")
+			}
+		} else if c.Kind == Microsoft365 {
+			if err := validateGraphAction(name, read, write); err != nil {
+				return err
 			}
 		} else if c.Kind == HTTP {
 			if !fixedPath(write.Path) || len(write.Response) > 16 {

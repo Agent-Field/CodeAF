@@ -136,6 +136,17 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 			}}
 		}
 	}
+	for _, tool := range app.Capabilities.Tools {
+		connection, operation, ok := schema.ParseSourceTool(tool)
+		if !ok {
+			continue
+		}
+		if receipt, ok := connections.GraphFixtureWrite(operation); ok {
+			replies[tool] = runs.Reply{Output: receipt.Response, Effect: &runs.EffectReceipt{
+				Tool: tool, Connection: connection, Version: receipt.Version, Outcome: "committed",
+			}}
+		}
+	}
 	owner := ""
 	if b.appOwnerDisplayName() != "" {
 		owner = "Example Owner"

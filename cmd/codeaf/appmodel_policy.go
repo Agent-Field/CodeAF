@@ -69,14 +69,14 @@ func (b *appBackend) appModelAuthorizer(app string) func(context.Context, provid
 			if err != nil {
 				return nil, err
 			}
-			classes := s.ModelDataClasses(app)
-			sources, err := b.appConnections().List(app)
+			classes, err := b.appConnections().PersonalSourceClasses(app)
 			if err != nil {
 				return nil, err
 			}
-			if slices.ContainsFunc(sources, func(source connections.Summary) bool { return source.Kind == connections.Google }) &&
-				!slices.Contains(classes, schema.ClassPII) {
-				classes = append(classes, schema.ClassPII)
+			for _, class := range s.ModelDataClasses(app) {
+				if !slices.Contains(classes, class) {
+					classes = append(classes, class)
+				}
 			}
 			return classes, nil
 		},

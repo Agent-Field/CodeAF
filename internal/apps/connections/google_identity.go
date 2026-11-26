@@ -10,6 +10,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
+var errGoogleFixtureIdentity = errors.New("a fixture connection cannot reserve identities. Connect the live account first.")
+
 // Google relationship fields can opt into canonical references. Email and
 // attachment metadata remain available as scalars when a view only needs text.
 func googleReferenceColumn(object, column string) data.CommonTypeKey {
@@ -131,7 +133,7 @@ func (s Service) LinkGoogleIdentities(ctx context.Context, q Query) error {
 	}
 	read, ok := c.Reads[q.Read]
 	if c.GoogleFixture {
-		return errors.New("a fixture connection cannot reserve identities; connect the live account first")
+		return errGoogleFixtureIdentity
 	}
 	if c.Kind != Google || !ok || !read.GoogleLinkIdentities {
 		return ErrSourcePermission

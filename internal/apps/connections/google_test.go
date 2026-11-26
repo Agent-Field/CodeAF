@@ -319,7 +319,7 @@ func TestGoogleReferenceProjectionResolvesLinkedPeopleAndAttachments(t *testing.
 	if err != nil || doc["title"] != "agenda.pdf" {
 		t.Fatalf("attachment %+v %v", doc, err)
 	}
-	if err := service.LinkGoogleIdentities(ctx, query); err == nil || !strings.Contains(err.Error(), "a fixture connection cannot reserve identities") {
+	if err := service.LinkGoogleIdentities(ctx, query); !errors.Is(err, errGoogleFixtureIdentity) {
 		t.Fatalf("fixture identities must not enter the live crosswalk: %v", err)
 	}
 	if _, found, err := db.LookupIdentity(googleIdentityKey("email", "ari@example.com")); err != nil || found {
@@ -364,9 +364,13 @@ func TestGooglePartialWindowListsRowsButRefusesTotals(t *testing.T) {
 		t.Fatal(err)
 	}
 	ir := data.QueryIR{Type: "message"}
-	_, source, _, err := svc.PlanQuery(ctx, "brief", ir)
+	planned, source, _, err := svc.PlanQuery(ctx, "brief", ir)
 	if err != nil || !source.Partial || source.Window != 1 {
 		t.Fatalf("source window = %+v, err = %v", source, err)
+	}
+	page, err := db.QueryRows(data.Scope{App: "brief"}, &planned, "", 10)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0]["subject"] != "Planning" {
+		t.Fatalf("rows in the partial window = %+v, err = %v", page, err)
 	}
 	ir.Aggregate = []data.Agg{{Fn: "count"}}
 	if _, _, _, err := svc.PlanQuery(ctx, "brief", ir); !errors.Is(err, ErrPartialWindow) {

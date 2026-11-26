@@ -10,7 +10,6 @@ import (
 
 	"context"
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
-	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
@@ -23,10 +22,10 @@ type Trigger struct {
 	Run       string         `json:"run"`
 	Cron      string         `json:"cron"`
 	Type      string         `json:"type"`
+	When      string         `json:"when"`
 	Connector string         `json:"connector,omitempty"`
 	Event     string         `json:"event,omitempty"`
 	Match     map[string]any `json:"match,omitempty"`
-	When      string         `json:"when"`
 	fieldFill bool
 }
 
@@ -304,29 +303,6 @@ func (e *Engine) commitTriggered(receipt triggerReceipt, run Run, raw json.RawMe
 		e.track(run)
 	}
 	return claimed, err
-}
-
-// PollSources is separate from Dispatch so a slow source cannot block due
-// schedules or work already ready to run.
-func (e *Engine) PollSources(ctx context.Context) error {
-	if e.cfg.GooglePoll == nil || e.cfg.Triggers == nil {
-		return nil
-	}
-	e.googleClock.Lock()
-	defer e.googleClock.Unlock()
-	all, err := e.cfg.Triggers()
-	now := e.cfg.Now()
-	for _, trigger := range all {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if trigger.On == "connector" && schema.GoogleEvent(trigger.Connector, trigger.Event) {
-			if pollErr := e.fireGoogle(ctx, trigger, now); pollErr != nil {
-				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", trigger.App, trigger.ID, pollErr))
-			}
-		}
-	}
-	return err
 }
 
 func (e *Engine) fireGoogle(ctx context.Context, t Trigger, now time.Time) error {

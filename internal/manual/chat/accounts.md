@@ -34,6 +34,14 @@ response bodies are read up to 8 MiB.
 An account with no tools in this build answers `<Name> is connected, and this build
 has no tools for it. Do the work without it and say so plainly.`
 
+## Can you access my email or read my calendar
+
+Connecting Google gives chat its Gmail and Calendar tools. A Microsoft 365 browser
+connection can give a kept Personal app delegated access to Outlook and Calendar
+through its declared app data sources. Set up a Microsoft app registration before
+connecting. The Microsoft 365 apps page explains body access, Graph permissions and
+approval for Outlook drafts. Disconnect the account in Connections to stop access.
+
 ## How many accounts can be connected
 
 **129 accounts register in this build: 99 are connected with a pasted key, and 30 are
