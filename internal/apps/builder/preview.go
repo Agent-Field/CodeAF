@@ -20,10 +20,11 @@ type PreviewRequest struct {
 }
 
 type Preview struct {
-	App     json.RawMessage `json:"app"`
-	Sample  bool            `json:"sample"`
-	Screens []string        `json:"screens"`
-	Scope   string          `json:"scope"`
+	App             json.RawMessage              `json:"app"`
+	Sample          bool                         `json:"sample"`
+	Screens         []string                     `json:"screens"`
+	Scope           string                       `json:"scope"`
+	ResolvedRecords map[string]schema.RecordType `json:"resolved_records,omitempty"`
 }
 
 type previewScope struct {
