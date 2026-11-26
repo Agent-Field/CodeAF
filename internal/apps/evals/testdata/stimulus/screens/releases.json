@@ -1,0 +1,12 @@
+{
+  "screen": "releases",
+  "title": "Release reviews",
+  "body": {
+    "part": "RecordList",
+    "id": "release-list",
+    "label": "Release reviews",
+    "props": {"columns": ["name", "stage"], "select": "one"},
+    "bind": {"records": "probe", "view": "releases"}
+  },
+  "views": {"releases": {"type": "probe"}}
+}

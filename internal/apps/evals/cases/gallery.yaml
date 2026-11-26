@@ -37,7 +37,10 @@
         - {path: /app/records/contact/uses, equals: true}
         - {path: /app/records/candidate, exists: true}
 - name: personal-finance-csv
-  prompt: Make a personal finance app for importing a CSV with date, description, category and amount. Show spending totals by category.
+  prompt: >-
+    Make a personal finance app where I can import a CSV into editable transaction records.
+    Use the type ID transaction and the CSV headers date, description, category and amount as
+    field IDs. Amount is money in USD. Show spending totals by category.
   max_rounds: 2
   record:
     type: transaction
@@ -51,7 +54,6 @@
       expect: [{path: /app/records/transaction/fields/amount/type, equals: money}]
     - method: data.import_csv
       params:
-        app: $app
         type: transaction
         path: $csv
         mapping: {date: date, description: description, category: category, amount: amount}
@@ -62,20 +64,24 @@
         type: transaction
         group: [category]
         query: "category:Food"
-        aggregate: [{fn: sum, field: amount, as: amount_cents}]
-      expect: [{path: /groups/0/values/amount_cents, equals: 1525}]
+        aggregate: [{fn: sum, field: amount, as: amount}]
+      expect: [{path: /groups/0/values/amount, equals: 15.25}]
 - name: release-tracker
-  prompt: Build a release tracker for version, status and target date. Let me move a release from Planned to Shipped.
+  prompt: >-
+    Build a release tracker with editable release records, with field IDs version, status
+    and date (the target date). Start each release as Planned and use a lifecycle transition
+    with ID ship to move it to Shipped.
   max_rounds: 3
   record:
     type: release
     unique_by: version
-    value: {version: "1.2.3", status: Planned, date: "2026-01-01"}
+    value: {version: "1.2.3", date: "2026-01-01"}
     edit: {version: "1.2.4"}
   looks: [{screen: releases, recipe: add-view/board}]
   steps:
     - method: data.create
-      params: {app: $app, type: release, set: {version: "3.1.0", status: Planned, date: "2026-01-02"}}
+      params: {app: $app, type: release, set: {version: "3.1.0", date: "2026-01-02"}}
+      expect: [{path: /rows/0/status, equals: Planned}]
       capture: {release: /rows/0/id, rev: /rows/0/_rev}
     - method: data.transition
       params: {app: $app, type: release, id: $release, expected_rev: $rev, transition: ship}

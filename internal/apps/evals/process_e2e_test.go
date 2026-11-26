@@ -43,6 +43,10 @@ func launch(ctx context.Context, binary, scratch, key, model string) (*appProces
 	if key != "" {
 		env = append(env, "OPENROUTER_API_KEY="+key, "CODEAF_APPS_BUILDER_MODEL="+model)
 	}
+	return launchWithEnv(ctx, binary, scratch, env)
+}
+
+func launchWithEnv(ctx context.Context, binary, scratch string, env []string) (*appProcess, error) {
 	cmd := exec.CommandContext(ctx, binary, "app")
 	cmd.Dir, cmd.Env = scratch, env
 	in, err := cmd.StdinPipe()
@@ -88,11 +92,19 @@ func launch(ctx context.Context, binary, scratch, key, model string) (*appProces
 }
 
 func (p *appProcess) Close() error {
+	if p.cmd == nil {
+		return nil
+	}
 	_ = p.in.Close()
-	return p.cmd.Wait()
+	err := p.cmd.Wait()
+	p.cmd = nil
+	return err
 }
 
 func (p *appProcess) wire(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	if p.cmd == nil {
+		return nil, errors.New("app engine is closed")
+	}
 	p.id++
 	request := map[string]any{"id": p.id, "method": method, "params": params}
 	if err := json.NewEncoder(p.in).Encode(request); err != nil {
