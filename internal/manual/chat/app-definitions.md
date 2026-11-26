@@ -368,3 +368,10 @@ Check suggests changes for repetitive sections, bare tables, raw links,
 unlabelled numbers, empty metrics, repeated searches, crowded columns, or
 a missing visual. A personal app can be kept with these suggestions.
 Publishing as **codeaf examples** requires resolving them.
+
+## Dashboard targets and limits
+
+A metric in a dashboard can show a target or limit beside the current value.
+Use a number in the same units as the value. A percentage uses fractions in
+the data, so an 85% target is 0.85. A metric above its limit says so. A zero
+or unavailable metric keeps its figure and comparison quiet.

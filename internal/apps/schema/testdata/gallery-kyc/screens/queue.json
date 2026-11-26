@@ -26,6 +26,7 @@
     "part": "Row",
     "id": "workspace",
     "props": {
+      "workspace": "queue",
       "gap": 2,
       "align": "stretch"
     },
@@ -171,6 +172,7 @@
   "views": {
     "work": {
       "type": "case",
+      "filter": [{ "field": "stage", "op": "ne", "value": "Done" }],
       "window": {
         "order_by": [
           "risk"

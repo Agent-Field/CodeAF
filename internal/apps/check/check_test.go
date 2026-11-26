@@ -154,6 +154,22 @@ func TestCheckRequiresTheAssistantActionsItClaims(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsAnAssistantWithoutInstructions(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{" \n\t", "---\nname: CRM agent\n---\n", "---\r\nmodel: example/model\r\n---\r\n  "} {
+		def.Files["agent.md"] = []byte(body)
+		report := check.Definition(def, nil)
+		if !slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
+			return p.File == "agent.md" && p.Code == "agent_instructions_missing"
+		}) {
+			t.Errorf("Check should ask for assistant instructions for %q: %+v", body, report.Problems)
+		}
+	}
+}
+
 func TestCheckRequiresOneGrantableActionForAMultiEffectCommand(t *testing.T) {
 	def, err := schema.Load("../schema/testdata/crm")
 	if err != nil {

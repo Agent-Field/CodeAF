@@ -1,6 +1,9 @@
 package main
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
@@ -40,20 +43,48 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 	if err != nil {
 		return nil, err
 	}
-	limit := p.Limit
-	if view.Window != nil && view.Window.Limit > 0 && (limit == 0 || limit > view.Window.Limit) {
-		limit = view.Window.Limit
+	if p.Query != "" {
+		lens, err := queryIR(view.Type, p.Query, nil)
+		if err != nil {
+			return nil, err
+		}
+		ir.Where = append(ir.Where, lens.Where...)
+		if lens.Sort != "" {
+			ir.Sort = lens.Sort
+		}
+	}
+	limit, after := p.Limit, p.Cursor
+	remaining := -1
+	if view.Window != nil && view.Window.Limit > 0 {
+		remaining = view.Window.Limit
+		if after != "" {
+			count, cursor, ok := strings.Cut(after, ":")
+			remaining, err = strconv.Atoi(count)
+			if !ok || err != nil || remaining <= 0 || remaining >= view.Window.Limit || cursor == "" {
+				return nil, appwire.Errorf(appwire.CodeBadParams, "Reload this view to continue.")
+			}
+			after = cursor
+		}
+		if remaining <= 500 && (limit == 0 || limit > remaining) {
+			limit = remaining
+		}
 	}
 	s, err := b.dataStore(p.Draft)
 	if err != nil {
 		return nil, err
 	}
-	page, source, err := b.appQueryRows(s, p.DataScope, dataScope(p.DataScope), &ir, p.Cursor, limit)
+	page, source, err := b.appQueryRows(s, p.DataScope, dataScope(p.DataScope), &ir, after, limit)
 	if err != nil {
 		return nil, err
 	}
-	if view.Window != nil && view.Window.Limit > 0 && p.Cursor == "" && len(page.Rows) == view.Window.Limit {
-		page.Next = ""
+	if remaining >= 0 {
+		page.Total = min(page.Total, view.Window.Limit)
+		remaining -= len(page.Rows)
+		if remaining <= 0 {
+			page.Next = ""
+		} else if page.Next != "" {
+			page.Next = strconv.Itoa(remaining) + ":" + page.Next
+		}
 	}
 	return &appwire.DataQueryResult{Rows: wireRows(page.Rows), Next: page.Next, Total: page.Total, Source: &source}, nil
 }

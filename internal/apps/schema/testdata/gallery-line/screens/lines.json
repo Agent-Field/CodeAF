@@ -33,7 +33,7 @@
         "part": "Text",
         "id": "shift-title",
         "props": {
-          "text": "This shift · Line 4 running",
+          "text": "This shift \u00b7 Line 4 running",
           "size": "large",
           "tone": "primary"
         }
@@ -53,63 +53,77 @@
             },
             "children": [
               {
-                "part": "Chart",
-                "id": "oee",
+                "part": "Row",
+                "id": "shift-kpis",
                 "props": {
-                  "kind": "metric",
-                  "title": "OEE (%) · target 85%",
-                  "y": "oee"
+                  "gap": 2
                 },
-                "bind": {
-                  "records": "line",
-                  "view": "oee"
-                }
-              },
-              {
-                "part": "Chart",
-                "id": "good_parts",
-                "props": {
-                  "kind": "metric",
-                  "title": "Good parts · plan 1,400",
-                  "y": "good_parts"
-                },
-                "bind": {
-                  "records": "line",
-                  "view": "good_parts"
-                }
-              },
-              {
-                "part": "Chart",
-                "id": "scrap",
-                "props": {
-                  "kind": "metric",
-                  "title": "Scrap (%) · limit 1.0%",
-                  "y": "scrap"
-                },
-                "bind": {
-                  "records": "line",
-                  "view": "scrap"
-                }
-              },
-              {
-                "part": "Chart",
-                "id": "minutes",
-                "props": {
-                  "kind": "metric",
-                  "title": "Downtime (min)",
-                  "y": "minutes"
-                },
-                "bind": {
-                  "records": "line",
-                  "view": "minutes"
-                }
+                "children": [
+                  {
+                    "part": "Chart",
+                    "id": "oee",
+                    "props": {
+                      "kind": "metric",
+                      "title": "OEE",
+                      "y": "oee",
+                      "format": "percent",
+                      "target": 0.85
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "oee"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "good_parts",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Good parts",
+                      "y": "good_parts",
+                      "target": 1400
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "good_parts"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "scrap",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Scrap",
+                      "y": "scrap",
+                      "format": "percent",
+                      "limit": 0.01
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "scrap"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "minutes",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Downtime (min)",
+                      "y": "minutes"
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "minutes"
+                    }
+                  }
+                ]
               },
               {
                 "part": "Chart",
                 "id": "pressure",
                 "props": {
                   "kind": "line",
-                  "title": "Press 4 · hydraulic pressure (bar)",
+                  "title": "Press 4 \u00b7 hydraulic pressure (bar)",
                   "x": "reading",
                   "y": "pressure"
                 },
@@ -123,7 +137,7 @@
                 "id": "temp",
                 "props": {
                   "kind": "line",
-                  "title": "Trim station · die temperature (°C)",
+                  "title": "Trim station \u00b7 die temperature (\u00b0C)",
                   "x": "reading",
                   "y": "temp"
                 },

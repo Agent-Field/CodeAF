@@ -6,9 +6,9 @@
         "kind": "Shift summary",
         "stage": "running",
         "minutes": 22,
-        "oee": 81,
+        "oee": 0.81,
         "good_parts": 1240,
-        "scrap": 1.6,
+        "scrap": 0.016,
         "id": "01KAT0000A0000000000000001"
       },
       {

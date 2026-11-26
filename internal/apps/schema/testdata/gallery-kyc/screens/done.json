@@ -26,6 +26,7 @@
     "part": "Row",
     "id": "workspace",
     "props": {
+      "workspace": "queue",
       "gap": 2,
       "align": "stretch"
     },

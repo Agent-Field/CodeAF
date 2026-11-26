@@ -17,9 +17,12 @@ func TestAppDeclaredViewUsesPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"app.json":  `{"id":"labels","name":"Label proof","version":1,"kit":2,"records":{"label":{"fields":{"name":{"type":"text"},"notes":{"type":"text","masked":true}}}},"capabilities":{"records":{"label":"rw"}}}`,
+		"app.json":  `{"id":"labels","name":"Label proof","version":1,"kit":2,"records":{"label":{"fields":{"name":{"type":"text"},"rank":{"type":"number"},"notes":{"type":"text","masked":true}}}},"capabilities":{"records":{"label":"rw"}}}`,
 		"plan.json": `{"ask":"Label proof","data":[{"id":"label","line":"Labels"}],"screens":[{"id":"proof","line":"Proof"}]}`,
-		"screens/proof.json": `{"screen":"proof","title":"Label proof","views":{"labels":{"type":"label","select":["name","notes"]}},
+		"screens/proof.json": `{"screen":"proof","title":"Label proof","views":{"labels":{"type":"label","select":["name","notes"]},
+			"ranked":{"type":"label","args":{"minimum":"number"},
+				"filter":[{"field":"rank","op":"gte","value":"$args.minimum"},{"field":"name","op":"ne","value":"Archived"}],
+				"window":{"order_by":["rank"],"limit":2}}},
 			"body":{"id":"proof","label":"Label proof","part":"custom/proof","bind":{"records":"label","view":"labels"}}}`,
 		"custom/proof.json": `{"name":"custom/proof","source":"custom/proof.tsx","version":1,"summary":"Label proof","reason":"Proof layout.",
 			"example":{},"props":{"type":"object"},"children":"none","interactive":false,"events":[],"bindings":["records"],"binding_required":true,
@@ -59,6 +62,33 @@ func TestAppDeclaredViewUsesPolicy(t *testing.T) {
 	if _, err := w.call("data.view.query", p); err == nil {
 		t.Fatal("the view door accepted an undeclared query")
 	}
+
+	for rank, name := range []string{"Low priority", "Archived", "First", "Second", "Third"} {
+		_, err := b.DataCreate(appwire.DataCreateParams{DataScope: scope, Type: "label", Set: map[string]any{"name": name, "rank": rank}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	p.View, p.Limit = "ranked", 1
+	p.Args = map[string]json.RawMessage{"minimum": json.RawMessage("1")}
+	read := func(want string, last bool) {
+		t.Helper()
+		raw, wireErr := w.call("data.view.query", p)
+		if wireErr != nil {
+			t.Fatal(wireErr)
+		}
+		var page appwire.DataQueryResult
+		if err := json.Unmarshal(raw, &page); err != nil || len(page.Rows) != 1 || page.Rows[0]["name"] != want || page.Total != 2 || (page.Next == "") != last {
+			t.Fatalf("wanted %q: view = %s, %v", want, raw, err)
+		}
+		p.Cursor = page.Next
+	}
+	read("First", false)
+	read("Second", true)
+	p.Query = "rank>2 sort:-rank"
+	read("Third", false)
+	read("Second", true)
+
 }
 
 func TestAppCheckRunsTheCustomStepAgainstExampleRows(t *testing.T) {
