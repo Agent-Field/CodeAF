@@ -75,6 +75,7 @@ func Invoke(ctx context.Context, store *data.Store, app schema.App, call Invocat
 }
 
 var mediaTypes = map[string]string{
+	"txt":  "text/plain; charset=utf-8",
 	"csv":  "text/csv; charset=utf-8",
 	"pdf":  "application/pdf",
 	"docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

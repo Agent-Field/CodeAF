@@ -3,8 +3,10 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -115,5 +117,38 @@ func TestTranscriptionFormatPrefersTheMediaType(t *testing.T) {
 		if got := transcriptionFormat(testCase.mediaType, testCase.filename); got != testCase.want {
 			t.Errorf("format(%q, %q) = %q, want %q", testCase.mediaType, testCase.filename, got, testCase.want)
 		}
+	}
+}
+
+func TestTranscribeRechecksPIIBeforeRedirectingAudio(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Path)
+		if r.URL.Path != "/api/v1/audio/transcriptions" {
+			t.Error("received audio at a refused destination")
+		}
+		http.Redirect(w, r, "/other", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	cfg := Config{APIKey: "test", Model: "configured-voice", BaseURL: server.URL + "/api/v1"}
+	approved := cfg.TranscriptionDestination()
+	var checked []ModelDestination
+	cfg.AuthorizeDestination = func(_ context.Context, destination ModelDestination) error {
+		checked = append(checked, destination)
+		if destination != approved {
+			return errors.New("PII destination refused")
+		}
+		return nil
+	}
+	client, err := NewMediaClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Transcribe(t.Context(), TranscriptionRequest{
+		Model: cfg.Model, MIME: "audio/wav", Data: []byte("fictional WAV"),
+	})
+	var denied *ModelDestinationDenied
+	if !errors.As(err, &denied) || len(seen) != 1 || len(checked) != 2 {
+		t.Fatalf("destination checks = %v, sends = %v, error = %v", checked, seen, err)
 	}
 }

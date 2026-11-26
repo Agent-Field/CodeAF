@@ -53,9 +53,10 @@ type Manifest struct {
 }
 
 type Archive struct {
-	Format   int               `json:"format"`
-	Manifest Manifest          `json:"manifest"`
-	Files    map[string][]byte `json:"files"`
+	Format    int               `json:"format"`
+	Manifest  Manifest          `json:"manifest"`
+	Files     map[string][]byte `json:"files"`
+	Signature []byte            `json:"signature,omitempty"`
 }
 
 type PackOptions struct {
@@ -67,6 +68,13 @@ type PackOptions struct {
 // Pack includes only definition bytes. Live records and per-person grants
 // reside outside those files, so they cannot be embedded by the export.
 func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]byte, error) {
+	if p.Publisher == BuiltinPublisher {
+		return nil, fmt.Errorf("the %s publisher requires a release signature", BuiltinPublisher)
+	}
+	return pack(files, existing, p)
+}
+
+func pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]byte, error) {
 	a := Archive{Format: 1, Files: make(map[string][]byte, len(files))}
 	for path, raw := range files {
 		a.Files[path] = []byte(raw)
@@ -126,6 +134,9 @@ func Read(r io.Reader) (Archive, error) {
 	if a.Manifest.Hash != a.digest() {
 		return Archive{}, fmt.Errorf("the app package does not match its content hash")
 	}
+	if err := a.verifyPublisher(); err != nil {
+		return Archive{}, err
+	}
 	want, err := describe(a.Files, a.Manifest.Publisher, a.Manifest.Version)
 	if err != nil {
 		return Archive{}, err
@@ -150,6 +161,7 @@ func Read(r io.Reader) (Archive, error) {
 
 func (a Archive) digest() string {
 	a.Manifest.Hash = ""
+	a.Signature = nil
 	raw, _ := json.Marshal(a)
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
 }
