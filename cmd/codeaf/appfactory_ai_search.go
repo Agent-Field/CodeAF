@@ -129,7 +129,7 @@ func (r *appAISearchRuns) cache(dir, connection string) *aisearch.Cache {
 }
 
 func (b *appBackend) aiSearchPrice(model string) *aisearch.Price {
-	models, err := b.ListModels()
+	models, err := b.offeredModels()
 	if err != nil {
 		return nil
 	}

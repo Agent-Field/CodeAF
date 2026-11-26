@@ -19,6 +19,10 @@ func TeamOpenPending(profile, transcript string, file *teams.File, defaults team
 		if role.handle == "" && !role.manager {
 			continue
 		}
+		// A paused membership holds its traffic unopened (team_pause.go).
+		if role.paused && !role.manager {
+			continue
+		}
 		cursor, ok := probe.team.cursors[role.id]
 		if !ok {
 			cursor = probe.firstTeamCursor(profile, role)
@@ -42,14 +46,13 @@ func TeamOpenPending(profile, transcript string, file *teams.File, defaults team
 	return false
 }
 
-// pendingTeamEntry shares the engine's wake rules, including the finished
-// event it suppresses after a reply. A member's own start also needs opening.
+// pendingTeamEntry reports whether an entry needs the conversation open: it
+// would start a turn there by the watch's own rule ([teamEntryWakes]), or it
+// carries a line to hand over that the rule has not set aside.
 func pendingTeamEntry(profile string, role teamRole, entry teams.Entry) bool {
-	if role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished && teamFinishedAfterReply(profile, role.id, entry) {
-		return false
-	}
-	if !role.manager && entry.Kind == teams.KindStart && entry.To == role.handle {
-		return true
-	}
-	return teamWakes(role, entry) || teamPacketWakes(profile, role, entry) || teamLine(role, entry) != ""
+	// A closed conversation has no birth to test a start against, so its own
+	// start is the one sent to its handle, or the one its membership names.
+	own := !role.manager && entry.Kind == teams.KindStart && (entry.To == role.handle || (role.startID != "" && entry.ID == role.startID))
+	wakes, quiet := teamEntryWakes(profile, role, entry, own)
+	return wakes || (!quiet && teamLine(role, entry) != "")
 }

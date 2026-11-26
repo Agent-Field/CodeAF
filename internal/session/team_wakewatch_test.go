@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,11 +27,17 @@ func fastTeamWake(t *testing.T) {
 	teamWatchClockMu.Lock()
 	every, settle, retry, longest := teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax
 	teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = 20*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond, 200*time.Millisecond
+	// A send waits to see its members start. With the watch this fast three
+	// seconds is over a hundred looks, room enough on a loaded machine, and a
+	// send whose member starts returns as soon as it has.
+	sendSettle, sendLook := teamSendSettle, teamSendLook
+	teamSendSettle, teamSendLook = 3*time.Second, 5*time.Millisecond
 	teamWatchClockMu.Unlock()
 	t.Cleanup(func() {
 		forgetRouses()
 		teamWatchClockMu.Lock()
 		teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = every, settle, retry, longest
+		teamSendSettle, teamSendLook = sendSettle, sendLook
 		teamWatchClockMu.Unlock()
 	})
 }
@@ -644,9 +651,11 @@ func TestTeamWakeADirectiveOpensAMemberNobodyHolds(t *testing.T) {
 	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
 	parser := oneAnswer(1)
 	teamAgent(t, fixture, fixture.parser, parser, nil)
+	// The door here records the open and starts nothing, so the send has no
+	// start to report and says so, without claiming the work is under way.
 	said := sendDirective(t, manager, "web")
-	if !strings.Contains(said, "starts a turn on it now") || !strings.Contains(said, "wake you") {
-		t.Errorf("the send does not say what happens next: %s", said)
+	if !strings.Contains(said, "@web has shown no sign of starting yet") || !strings.Contains(said, teamNotUnderWayRule) {
+		t.Errorf("the send claims more than it saw: %s", said)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for len(recorder.seen()) == 0 && time.Now().Before(deadline) {
@@ -656,7 +665,9 @@ func TestTeamWakeADirectiveOpensAMemberNobodyHolds(t *testing.T) {
 	if len(opened) != 1 || !strings.HasPrefix(opened[0], fixture.web+"|") {
 		t.Fatalf("opened %v, want the web member's transcript once", opened)
 	}
-	sendDirective(t, manager, "parser")
+	if said := sendDirective(t, manager, "parser"); !strings.Contains(said, "@parser started a turn on it.") || !strings.Contains(said, "wake you") {
+		t.Errorf("the send does not report the start it saw: %s", said)
+	}
 	waitRequests(t, parser, 1)
 	if got := recorder.seen(); len(got) != 1 {
 		t.Fatalf("a member that is open was opened again: %v", got)
@@ -718,4 +729,163 @@ func (c *armedRounds) CompleteWithMessages(ctx context.Context, messages []ai.Me
 		return textResponse(checkpointNothingLeft), nil
 	}
 	return c.run(ctx, round)
+}
+
+// A REFUSED WAKE LEAVES THE DIRECTIVE WHERE IT WAS. The wake used to hand the
+// directive over first and ask the engine's gates afterwards, and a job that
+// refuses automatic work, or a seat that may not work, kept nothing of it: the
+// traffic said the member could not be woken, the cursor had moved past the
+// directive, and no later turn was ever handed it. The decision is made before
+// anything is read, so the turn the person next opens still finds it.
+func TestTeamWakeARefusedWakeLeavesTheDirectiveUnread(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	completer := oneAnswer(1)
+	var refusing atomic.Bool
+	refusing.Store(true)
+	web := teamAgent(t, fixture, fixture.web, completer, func(config *Config) {
+		config.FactoryWorkRefusal = func() string {
+			if refusing.Load() {
+				return "this job was stopped"
+			}
+			return ""
+		}
+	})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	said := waitEvent(t, fixture, "could not wake @web")
+	if !strings.HasSuffix(said.Text, ": this job was stopped") || said.Answers == "" {
+		t.Errorf("the refusal's line is %+v, want the gate's own reason, answering the directive", said)
+	}
+	quietFor()
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a refused wake started %d turns", got)
+	}
+	if got := trafficEvents(t, fixture, "could not wake @web"); len(got) != 1 {
+		t.Errorf("the refusal was said %d times, want once", len(got))
+	}
+	refusing.Store(false)
+	submitAndWait(t, web, "what is waiting for you?")
+	if asked := userTextIn(completer.request(0)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the directive a refused wake had read was not there for the next turn:\n%s", asked)
+	}
+}
+
+// A TURN ALREADY RUNNING WAS NOT WOKEN, AND THE TRAFFIC DOES NOT SAY IT WAS.
+// The look found the member idle, a turn began before the wake reached it, and
+// the wake wrote `woke @web` for a turn the directive had not started; the
+// manager's send then answered that the member had started on it. The turn in
+// flight reads the directive at its next step. When it has no step left, the
+// watch finds the directive again once the turn has ended, and that wake is
+// the one the traffic records.
+func TestTeamWakeATurnAlreadyRunningIsNotSaidToHaveWoken(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	release := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return textResponse("done"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("fixed"), nil },
+	}}
+	web := teamAgent(t, fixture, fixture.web, completer, func(config *Config) { config.teamWatchManual = true })
+	events := mustSubmit(t, web, "work on the footer")
+	waitRequests(t, completer, 1)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	// The look that found it idle has read the log and moved on, as a tick does
+	// before it hands the wake over.
+	var roles []teamRole
+	web.team.mu.Lock()
+	for _, role := range web.teamRolesLocked(fixture.profile) {
+		if !role.manager {
+			roles = append(roles, role)
+			web.teamWatchReadLocked(fixture.profile, role)
+		}
+	}
+	web.team.mu.Unlock()
+	web.teamWakeMember(fixture.profile, roles, time.Now())
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 0 {
+		t.Fatalf("a turn that was already running is said to have been woken: %+v", woke)
+	}
+	close(release)
+	collect(t, events)
+	waitQuiet(t, web)
+	if !web.teamWatchTick(fixture.profile, time.Now()) {
+		t.Fatal("the member stopped watching its team")
+	}
+	waitRequests(t, completer, 2)
+	if asked := userTextIn(completer.request(1)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the directive was not handed over once after the turn that was running:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 1 {
+		t.Fatalf("the wake that did start a turn was logged %d times, want once", len(woke))
+	}
+}
+
+// A LOOK FOR A STOP DOES NOT CARRY THE WAKE PAST A DIRECTIVE. With the team's
+// auto-wake off, a member waiting on a command reads its team's log for its
+// manager's stop. That look moved the watch's own cursor, so a directive sent
+// meanwhile was behind it when the person turned auto-wake on, and woke
+// nobody. The look has a cursor of its own, and the directive wakes the member.
+func TestTeamAutoWakeTurnedOnWakesOnADirectiveTheStopLookPassed(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newTeamFixture(t, true)
+	var web *Agent
+	started := make(chan *job, 1)
+	calls := &scriptedCompleter{steps: []step{waitedStep(func() *Agent { return web }, started), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	collect(t, mustSubmit(t, web, "start the build and wait for it"))
+	waitQuiet(t, web)
+	<-started
+
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("a directive woke the member %d times with the team's auto-wake off", got-1)
+	}
+	err := teams.Update(fixture.profile, func(file *teams.File) error {
+		for i := range file.Teams {
+			if file.Teams[i].ID == fixture.teamID {
+				on := true
+				file.Teams[i].Settings.Wake = &on
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "Fix the header.") {
+		t.Fatalf("the member woke with auto-wake on was not handed the directive:\n%s", asked)
+	}
+}
+
+// EVERY WAKE A GATE REFUSES IS SAID. A manager's refused wake answers no entry,
+// so saying it once per entry wrote one line for its first refused batch of
+// replies and nothing for every later one.
+func TestTeamWakeEachRefusedManagerWakeIsSaid(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	completer := oneAnswer(1)
+	teamAgent(t, fixture, fixture.manager, completer, func(config *Config) {
+		config.FactoryWorkRefusal = func() string { return "this job was stopped" }
+	})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "The header is fixed."})
+	waitEvent(t, fixture, "could not wake ◆")
+	quietFor()
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "And the footer."})
+	deadline := time.Now().Add(5 * time.Second)
+	for len(trafficEvents(t, fixture, "could not wake ◆")) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := trafficEvents(t, fixture, "could not wake ◆"); len(got) != 2 {
+		t.Fatalf("two refused wakes were said %d times, want once each", len(got))
+	}
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a refused manager was started %d times", got)
+	}
 }

@@ -82,7 +82,9 @@ rung asks, in the two names you already know. An explicit existing `ground` stil
 every other rung, even when it is a third folder not offered by that question; the receipt
 says where in words, `It works in <folder>, the folder this proposal gave as its ground.`,
 so a wrong choice is visible immediately. A stand read from the brief is said the same way:
-`It works in <folder>, the one folder its brief names the work in.`
+`It works in <folder>, the one folder its brief names the work in.` A task that only reads
+its ground is the exception: its receipt says `It reads <folder> and writes only in a folder
+of its own` instead (see **A task built my project somewhere else**).
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
@@ -107,6 +109,36 @@ something the evidence did not — though nothing ever overrides a path you name
 
 The check runs where the work stood, cut from the same ground; the card and the `/history`
 row carry the ground and how the task stood on it.
+
+## A task built my project somewhere else — it only read my repository, nothing changed in my folder, where is what the task made
+
+A task whose whole contract names no file to make or change is treated as reading its
+repository when something chose that repository for it: the proposal's `ground`, its brief,
+a place the conversation remembered, or the files the conversation has been working with.
+It gets an empty folder of its own and the repository is left alone, even when the
+conversation was opened there. A task nothing placed, which simply takes the repository
+the conversation stands in, gets a working copy on a branch instead.
+
+Naming a project in words is not naming a file, so "build the app in the MacStats repo"
+with `~/MacStats` as its `ground` reads this way. So does a relative path such as
+`Sources/App/main.swift` when neither the file nor its folder is there yet.
+
+Such a task says so wherever there is somebody to tell. One the conversation's model
+proposes says it in its receipt: `It reads <folder> and writes only in a folder of its own,
+so nothing in <folder> changes`, and to stop it and propose it again naming the files it
+makes or changes by their full path under that folder. A task you type with `/task` has no
+such receipt. Every such task tells its worker the folder is to read, not to change, and
+never to report the work as being there. A task run as a run ends its landing `it changed
+nothing in <folder>: what it made is in <its own folder>`; the older single-task road lands
+without that line.
+
+A proposed task that joins a run already underway is told what is true of that run
+instead. Joining one that only reads the folder, its receipt says `nothing in <folder>
+changes while it is part of that run`, whatever files it named, and to propose the work
+once that run has ended.
+
+To have the work done in the repository, name a file under it by full path in the brief, in
+what to produce or in the done-when, such as `~/MacStats/Sources/App/main.swift`.
 
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 

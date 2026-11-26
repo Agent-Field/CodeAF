@@ -62,6 +62,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/ollamalimits"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -724,7 +725,7 @@ type appBackend struct {
 	emit       appwire.Emitter
 	open       appOpener
 	// listModels answers models.list for checks that must agree with it (a
-	// factory step's model); nil is [appBackend.ListModels]. Tests set it.
+	// factory step's model); nil is [appBackend.offeredModels]. Tests set it.
 	listModels func() ([]appwire.Model, error)
 	now        func() time.Time
 	// after is the claim-expiry clock, replaceable without sleeping in tests.
@@ -847,6 +848,20 @@ type appBackend struct {
 	// stopModelNotices removes the model completion subscription and joins
 	// the initial catalog waiter and cancellable sender when this app closes.
 	stopModelNotices func()
+	// tellModels says models.changed through that subscription's queue;
+	// ollamaRelist is the models of the Ollama service a turn's end should ask
+	// the app to list again (not running, or a small window, at the last list),
+	// ollamaRelisted those a turn has asked that for since, ollamaQuiet those
+	// whose asked-for list still found them unloaded, ollamaToldWindow the
+	// small window the first list after such a notice read, and ollamaSeen
+	// what this app has seen of that service's models, for the lists after
+	// ([appBackend.addModelLimits]).
+	tellModels       func()
+	ollamaRelist     map[string]bool
+	ollamaRelisted   map[string]bool
+	ollamaQuiet      map[string]bool
+	ollamaToldWindow map[string]int
+	ollamaSeen       *ollamalimits.Memory
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
@@ -3338,6 +3353,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
+	// A hosted chat's turn ran on its organisation's server, whose models are
+	// not this computer's Ollama ones, however alike their names.
+	if a.hosted == nil {
+		b.modelLoadedBy(live.conn.Conv.Model())
+	}
 	held := false
 	var view appwire.Agent
 	b.locked(func() {
@@ -4650,12 +4670,33 @@ const appModelsWait = 3 * time.Second
 // Connected is the rule providers.list answers signed_in by
 // ([appBackend.providerConnected]), so the two never disagree.
 func (b *appBackend) ListModels() ([]appwire.Model, error) {
+	// What a local server says about its models is asked inside the list's
+	// own wait, so a list that spent the wait on a catalog asks nothing.
+	until := time.Now().Add(appModelsWait)
+	models, sources, err := b.modelRows()
+	if err != nil {
+		return nil, err
+	}
+	b.addModelLimits(until, models, sources)
+	return models, nil
+}
+
+// offeredModels is [appBackend.ListModels] for a check on what a person
+// picked: the same rows, without the limits, which no check reads and which
+// cost a question to a local server.
+func (b *appBackend) offeredModels() ([]appwire.Model, error) {
+	models, _, err := b.modelRows()
+	return models, err
+}
+
+// modelRows is the rows of models.list and the services they were read from.
+func (b *appBackend) modelRows() ([]appwire.Model, modelsource.Set, error) {
 	if !b.providerConnected() {
-		return []appwire.Model{}, nil
+		return []appwire.Model{}, modelsource.Set{}, nil
 	}
 	proc, err := b.process()
 	if err != nil {
-		return nil, appEngineError(err)
+		return nil, modelsource.Set{}, appEngineError(err)
 	}
 	// THE DEFAULT SERVICE'S CATALOG IS WAITED FOR EVEN WHEN ANOTHER SERVICE HAS
 	// ANSWERED: a list read before it lands is every other service's models
@@ -4761,7 +4802,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			models[i].Provider = id
 		}
 	}
-	return models, nil
+	return models, sources, nil
 }
 
 // appDefaultModel is the model a new conversation runs on, by the rule every
@@ -5164,7 +5205,8 @@ func (b *appBackend) Close() error {
 			// A conversation joined on a window's host is that window's, and
 			// is only detached from.
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
-				live.conn.Conv.Interrupt()
+				// The app is leaving; the person did not press stop.
+				appInterruptFor(live.conn.Conv, session.StopByClosing)
 			}
 			b.letGoTimed(a, os.Stderr)
 		})

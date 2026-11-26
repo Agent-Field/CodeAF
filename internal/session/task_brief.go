@@ -376,9 +376,11 @@ type taskCopy struct {
 	// the ground's to bind, and only what that rule leaves behind may be
 	// considered as another task's tree.
 	trees string
-	// readsHome is the home folder, or a folder holding it, when this task reads it
-	// from a folder of its own. It binds nothing: the folder is not a copy.
-	readsHome string
+	// reads is the ground this task only reads, from a folder of its own
+	// ([TaskModeReference]): the home folder or one holding it, or a repository
+	// its contract named no file to make or change in. It binds nothing: the
+	// folder is not a copy.
+	reads string
 }
 
 // newTaskCopy is the ONE PLACE A FOLDER IS SPELLED FOR THIS TYPE, and it exists
@@ -651,11 +653,18 @@ func copyOnto(ground string, mode TaskMode, dir string, place Place) taskCopy {
 	case TaskModeWorktree, TaskModeMirror:
 		return newTaskCopyOf(ground, dir, place.Work(), place.Trees())
 	case TaskModeReference:
-		if HoldsHomeFolder(ground) {
-			own := standingOn(dir)
-			own.readsHome = cleanFolder(ground)
-			return own
+		// A REFERENCE WORKER IS TOLD ITS GROUND IS NOT ITS FOLDER, whatever the
+		// ground is. It used to be told only over the home folder. Measured
+		// 2026-11-23: a task whose proposal gave a repository as its ground,
+		// and whose brief named no file by path, was a reference; its worker
+		// woke in an empty folder, built the whole project there, and reported
+		// it "integrated", and the conversation told the person to run it from
+		// the repository, where nothing had changed.
+		own := standingOn(dir)
+		if canonicalPath(cleanFolder(ground)) != canonicalPath(cleanFolder(dir)) {
+			own.reads = cleanFolder(ground)
 		}
+		return own
 	}
 	return standingOn(dir)
 }
@@ -867,14 +876,21 @@ func (c taskCopy) note(sections ...string) string {
 	return note
 }
 
-// ownFolderNote tells a worker on the home folder where its output belongs, since
-// the task was given no copy to work in and a person has to find what it made.
+// ownFolderNote tells a worker that only reads its ground where its output
+// belongs, since the task was given no copy to work in and a person has to find
+// what it made.
 func (c taskCopy) ownFolderNote() string {
-	if c.readsHome == "" {
+	if c.reads == "" {
 		return ""
 	}
-	return c.readsHome + " is yours to read, not to change. Everything you make goes in " + c.dir +
-		", your own folder. In your report, say where in that folder the results are."
+	return taskReadsNote(c.reads, c.dir)
+}
+
+// taskReadsNote is the one sentence a worker that only reads its ground is
+// given, for a node and for a run alike.
+func taskReadsNote(ground, dir string) string {
+	return ground + " is yours to read, not to change. Everything you make goes in " + dir +
+		", your own folder, and stays there: nothing you make reaches " + ground + ". In your report, say where in that folder the results are, and never say the work is in " + ground + "."
 }
 
 // names answers whether EITHER folder this map moves is spelled as a whole path

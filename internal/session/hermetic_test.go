@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -59,6 +60,14 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "session tests: %v\n", err)
 		return 1
 	}
+	// A DIRECTIVE'S ANSWER WAITS TO SEE ITS MEMBERS START (team_sendoutcome.go),
+	// four seconds as shipped. Most tests that send one have no member that
+	// could start and assert nothing about the outcome, so the package waits a
+	// quarter of a second; the tests that do read the outcome take their own
+	// wait ([fastTeamWake]).
+	teamWatchClockMu.Lock()
+	teamSendSettle, teamSendLook = 250*time.Millisecond, 5*time.Millisecond
+	teamWatchClockMu.Unlock()
 	// The guard watches wherever this machine actually keeps its state: the real
 	// home, or the CODEAF_HOME a developer had already pointed somewhere else.
 	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a

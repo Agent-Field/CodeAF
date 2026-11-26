@@ -9,11 +9,15 @@ package session
 // teams.json and real Traffic, through internal/teams.
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -518,5 +522,284 @@ func TestAnUnmanagedSubTeamsMemberAnswersToTheManagerAbove(t *testing.T) {
 	}
 	if p := onlyPacket(t, n.fixture.profile, harbor); p.Origin != dock || p.RaisedBy != "loner" {
 		t.Fatalf("the question's packet: %+v", p)
+	}
+}
+
+// THE GLOBAL MANAGER IS NOT WOKEN BY A TOP-LEVEL MANAGER'S TURN ENDING. The
+// person talks to that manager directly and each answer ends a turn; what the
+// global manager should act on is posted to it, and that still wakes it. A
+// directive of the global manager's is answered the same way, and both sides
+// are told so, because the ending that closes the loop in any other team says
+// nothing here.
+func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
+	fastTeamWake(t)
+	n := newTeamTree(t, "gm", "boss", "web")
+	n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"), n.member(t, "web", "web"))
+	root := ""
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		root = f.MakeRoot(f.Teams[0].Made)
+		if err := f.AddMember(root, n.member(t, "gm", "all")); err != nil {
+			return err
+		}
+		return f.SetManager(root, n.key(t, "gm"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gmCalls := oneAnswer(4)
+	gm := teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
+	bossCalls := oneAnswer(4)
+	boss := teamAgent(t, n.fixture, n.paths["boss"], bossCalls, nil)
+
+	submitAndWait(t, boss, "plan the release")
+	if role := strings.Join(roleNotes(bossCalls.request(0)), "\n"); !strings.Contains(role, "Your turn ending tells it nothing: answer each of its directives, and the brief it started you on if it started you, with team_post to the manager.") {
+		t.Fatalf("the top-level manager is not told to answer the global manager's directive with a post:\n%s", role)
+	}
+	boss.settleTeamEvents()
+	// Past the settle a wake waits out, with room: a wake the ending had armed
+	// would have fired by now.
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
+	all := teamFixture{profile: n.fixture.profile, teamID: root}
+	if ended := trafficEvents(t, all, "finished"); len(ended) != 1 {
+		t.Fatalf("the top-level manager's ending was logged %d times in the team that holds every team, want once", len(ended))
+	}
+	if got := gmCalls.requests(); got != 0 {
+		t.Fatalf("the global manager was woken %d times by a top-level manager's turn ending", got)
+	}
+	if woke := trafficEvents(t, all, teamWokePrefix); len(woke) != 0 {
+		t.Fatalf("the traffic says the global manager was woken by the ending: %+v", woke)
+	}
+
+	if said, failed := callTool(t, boss.teamPostTool, `{"to":"manager","text":"harbor shipped"}`); failed {
+		t.Fatalf("the report to the global manager was refused: %q", said)
+	}
+	waitRequests(t, gmCalls, 1)
+	asked := userTextIn(gmCalls.request(0))
+	for _, want := range []string{"from @boss: harbor shipped", "A manager answers a directive of yours, and the brief you started it on, with team_post", "and their failing or asking, come back to you", "A member's turn finishing or being stopped does not start yours."} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the global manager's turn lacks %q:\n%s", want, asked)
+		}
+	}
+	if strings.Contains(asked, "their finishing") {
+		t.Fatalf("the global manager is still told a member's finishing starts its turn:\n%s", asked)
+	}
+	if strings.Contains(asked, "finished its turn") || strings.Contains(asked, "What your members in") {
+		t.Fatalf("the ending rode into the global manager's turn as something that woke it:\n%s", asked)
+	}
+	// Its own send's answer does not promise that an ending wakes it, and says
+	// what answers the directive.
+	if said := sendDirective(t, gm, "boss"); strings.Contains(said, "endings wake you") || !strings.Contains(said, "A top-level team's manager answers a directive with team_post: its turn finishing or being stopped does not wake you") {
+		t.Fatalf("the global manager's send says endings wake it: %s", said)
+	}
+}
+
+// A GLOBAL MANAGER NOBODY HAS OPEN IS NOT OPENED BY AN ENDING IN ITS TEAM
+// EITHER, whoever's it is: a top-level manager's, a member's that manages
+// nothing, or a manager's that was replaced and kept its seat. It sees and
+// directs only the managers of the top-level teams, so none of those endings
+// is one it can act on. A failure still opens it. Only a top-level manager is
+// told it sits there because it manages a team.
+func TestAClosedGlobalManagerIsNotOpenedByATurnEndingInItsTeam(t *testing.T) {
+	fastTeamWake(t)
+	n := newTeamTree(t, "gm", "boss", "web", "guest")
+	harbor := n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"), n.member(t, "web", "web"))
+	root := ""
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		root = f.MakeRoot(f.Teams[0].Made)
+		for _, m := range []teams.Member{n.member(t, "gm", "all"), n.member(t, "guest", "guest")} {
+			if err := f.AddMember(root, m); err != nil {
+				return err
+			}
+		}
+		return f.SetManager(root, n.key(t, "gm"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now()
+	recorder := &recordedResume{}
+	withTeamResume(t, recorder.open)
+	opened := func() int {
+		count := 0
+		for _, seen := range recorder.seen() {
+			if strings.HasPrefix(seen, n.paths["gm"]+"|") {
+				count++
+			}
+		}
+		return count
+	}
+	// due is the desktop app's question of a conversation it has not opened.
+	due := func() bool {
+		return TeamOpenPending(n.fixture.profile, n.paths["gm"], n.file(t), teams.DefaultsAt(n.fixture.profile), since)
+	}
+	all := teamFixture{profile: n.fixture.profile, teamID: root}
+	// quiet runs one turn of agent's and says what, if anything, opened the
+	// closed global manager on its ending.
+	endings := 0
+	quiet := func(who string, agent *Agent) {
+		t.Helper()
+		submitAndWait(t, agent, "tidy the notes")
+		agent.settleTeamEvents()
+		endings++
+		if ended := trafficEvents(t, all, "finished"); len(ended) != endings {
+			t.Fatalf("%s ended its turn and the team that holds every team has %d finished events, want %d", who, len(ended), endings)
+		}
+		time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
+		if got := opened(); got != 0 {
+			t.Fatalf("a closed global manager was opened %d times by the turn ending of %s", got, who)
+		}
+		if due() {
+			t.Fatalf("the turn ending of %s leaves the closed global manager due an opening", who)
+		}
+	}
+	bossCalls := oneAnswer(2)
+	bossCalls.steps = append(bossCalls.steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, errors.New("insufficient_quota: out of budget")
+	})
+	boss := teamAgent(t, n.fixture, n.paths["boss"], bossCalls, nil)
+	quiet("a top-level manager", boss)
+
+	guestCalls := oneAnswer(1)
+	guest := teamAgent(t, n.fixture, n.paths["guest"], guestCalls, nil)
+	quiet("a member that manages nothing", guest)
+	ordinary := func(who, role string) {
+		t.Helper()
+		if !strings.Contains(role, `in the team "All teams", which has a manager.`) {
+			t.Fatalf("%s is not told it is a member of the team that holds every team:\n%s", who, role)
+		}
+		for _, not := range []string{"you manage a top-level team", "Your turn ending tells it nothing"} {
+			if strings.Contains(role, not) {
+				t.Fatalf("%s is told %q, which is said to a top-level team's manager only:\n%s", who, not, role)
+			}
+		}
+	}
+	ordinary("a member that manages nothing", strings.Join(roleNotes(guestCalls.request(0)), "\n"))
+
+	// The team's manager is replaced. The old one keeps its seat in the team
+	// that holds every team, where the global manager no longer sees it.
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		return f.SetManager(harbor, n.key(t, "web"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := n.file(t)
+	if r, _ := f.Team(root); !r.Holds(n.key(t, "boss")) {
+		t.Fatal("the replaced manager lost its seat in the team that holds every team")
+	}
+	if tops := f.TopManagers(); len(tops) != 1 || tops[0].Key != n.key(t, "web") {
+		t.Fatalf("the top-level managers after the replacement: %+v", tops)
+	}
+	quiet("a replaced top-level manager", boss)
+	former := roleNotes(bossCalls.request(1))
+	if len(former) == 0 {
+		t.Fatal("the replaced manager's next turn carries no new role")
+	}
+	ordinary("a replaced top-level manager", former[len(former)-1])
+
+	// A failure there still opens it, a member's it does not direct included.
+	submitAndWait(t, boss, "ship it")
+	boss.settleTeamEvents()
+	if failed := trafficEvents(t, all, "failed: "); len(failed) != 1 || failed[0].State != teams.StateFailed {
+		t.Fatalf("the failed turn is not one failed event in the team that holds every team: %+v", failed)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for opened() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if opened() == 0 {
+		t.Fatal("a turn failed in the team that holds every team and its closed manager was not opened")
+	}
+	if !due() {
+		t.Fatal("a failed turn does not leave the closed global manager due an opening")
+	}
+}
+
+// A TEAM THE GLOBAL MANAGER STARTS REPORTS ITS FIRST TURN WITH A POST. The new
+// manager's turn on the brief ends like any other there and wakes nobody, so
+// team_start's answer and both roles name the brief beside the directives.
+func TestATeamTheGlobalManagerStartsAnswersItsBriefWithAPost(t *testing.T) {
+	fastTeamWake(t)
+	n := newTeamTree(t, "gm", "boss", "ops")
+	n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"))
+	root := ""
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		root = f.MakeRoot(f.Teams[0].Made)
+		if err := f.AddMember(root, n.member(t, "gm", "all")); err != nil {
+			return err
+		}
+		return f.SetManager(root, n.key(t, "gm"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gmCalls := oneAnswer(2)
+	gm := teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
+	gm.teamBoundary()
+	said, failed := callTool(t, gm.teamStartTool, `{"handle":"ops","brief":"Run the ops.","kind":"team","name":"ops"}`)
+	if failed {
+		t.Fatalf("the global manager could not start a top-level team: %q", said)
+	}
+	if want := `makes itself the manager of "ops", and reports to you with team_post: its turn finishing on your brief does not start yours, and team_status says where it stands.`; !strings.Contains(said, want) {
+		t.Fatalf("team_start's answer for a top-level team lacks %q:\n%s", want, said)
+	}
+	gm.mu.Lock()
+	role := gm.teamRoleText
+	gm.mu.Unlock()
+	if want := "A manager answers a directive of yours, and the brief you started it on, with team_post, since its turn finishing does not start yours"; !strings.Contains(role, want) {
+		t.Fatalf("the global manager's role lacks %q:\n%s", want, role)
+	}
+
+	// The interface carries out the start, and the new manager runs its first
+	// turn on the brief without posting.
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		m := n.member(t, "ops", "ops")
+		m.Started = true
+		return f.AddMember(root, m)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opsCalls := oneAnswer(1)
+	ops := teamAgent(t, n.fixture, n.paths["ops"], opsCalls, nil)
+	submitAndWait(t, ops, "go")
+	first := opsCalls.request(0)
+	if asked := userTextIn(first); !strings.Contains(asked, "◆ brief from manager") || !strings.Contains(asked, "Run the ops.") {
+		t.Fatalf("the new manager's first turn lacks its brief:\n%s", asked)
+	}
+	if role := strings.Join(roleNotes(first), "\n"); !strings.Contains(role, "because you manage a top-level team") ||
+		!strings.Contains(role, "answer each of its directives, and the brief it started you on if it started you, with team_post to the manager.") {
+		t.Fatalf("the new manager is not told to answer its brief with a post:\n%s", role)
+	}
+	ops.settleTeamEvents()
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
+	all := teamFixture{profile: n.fixture.profile, teamID: root}
+	if ended := trafficEvents(t, all, "finished"); len(ended) != 1 {
+		t.Fatalf("the new manager's first turn was logged %d times in the team that holds every team, want once", len(ended))
+	}
+	if got := gmCalls.requests(); got != 0 {
+		t.Fatalf("the global manager was woken %d times by the new manager's first turn ending", got)
+	}
+
+	if said, failed := callTool(t, ops.teamPostTool, `{"to":"manager","text":"ops is set up"}`); failed {
+		t.Fatalf("the new manager's report was refused: %q", said)
+	}
+	waitRequests(t, gmCalls, 1)
+	if asked := userTextIn(gmCalls.request(0)); !strings.Contains(asked, "from @ops: ops is set up") {
+		t.Fatalf("the global manager's turn lacks the new manager's report:\n%s", asked)
+	}
+}
+
+func TestTeamEventWakesTheGlobalManager(t *testing.T) {
+	for _, c := range []struct {
+		state, text string
+		root, want  bool
+	}{
+		{teams.StateFinished, "finished", false, true},
+		{teams.StateFinished, "finished", true, false},
+		{teams.StateIdle, teams.StoppedByPerson, false, true},
+		{teams.StateIdle, teams.StoppedByPerson, true, false},
+		{teams.StateFailed, "failed: no key", true, true},
+		{teams.StateAsking, "asks: which branch?", true, true},
+		{teams.StateRunning, "no longer waiting", true, false},
+	} {
+		if got := teamEventWakesManagerOf(c.root, c.state, c.text); got != c.want {
+			t.Errorf("in the team that holds every team %v, %s %q wakes the manager: %v, want %v", c.root, c.state, c.text, got, c.want)
+		}
 	}
 }

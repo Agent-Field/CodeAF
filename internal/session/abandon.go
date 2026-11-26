@@ -150,19 +150,29 @@ const StopGrace = 10 * time.Second
 // with no error, and the runner would carry on over work that had not ended.
 // The person's stop still cuts the turn; the job's own Stop ends the run. A
 // person's own turn in the same conversation keeps the bound.
-func (a *Agent) InterruptWithin(grace time.Duration) {
+func (a *Agent) InterruptWithin(grace time.Duration) { a.InterruptWithinFor(StopByPerson, grace) }
+
+// InterruptWithinFor is [Agent.InterruptWithin] through a named door, for the
+// person's Pause ([StopByPause]): it is the person's act too, from the same
+// app with no second key, and a turn parked on a wait that ignores its context
+// stayed "working" after Pause once the pause had a door of its own. The bound
+// arms only for those two doors; machinery's stops are never bounded. A turn
+// the pause's bound lets go of is still owed to Resume, as a cut turn that
+// ends is ([Agent.teamPauseCutLocked]), since a turn let go of runs none of
+// its own ending.
+func (a *Agent) InterruptWithinFor(door StopDoor, grace time.Duration) {
 	a.mu.Lock()
-	if a.running && !a.closed && a.done != nil && !a.runnerTurn && grace > 0 {
-		a.armAbandonTimerLocked(grace, a.done)
+	if (door == StopByPerson || door == StopByPause) && a.running && !a.closed && a.done != nil && !a.runnerTurn && grace > 0 {
+		a.armAbandonTimerLocked(grace, a.done, door)
 	}
 	a.mu.Unlock()
-	a.Interrupt()
+	a.interruptNamed(door, "")
 }
 
 // armAbandonTimerLocked schedules the second stage of a stop for the turn
 // whose `done` channel is turn, with a.mu held. Any timer still standing from
 // an earlier stop on this turn is replaced.
-func (a *Agent) armAbandonTimerLocked(grace time.Duration, turn chan struct{}) {
+func (a *Agent) armAbandonTimerLocked(grace time.Duration, turn chan struct{}, door StopDoor) {
 	a.stopAbandonTimerLocked()
 	after := time.AfterFunc
 	if a.abandonAfter != nil {
@@ -174,7 +184,9 @@ func (a *Agent) armAbandonTimerLocked(grace time.Duration, turn chan struct{}) {
 		// The timer's goroutine is no tool loop's and no surface's, so nothing
 		// above it would absorb a fault in the journal write below.
 		defer guard.Recover("session bounded stop")
-		a.abandonTurn(AbandonStopTimeout, turn)
+		if _, let := a.abandonTurn(AbandonStopTimeout, turn); let && door == StopByPause {
+			a.team.pauseHold.owed.Store(true)
+		}
 	})
 }
 

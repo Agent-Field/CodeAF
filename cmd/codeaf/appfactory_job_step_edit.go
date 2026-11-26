@@ -126,7 +126,7 @@ func (b *appBackend) offeredStepModels(picks map[string]string) (map[string]stri
 	if len(picks) == 0 {
 		return nil, nil
 	}
-	list := b.ListModels
+	list := b.offeredModels
 	if b.listModels != nil {
 		list = b.listModels
 	}

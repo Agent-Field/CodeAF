@@ -48,6 +48,7 @@ func (b *appBackend) watchModelCompletions(proc *v3Process) {
 			})
 		}
 		remove := proc.registerServiceNotice(tell)
+		b.tellModels = func() { tell("", "") }
 		done := make(chan struct{})
 		b.stopModelNotices = func() {
 			cancel()

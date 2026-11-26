@@ -184,6 +184,63 @@ func TestABoundedStopAbandonsATurnThatWouldNotLetGo(t *testing.T) {
 	}
 }
 
+// THE PERSON'S PAUSE IS BOUNDED AS THEIR STOP IS. Once the pause had a door of
+// its own it was the first stage alone, so a turn parked on a wait that ignores
+// its context stayed "working" after Pause. The bound lets go of it, the turn
+// stays owed to Resume, and a machinery stop through the same call arms nothing.
+func TestABoundedPauseAbandonsATurnThatWouldNotLetGo(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+	}}
+	agent, entered, journal := wedged(t, completer)
+	events, err := agent.Submit(context.Background(), "park on something that cannot be cancelled")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	waitUntilClosed(t, "the turn parking on the wedge", entered, 10*time.Second)
+
+	agent.InterruptWithinFor(StopByPause, 50*time.Millisecond)
+	closed := make(chan struct{})
+	go func() {
+		for range events {
+		}
+		close(closed)
+	}()
+	waitUntilClosed(t, "the bounded pause letting go of the turn", closed, 10*time.Second)
+	waitFor(t, "the abandoned line in the journal", func() bool { return len(abandonedLines(t, journal)) > 0 })
+	if lines := abandonedLines(t, journal); len(lines) != 1 || lines[0].Reason != string(AbandonStopTimeout) {
+		t.Fatalf("want one abandoned line saying %q, got %+v", AbandonStopTimeout, lines)
+	}
+	waitFor(t, "the let-go turn owed to Resume", agent.team.pauseHold.owed.Load)
+}
+
+func TestABoundedMachineryStopArmsNothing(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+	}}
+	agent, entered, _ := wedged(t, completer)
+	clock := holdAbandon(agent)
+	events, err := agent.Submit(context.Background(), "park on something that cannot be cancelled")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	waitUntilClosed(t, "the turn parking on the wedge", entered, 10*time.Second)
+	agent.InterruptWithinFor(StopByLeaving, StopGrace)
+	clock.mu.Lock()
+	armed := clock.armed
+	clock.mu.Unlock()
+	if armed != 0 {
+		t.Fatalf("a window leaving armed the bound %d times", armed)
+	}
+	agent.Abandon(AbandonStopTimeout)
+	for range events {
+	}
+}
+
 // controlledAbandon holds the bounded stop's timer in the test's hand: a real
 // timer is returned so Stop can be observed, and its duration is a day so only
 // trigger fires the callback.

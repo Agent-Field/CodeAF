@@ -544,6 +544,12 @@ func (c Config) instructionLimit() int {
 // than a named file, so a project that has only CLAUDE.md still gets its rules.
 func (c Config) onlyOneInstructionFile() bool { return c.promptProfile().lean() }
 
+// LeanWindow is [leanWindowThreshold] for a caller outside this package: the
+// window under which a model is given the lean prefix, in tokens. The desktop
+// app's model list says which models fall under it, and it reads the line here
+// so the warning and the prefix cannot come to disagree.
+func LeanWindow() int { return leanWindowThreshold }
+
 // takesNoTools says the catalog knows this model and says it takes no tool
 // calls — the same test internal/provider's toolless.go leaves the tools off
 // by. Unknown is false: a model nobody has described keeps the working page.
