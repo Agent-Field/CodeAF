@@ -1,0 +1,109 @@
+{
+  "id": "01KAVYH000C0DEAF0000000002",
+  "name": "Sheets",
+  "version": 1,
+  "kit": 2,
+  "agent": {"name": "Sheets agent", "file": "agent.md"},
+  "records": {
+    "sheets_worksheet": {
+      "label": "Worksheet",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext",
+          "label": "Cells",
+          "default": ""
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "sheets_worksheet": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New worksheet",
+      "do": [
+        {
+          "records.create": {
+            "type": "sheets_worksheet",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "sheets_worksheet",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "sheets_worksheet"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "sheets_worksheet",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "sheets_worksheet"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "sheets_worksheet",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "share": {
+      "label": "Copy CSV",
+      "format": "csv",
+      "record": "sheets_worksheet",
+      "table": "body"
+    },
+    "csv": {
+      "label": "Export CSV",
+      "format": "csv",
+      "record": "sheets_worksheet",
+      "table": "body"
+    }
+  }
+}

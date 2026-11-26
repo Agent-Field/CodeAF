@@ -396,7 +396,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
 | `data.unsubscribe` | `{sub}` | `Empty` |
 | `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
-| `data.view.query` | `{app?,draft?,screen,view,args?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. The data policy and field masks apply to the returned rows. |
+| `data.view.query` | `{app,draft?,screen,view,args?,query?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. Optional lens tokens add filters or change the order before the view's window limit. Grouped row views include their grouping fields. Data policy and field masks apply to all returned fields. |
 | `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
 | `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
 | `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
@@ -1955,6 +1955,15 @@ removes them. The engine keeps them in memory for its lifetime and the chat's
 | `media.list` | `{agent, cursor, limit}` | `MediaPage` |
 | `media.resolve` | `{agent, expect_version, path}` | `MediaResult` |
 
+## meetings methods
+
+| method | params | result |
+|---|---|---|
+| `meetings.starting` | `{}` | `{meetings:[{id,title}]}` for starting conferences mirrored to the local app store. |
+| `meetings.notes` | `{transcript,person_notes,previous?,calendar_event?}` | `{summary,decisions,tasks,subject,draft}` from the configured model under PII destination policy. |
+| `meetings.transcribe` | `{wave}` | `{text}` from the approved voice model. The base64 WAV contains at most 480,044 decoded bytes. |
+| `meetings.ingest` | `{id,title,started_at,ended_at,attendees?,calendar_event?,transcript,person_notes,notes,kept_audio}` | `{meeting,transcript,tasks}`. A retry with the same capture ID returns the original links. |
+
 ## members methods
 
 | method | params | result |
@@ -3221,6 +3230,7 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.list` | `{}` | `{apps:[{id,name,icon,version,updated_at,status}]}`. Status is `active`, `archived`, or `broken`. Deleted apps are omitted. |
 | `apps.get` | `{app}` | `{meta,app,plan,screens:[ids],runs:[ids],agent_md}` for the same checked version. Falls back to the newest valid saved version when needed. |
 | `apps.screen` | `{app,screen}` | `{screen}` containing the screen JSON from the live checked version. |
+| `apps.content.read` | `{app,draft?,ref}` | `{text}` for a saved `docs/*.md` or `plan/*.json` file in the checked app or its draft. |
 | `apps.versions` | `{app}` | `{versions:[{n,at,request,summary}]}`, newest first. |
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
@@ -3342,9 +3352,14 @@ same notice. A structurally valid app can be applied.
 | `apps.render` | `{app,output,record?,inbox?}` | A saved file receipt. The engine uses the kept app's named output template and reads its declared record or query under the app's data grants. |
 | `apps.outputs` | `{app,inbox?,run?,before?}` | `{items,next?}`. Use `inbox:true` to list digest deliveries. Pass `next` as `before` to continue. |
 | `apps.output_file` | `{app,id}` | `{file,content}`. Content is the saved file as base64, up to 8 MiB before encoding. The ID is the saved receipt's ID. |
+| `apps.worksheet_window` | `{app,draft?,type,id,field,row,column,rows,columns,pin?}` | `{revision,total,columns,rows,columnIndexes}` for a scoped worksheet field. Offsets are zero-based. Pin includes row and column zero for ranges scrolled past them. Each cell may carry its formula, calculated value or issue. |
 
 A receipt carries `id`, `app`, `action`, `version`, `name`, `mime`, `blob`,
 `source_type`, `matched`, `actor`, `actor_kind`, and `at`. Record output receipts
 also carry `sources:[{id,rev}]` when rows were rendered. Run receipts add `run`
 and `step`. An inbox delivery has `inbox:true`. Refresh the receipt list on
 `apps.output_added` for the displayed app.
+
+The `txt` format returns the merged body as UTF-8 plain text. A screen can
+add `clipboard: true` to a `render` Action for `txt` or `csv`. Desk copies the
+same scoped file that `apps.output_file` returns.

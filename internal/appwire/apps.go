@@ -3,7 +3,9 @@ package appwire
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -38,6 +40,9 @@ func resolveAppRecords(e Engine, raw json.RawMessage, draft string) (map[string]
 }
 
 type (
+	appContentReadResult struct {
+		Text string `json:"text"`
+	}
 	appKitParams struct {
 		Kit *int `json:"kit,omitempty"`
 	}
@@ -80,6 +85,11 @@ var appMethods = map[string]method{
 		defs, ok := e.(AppDefinitions)
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
+		}
+		if installer, ok := e.(interface{ InstallDefaultApps() error }); ok {
+			if err := installer.InstallDefaultApps(); err != nil {
+				return nil, buildError(err)
+			}
 		}
 		apps, err := defs.AppDefinitions().List()
 		if err != nil {
@@ -133,6 +143,39 @@ var appMethods = map[string]method{
 		}
 		parts, err := d.ScreenParts(raw)
 		return &appScreenResult{Screen: raw, CustomParts: parts}, buildError(err)
+	}),
+	"apps.content.read": typed(func(e Engine, p struct {
+		App   string `json:"app"`
+		Draft string `json:"draft,omitempty"`
+		Ref   string `json:"ref"`
+	}) (*appContentReadResult, error) {
+		// Only display documents and plans are part of the content reader.
+		dir, file, ok := strings.Cut(p.Ref, "/")
+		if !ok || strings.Contains(file, "/") ||
+			!(dir == "docs" && strings.HasSuffix(file, ".md") || dir == "plan" && strings.HasSuffix(file, ".json")) {
+			return nil, buildError(store.ErrNotFound)
+		}
+		if p.Draft != "" {
+			jobs, err := openBuilds(e)
+			if err != nil {
+				return nil, err
+			}
+			text, err := jobs.ViewContent(p.App, p.Draft, p.Ref)
+			return &appContentReadResult{Text: text}, buildError(err)
+		}
+		defs, ok := e.(AppDefinitions)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app content.")
+		}
+		def, err := defs.AppDefinitions().Get(p.App)
+		if err != nil {
+			return nil, buildError(err)
+		}
+		text, found := def.Files()[p.Ref]
+		if !found {
+			return nil, buildError(store.ErrNotFound)
+		}
+		return &appContentReadResult{Text: text}, nil
 	}),
 	"apps.versions": appCall(func(s *store.Store, p appParams) (*appVersionsResult, error) {
 		versions, err := s.Versions(p.App)
@@ -197,28 +240,37 @@ var appMethods = map[string]method{
 			store := defs.AppDefinitions()
 			parts, _ := store.KitParts()
 			steps, _ := store.KitSteps()
-			if len(parts) != 0 || len(steps) != 0 {
-				var catalog map[string]json.RawMessage
-				if err := json.Unmarshal(raw, &catalog); err != nil {
-					return nil, err
-				}
-				var err error
-				if len(parts) > 0 {
-					catalog["custom_parts"], err = json.Marshal(parts)
-					if err != nil {
-						return nil, err
-					}
-				}
-				if len(steps) > 0 {
-					catalog["custom_steps"], err = json.Marshal(steps)
-					if err != nil {
-						return nil, err
-					}
-				}
-				raw, err = json.Marshal(catalog)
+			archives, err := apppackage.Builtins()
+			if err != nil {
+				return nil, err
+			}
+			templates := make([]apppackage.Manifest, 0, len(archives))
+			for _, archive := range archives {
+				templates = append(templates, archive.Manifest)
+			}
+			var catalog map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &catalog); err != nil {
+				return nil, err
+			}
+			catalog["app_templates"], err = json.Marshal(templates)
+			if err != nil {
+				return nil, err
+			}
+			if len(parts) > 0 {
+				catalog["custom_parts"], err = json.Marshal(parts)
 				if err != nil {
 					return nil, err
 				}
+			}
+			if len(steps) > 0 {
+				catalog["custom_steps"], err = json.Marshal(steps)
+				if err != nil {
+					return nil, err
+				}
+			}
+			raw, err = json.Marshal(catalog)
+			if err != nil {
+				return nil, err
 			}
 		}
 		return &raw, nil

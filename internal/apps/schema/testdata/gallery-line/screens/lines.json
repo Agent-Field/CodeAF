@@ -1,0 +1,274 @@
+{
+  "screen": "lines",
+  "title": "Live",
+  "nav": {
+    "part": "SectionTabs",
+    "id": "navigation",
+    "label": "Work views",
+    "props": {
+      "items": [
+        {
+          "screen": "lines",
+          "label": "Live"
+        },
+        {
+          "screen": "handover",
+          "label": "Handover"
+        },
+        {
+          "screen": "shifts",
+          "label": "Shifts"
+        }
+      ]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "id": "dashboard",
+    "props": {
+      "gap": 2
+    },
+    "children": [
+      {
+        "part": "Text",
+        "id": "shift-title",
+        "props": {
+          "text": "This shift \u00b7 Line 4 running",
+          "size": "large",
+          "tone": "primary"
+        }
+      },
+      {
+        "part": "Row",
+        "id": "shift-workspace",
+        "props": {
+          "align": "start"
+        },
+        "children": [
+          {
+            "part": "Stack",
+            "id": "measurements",
+            "props": {
+              "gap": 2
+            },
+            "children": [
+              {
+                "part": "Row",
+                "id": "shift-kpis",
+                "props": {
+                  "gap": 2
+                },
+                "children": [
+                  {
+                    "part": "Chart",
+                    "id": "oee",
+                    "props": {
+                      "kind": "metric",
+                      "title": "OEE",
+                      "y": "oee",
+                      "format": "percent",
+                      "target": 0.85
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "oee"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "good_parts",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Good parts",
+                      "y": "good_parts",
+                      "target": 1400
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "good_parts"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "scrap",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Scrap",
+                      "y": "scrap",
+                      "format": "percent",
+                      "limit": 0.01
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "scrap"
+                    }
+                  },
+                  {
+                    "part": "Chart",
+                    "id": "minutes",
+                    "props": {
+                      "kind": "metric",
+                      "title": "Downtime (min)",
+                      "y": "minutes"
+                    },
+                    "bind": {
+                      "records": "line",
+                      "view": "minutes"
+                    }
+                  }
+                ]
+              },
+              {
+                "part": "Chart",
+                "id": "pressure",
+                "props": {
+                  "kind": "line",
+                  "title": "Press 4 \u00b7 hydraulic pressure (bar)",
+                  "x": "reading",
+                  "y": "pressure"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "pressure"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "temp",
+                "props": {
+                  "kind": "line",
+                  "title": "Trim station \u00b7 die temperature (\u00b0C)",
+                  "x": "reading",
+                  "y": "temp"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "temp"
+                }
+              }
+            ]
+          },
+          {
+            "part": "Stack",
+            "id": "shift-notes",
+            "props": {
+              "gap": 2
+            },
+            "children": [
+              {
+                "part": "Timeline",
+                "label": "Shift plan",
+                "props": {
+                  "view": "shifts"
+                },
+                "bind": {
+                  "content-part": "plan/shifts.json"
+                },
+                "id": "timeline"
+              },
+              {
+                "part": "Text",
+                "label": "Handover notes",
+                "props": {},
+                "bind": {
+                  "content-part": "docs/handover.md"
+                },
+                "id": "text"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "oee": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Shift summary"
+        }
+      ],
+      "aggregate": [
+        {
+          "op": "sum",
+          "field": "oee",
+          "as": "result"
+        }
+      ]
+    },
+    "good_parts": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Shift summary"
+        }
+      ],
+      "aggregate": [
+        {
+          "op": "sum",
+          "field": "good_parts",
+          "as": "result"
+        }
+      ]
+    },
+    "scrap": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Shift summary"
+        }
+      ],
+      "aggregate": [
+        {
+          "op": "sum",
+          "field": "scrap",
+          "as": "result"
+        }
+      ]
+    },
+    "minutes": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Shift summary"
+        }
+      ],
+      "aggregate": [
+        {
+          "op": "sum",
+          "field": "minutes",
+          "as": "result"
+        }
+      ]
+    },
+    "pressure": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Measurement"
+        }
+      ]
+    },
+    "temp": {
+      "type": "line",
+      "filter": [
+        {
+          "field": "kind",
+          "op": "eq",
+          "value": "Measurement"
+        }
+      ]
+    }
+  }
+}
