@@ -62,7 +62,8 @@ no access to your records.
 ## Change an app, try an earlier step and keep the change
 
 Open **Edit app** and say what to change. Select an element in the preview
-to ask about that exact part. Use an earlier step in the conversation to
+to ask about that exact part. The saved mark keeps the selected node ID and
+checkpoint. Use an earlier step in the conversation to
 preview it or choose **Go back to this** to put it back as a new step.
 **Apply** publishes the checked files as the next version. **Discard**
 drops the unpublished change and returns to your saved app.
@@ -128,7 +129,8 @@ items, multistep forms, due timers and process templates. Executing a declared
 process depends on the corresponding data and run support.
 
 For kit 2, put connector operations that leave the machine in an approved
-run step. A screen can start the run and show its approval card.
+run step. A screen can start the run. Open its approval from Inbox to approve or
+decline the run.
 
 ## Subscribe to record changes and refetch after reset
 
