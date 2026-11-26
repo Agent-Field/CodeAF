@@ -170,7 +170,8 @@ type googleEffect struct {
 
 func (s Service) prepareGoogleEffect(c registration, read Read, write Write, operation string, args map[string]any,
 	store *data.Store, binding data.TypeBinding, typ *data.Type) (*Effect, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
 	source, grant, err := s.workspace(ctx, c, read.Table, false)
 	if err != nil {
 		return nil, err

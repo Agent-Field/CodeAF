@@ -409,15 +409,14 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			return Page{}, err
 		}
 	}
-	if c.Kind == Google && read.GoogleLimit > 0 && q.Limit >= read.GoogleLimit {
-		// The operator defined a bounded source object, so rows beyond
-		// that window are outside the app's declared dataset.
-		more = false
-	}
+
 	page := Page{
 		HasMore: more,
 		Rows:    make([]data.Row, 0, min(len(rows), q.Limit)),
 		Source:  Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
+	}
+	if c.Kind == Google && read.GoogleLimit != 0 && q.id == "" {
+		page.Source.Window = window
 	}
 	seen := map[string]bool{}
 	names := slices.Sorted(maps.Keys(fields))
@@ -497,6 +496,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		row["id"] = id
 		page.Rows = append(page.Rows, row)
 	}
+	page.Source.Partial = page.HasMore
 	// TODO(R1): use the same binding when the type gains a mirror or native
 	// route. A live read persists only the crosswalk, never source values.
 	if read.Residency != nil {

@@ -319,7 +319,13 @@ func TestGoogleReferenceProjectionResolvesLinkedPeopleAndAttachments(t *testing.
 	if err != nil || doc["title"] != "agenda.pdf" {
 		t.Fatalf("attachment %+v %v", doc, err)
 	}
-	if err := service.LinkGoogleIdentities(ctx, query); err != nil {
+	if err := service.LinkGoogleIdentities(ctx, query); !errors.Is(err, ErrSourcePermission) {
+		t.Fatalf("fixture identities must not enter the live crosswalk: %v", err)
+	}
+	if _, found, err := db.LookupIdentity(googleIdentityKey("email", "ari@example.com")); err != nil || found {
+		t.Fatalf("the test read created an identity: found=%v err=%v", found, err)
+	}
+	if _, err := db.LinkIdentity(data.CommonPerson, googleIdentityKey("email", "ari@example.com"), ""); err != nil {
 		t.Fatal(err)
 	}
 	page, err = service.Read(ctx, query)

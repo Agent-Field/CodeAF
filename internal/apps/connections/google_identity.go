@@ -129,7 +129,7 @@ func (s Service) LinkGoogleIdentities(ctx context.Context, q Query) error {
 		return err
 	}
 	read, ok := c.Reads[q.Read]
-	if c.Kind != Google || !ok || !read.GoogleLinkIdentities {
+	if c.Kind != Google || c.GoogleFixture || !ok || !read.GoogleLinkIdentities {
 		return ErrSourcePermission
 	}
 	store, _, typ, err := s.bind(c.Config, read, false)

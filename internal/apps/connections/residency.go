@@ -478,6 +478,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 		}
 		scans = append(scans, scan)
 		source, versions = scan.Source, sourceVersions(scan.Rows)
+		if scan.Source.Partial && (len(ir.Aggregate) != 0 || len(dependencies) != 0) {
+			return ir, Source{}, nil, fmt.Errorf("%w: the source window cannot produce complete totals or relations", ErrTooLarge)
+		}
 	}
 	for _, id := range dependencies {
 		relation, err := s.route(app, id)
@@ -493,6 +496,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 			if err != nil {
 				return ir, Source{}, nil, err
 			}
+			if scan.Source.Partial {
+				return ir, Source{}, nil, fmt.Errorf("%w: the source window cannot produce complete related records", ErrTooLarge)
+			}
 			scans = append(scans, scan)
 			relatedSource = scan.Source
 		}
@@ -507,7 +513,7 @@ func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, fil
 	if err != nil {
 		return data.SourceScan{}, err
 	}
-	if page.HasMore {
+	if page.HasMore && (r.config.Kind != Google || r.read.GoogleLimit == 0) {
 		return data.SourceScan{}, ErrTooLarge
 	}
 	return data.SourceScan{Type: typ, Rows: page.Rows, Source: page.Source}, nil

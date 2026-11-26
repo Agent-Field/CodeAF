@@ -71,7 +71,9 @@ Use `codeaf app connections register CONFIG.json` with `kind: "google"`,
 `credential_mode: "person"` and a kept app's ID. Set a read's `table` to
 `gmail`, `calendar`, `drive`, `transcripts`, or `attachments`, `key` to
 `id` and `fields` to your record-field mapping. `google_limit` declares
-a bounded slice of at most 100 source records. Use `version` as the
+a bounded slice of at most 100 source records. When more results exist, the
+source reports the window as partial and declines totals and joins that
+would require the missing records. Use `version` as the
 version property when a Calendar update needs an expected version.
 
 For draft Preview and Check, the binding uses Google-shaped fixtures instead
