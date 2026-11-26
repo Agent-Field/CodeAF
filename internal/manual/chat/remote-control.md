@@ -74,6 +74,14 @@ While two of your computers connect directly, each learns the other's network ad
 
 `CODEAF_REMOTE_STUN` replaces the two servers with your own, as a comma list of `host:port`, and `off` asks none, which still connects two computers on one network. Turning remote control off turns all of this off.
 
+## Remote control and my organization — does it work for my organization's chats, hosted chats, shared chats, my team, several of my computers in an organization
+
+Remote control is for the chats **your own computers** run. An organization's chats are not those. A chat in an organization's account runs on the organization's own server, and every window of it, on this computer, on another of your computers or in the desktop app, connects to that server and not to your other computers. So the switch under **Settings** and the `w` and `t` switches in `/devices` do not apply to them, turning remote control off does not close a window on one, and a chat in your personal account is never listed in an organization's account or the other way round.
+
+What a person may do in an organization's chat is set per chat, by sharing it. Its owner may do everything. Someone it is shared with watches it live, and types, steers or answers only if their role holds `run`, `steer` or `answer`; the page *what can someone I shared my hosted chat with do* has the list. A person your chat is shared with is not one of your paired computers and cannot open your other chats.
+
+Several of your computers can have the same organization chat open. Each is a window, one of them has the keyboard and the others read `typing from <name> now · enter types here`, the same rule as *Who has the keyboard*: the window that opened last takes it, and `enter` in another takes it back. In a chat shared with people the name is the person's, as the organization knows them. Which server carries the live views between your own computers is chosen the way pairing chooses it (`CODEAF_SYNC_URL`, or the address a pairing saved), and every computer you pair has to use the same one; joining an organization does not change that.
+
 ## Who has the keyboard — two computers on one chat, take the keyboard, typing from another computer
 
 Only one computer types into a live chat at a time. The other one shows:

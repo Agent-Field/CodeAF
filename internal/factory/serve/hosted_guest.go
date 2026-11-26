@@ -157,7 +157,7 @@ func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item I
 		defer cancel()
 		p.fromHost()
 	})
-	p.fromClient(func(method, class string) {
+	p.fromClient(hostedGuestLabel(v), func(method, class string) {
 		h.noteHostedGuestCall(item.ID, owner, v.Handle, method, class)
 	})
 	cancel()
@@ -238,7 +238,7 @@ func (p *hostedGuest) fromHost() {
 	}
 }
 
-func (p *hostedGuest) fromClient(forwarding func(method, class string)) {
+func (p *hostedGuest) fromClient(label string, forwarding func(method, class string)) {
 	reader := bufio.NewReader(p.client)
 	var hello bool
 	for {
@@ -258,7 +258,7 @@ func (p *hostedGuest) fromClient(forwarding func(method, class string)) {
 		var frame remote.Frame
 		err = json.Unmarshal(line, &frame)
 		if !hello {
-			if err != nil || frame.Kind != "hello" || !rewriteHostedGuestHello(&frame) {
+			if err != nil || frame.Kind != "hello" || !rewriteHostedGuestHello(&frame, label) {
 				p.fatal(hostedGuestBadHello)
 				return
 			}
@@ -317,7 +317,17 @@ func hostedGuestRefusal(class string, verbs acl.VerbSet) string {
 	return ""
 }
 
-func rewriteHostedGuestHello(frame *remote.Frame) bool {
+// hostedGuestLabel is the name every other window of a chat reads for a guest's window: "typing from santosh". It is
+// the person as this server knows them and never a word the guest's own computer chose, so a guest cannot appear to be
+// the owner or another member. A bot reads as its creator's bot, because that is whose rights it holds.
+func hostedGuestLabel(v Viewer) string {
+	if v.Agent != nil {
+		return v.Handle + "'s bot"
+	}
+	return v.Handle
+}
+
+func rewriteHostedGuestHello(frame *remote.Frame, label string) bool {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(frame.Payload, &fields) != nil || fields == nil {
 		return false
@@ -329,7 +339,9 @@ func rewriteHostedGuestHello(frame *remote.Frame) bool {
 		return false
 	}
 	// The engine accepts case variants of its JSON fields, so discard those too.
-	replaced := []string{"launch", "model", "level", "workspace", "session", "new", "join", "holdInterruptedWork", "window", "back", "clientID"}
+	// Remote is what the door that authenticated a viewer of one person's own computers stamps on its hello, and surface is
+	// the name the other windows read for this one: neither is ever a guest's to say.
+	replaced := []string{"launch", "model", "level", "workspace", "session", "new", "join", "holdInterruptedWork", "window", "back", "clientID", "remote", "surface"}
 	for field := range fields {
 		for _, name := range replaced {
 			if strings.EqualFold(field, name) {
@@ -341,6 +353,9 @@ func rewriteHostedGuestHello(frame *remote.Frame) bool {
 	// The allow-list protects this wire. Setting watch would hide transcripts and most other reads.
 	fields["back"] = json.RawMessage("true")
 	fields["clientID"], _ = json.Marshal("guest:" + window.ClientID)
+	if label != "" {
+		fields["surface"], _ = json.Marshal(label)
+	}
 	frame.Payload, _ = json.Marshal(fields)
 	return true
 }
