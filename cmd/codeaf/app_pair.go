@@ -396,7 +396,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		asking, err := who.Look(o.ctx, ref)
 		if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
 			// An approval whose reply was lost: the device is in, so this computer is shared.
-			if err := identity.EndSolo(dir); err != nil {
+			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 				return err, false
 			}
 			record()
@@ -408,7 +408,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		}
 		label := pair.ComputerLabel(asking.Name, asking.Platform)
 		o.line(appPairApproveTitle(label))
-		answer := o.ask(o.ctx, "approve", appPairApproveTitle(label), appPairCheck(asking.Check), pairApprovalOptions())
+		answer := o.ask(o.ctx, "approve", appPairApproveTitle(label), appPairCheck(label, asking.Check), pairApprovalOptions())
 		if answer != "y" {
 			if o.ctx.Err() != nil {
 				return o.ctx.Err(), false
@@ -423,7 +423,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 				return err, false
 			}
 		}
-		if err := identity.EndSolo(dir); err != nil {
+		if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 			return err, false
 		}
 		record()
@@ -447,7 +447,7 @@ func (o *appPairOperation) Show(code *pair.Code, lines string) {
 func (o *appPairOperation) Burned() { o.line(appPairBurned) }
 func (o *appPairOperation) Ask(ctx context.Context, label, words string) bool {
 	o.update(func(p *appwire.Pairing) { p.Words = words })
-	return o.ask(ctx, "approve", appPairApproveTitle(label), appPairWords(words), pairApprovalOptions()) == "y"
+	return o.ask(ctx, "approve", appPairApproveTitle(label), appPairWords(label, words), pairApprovalOptions()) == "y"
 }
 func (o *appPairOperation) Waiting(words string) {
 	o.update(func(p *appwire.Pairing) {

@@ -1,11 +1,11 @@
 # Commands you type in a terminal
 
-## codeaf cluster status when the sync service cannot be reached
+## codeaf cluster status when the relay cannot be reached
 
 If the service cannot be reached, `codeaf cluster status` exits with a failure
 status and uses the same sentence as `codeaf devices`:
-`the sync service at <address> cannot be reached from here — check this computer's network`.
-The address is your configured sync service. Check this computer's network
+`the relay at <address> cannot be reached from here — check this computer's network`.
+The address is your configured relay. Check this computer's network
 and that the service is running, then try the command again.
 
 ## Is there a newer version — update codeaf — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
@@ -806,7 +806,7 @@ be read. A wrong passphrase and a damaged blob get the same refusal.
 computer you keep: a new root, every chat and your saved keys sealed again under it, and the
 old identity deleted by the relay after the grace period. It is how a lost computer is locked
 out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
-switched yet. With hosted sync storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
+switched yet. With hosted relay storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
 
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
@@ -822,10 +822,10 @@ each: id, title, device, where it runs (`working on <device>`, `held on <device>
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
-`sync is off: set CODEAF_SYNC_URL to your sync service's address` and lists nothing. With a relay
+`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
-other machines cannot be reached it starts with `the sync service is not answering`.
+other machines cannot be reached it starts with `the relay is not answering`.
 
 ## A different sync setting on an existing engine
 
@@ -837,7 +837,7 @@ Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different rel
 
 ## Sync your chats between machines — what is CODEAF_SYNC_URL, and CODEAF_SYNC_INTERVAL_MS
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -846,7 +846,7 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 These environment settings are not rows in `/settings`. `CODEAF_SYNC_URL=off` stops relay
 traffic; new chats still keep their local cells.
 
-## What is CODEAF_SYNC_URL — the sync service address or off
+## What is CODEAF_SYNC_URL — the relay address or off
 
 **`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
 Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
@@ -873,12 +873,12 @@ show your chats on the other machines once both machines share an identity and t
 
 ## Why did my tool call not run after I continued the chat on my laptop — closing the chat, the view-only window, kept branch and clock warning
 
-With sync on, the chat you are typing in sends each saved turn to your sync service, and by default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`) holds the chat for this machine while it is open. Closing the chat sends what is left and lets go of it, and with `idle handoff` on in two or more paired machines an idle chat also lets go of its hold about 2 seconds after it goes idle once everything is saved, so another machine can continue it (or with `idle handoff` on open it directly on Home or through `agents.open` with no Continue-here step). New work in the window that released it takes it back in place if nobody else took it; unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open. If this machine sleeps or loses its connection while still holding the chat, presence stops answering; the other machines mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds (after which another paired machine still asks Continue here, including when the holder was working; a window whose hold merely lapsed admits nothing until you reopen or continue it).
+With sync on, the chat you are typing in sends each saved turn to your relay, and by default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`) holds the chat for this machine while it is open. Closing the chat sends what is left and lets go of it, and with `idle handoff` on in two or more paired machines an idle chat also lets go of its hold about 2 seconds after it goes idle once everything is saved, so another machine can continue it (or with `idle handoff` on open it directly on Home or through `agents.open` with no Move-here step). New work in the window that released it takes it back in place if nobody else took it; unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open. If this machine sleeps or loses its connection while still holding the chat, presence stops answering; the other machines mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds (after which another paired machine still asks Move here, including when the holder was working; a window whose hold merely lapsed admits nothing until you reopen or continue it).
 You do not have to wait for expiry while a hold is still live: press enter on a chat that says `working on <device>`, `held on <device>` or `<device> offline` on another
-machine and choose **Move here** / **Continue here**, and it is taken at once (see "Continue a chat here that another
+machine and choose **Move here**, and it is taken at once (see "Move a chat here that another
 machine left" in home).
 
-When another machine does, this window says `<device> continued this chat. This copy is read-only and may be behind`,
+When another machine does, this window says `<device> moved this chat. This copy is read-only and may be behind`,
 with the name of the machine that took over (or the first digits of its id when it has no name). From then on
 this window now only shows it: a tool call the model tries here answers with that same line and does
 not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
@@ -903,7 +903,7 @@ Each time a conversation is synced to another machine, codeaf adds one line of c
 machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush
 carried, how many bytes went up and came down, and how many put, get and has requests it made. Requests that
 no flush carries are counted too, in a line with a dash for its turn: what it cost to fetch a conversation
-when you continue it here, and what a publish that failed had already sent. Sending your secrets along with
+when you move it here, and what a publish that failed had already sent. Sending your secrets along with
 a conversation is counted apart, in `v3/sync/stats/vault.jsonl`, because it serves every conversation. A line holds
 counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
 

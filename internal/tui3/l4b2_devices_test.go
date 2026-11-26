@@ -86,7 +86,7 @@ func TestL4B2DeviceListsAgree(t *testing.T) {
 	c := a.pair.card.(*deviceCard)
 	listFrame := plain(frame(a))
 	text := plain(strings.Join(c.rows(160, now, a.pal), "\n"))
-	if !strings.Contains(text, "sync service: 127.0.0.1:8901 (your own)") || !strings.Contains(text, addDeviceWord) {
+	if !strings.Contains(text, "relay: 127.0.0.1:8901 (your own)") || !strings.Contains(text, addDeviceWord) {
 		t.Fatal(text)
 	}
 	a.pair.close()
@@ -99,7 +99,7 @@ func TestL4B2DeviceListsAgree(t *testing.T) {
 			t.Fatalf("device row differs between the actual screens: %q\n%s", words, plain(frame(a)))
 		}
 	}
-	if !strings.Contains(plain(frame(a)), "sync service: 127.0.0.1:8901 (your own)") {
+	if !strings.Contains(plain(frame(a)), "relay: 127.0.0.1:8901 (your own)") {
 		t.Fatal("settings omitted the service")
 	}
 }

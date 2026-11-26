@@ -24,7 +24,7 @@ func TestD6EarlyBringWaitsForTheCatalog(t *testing.T) {
 	}
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{{Cell: "d6", Title: "arrived", Device: "tower", DeviceID: "dev_tower", Status: chatlist.Running}}})
 	ask, ok := a.homeAsking()
-	if !ok || !strings.Contains(ask.question.Head, "Continue this chat here?") {
+	if !ok || !strings.Contains(ask.question.Head, "Move this chat here?") {
 		t.Fatalf("arrival never offered confirmation: %+v", ask)
 	}
 	if a.devRow.bringPending {

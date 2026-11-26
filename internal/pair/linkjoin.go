@@ -211,6 +211,7 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 			return LinkJoined{Joined: joined}, err
 		}
 		joined.Already = false
+		stampJoin(g.Identity.ID())
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {

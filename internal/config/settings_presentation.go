@@ -14,6 +14,25 @@ type SettingPresentation struct {
 	Activation  string
 }
 
+// THE RETIRED SPELLINGS THE SETTINGS SEARCH STILL ANSWERS TO, written in this one
+// place. A person who learned "continue here" or "sync storage" types the word
+// they remember into the search box and finds the row it named; the word is
+// matched and NEVER DRAWN, so no screen says it. internal/wordlaw reads this
+// file as its one exception to "no string a person reads says a retired
+// spelling", and every other file that wants one of these words names it
+// through this list.
+const (
+	// LegacyContinueHere is what carrying a chat from another computer to this
+	// one was called until 2026-11-23, when the act became "Move here".
+	LegacyContinueHere = "continue here"
+	// LegacySyncStorage is what the Devices row for the relay's storage was
+	// called until 2026-11-23, when it became "relay storage".
+	LegacySyncStorage = "sync storage"
+)
+
+// LegacyWords lists every retired spelling the search accepts, in one slice.
+var LegacyWords = []string{LegacyContinueHere, LegacySyncStorage}
+
 // ChatPresentation is a pure view of a setting, never a configuration migration.
 // Empty Label or Description lets a surface retain its existing wording. Timing
 // is stated only where the consumer establishes it; no blanket "applies now".
@@ -57,6 +76,12 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyIcons:
 		p.Label = "tool icons"
 	case KeyTeamsShare:
+		p.Scope = "This computer"
+		p.Activation = "Applies immediately"
+	case KeyRemoteControl:
+		// IT SITS ON THE DEVICES TAB, beside the computers it is about, and not on
+		// General with the other interface rows its registry category would give it.
+		p.Category, p.Label = "Devices", "remote control"
 		p.Scope = "This computer"
 		p.Activation = "Applies immediately"
 	case KeyTaskColumn:
@@ -232,7 +257,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyHistoryEnabled, KeyDraftPersist:
 		p.Aliases = append(p.Aliases, "privacy", "saved messages")
 	case KeyIdleHandoff:
-		p.Aliases = append(p.Aliases, "handoff", "idle release", "continue here", "other computers", "sync")
+		p.Aliases = append(p.Aliases, "handoff", "idle release", "move here", LegacyContinueHere, "other computers", "sync")
+	case KeyRemoteControl:
+		p.Aliases = append(p.Aliases, "other computer", "type from another computer", "drive")
 	}
 	return p
 }

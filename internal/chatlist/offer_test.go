@@ -11,8 +11,8 @@ func TestOfferCopy(t *testing.T) {
 		row  Row
 		want Offer
 	}{
-		{Row{Status: Off, Device: "host-a"}, Offer{ContinueHere, "continue here"}},
-		{Row{Status: Running, Device: "host-a"}, Offer{ContinueHere, "continue here"}},
+		{Row{Status: Off, Device: "host-a"}, Offer{ContinueHere, "move here"}},
+		{Row{Status: Running, Device: "host-a"}, Offer{ContinueHere, "move here"}},
 		{Row{Status: Branch, Device: "host-a", OrphanTurns: 3}, Offer{Merge, "3 turns from host-a: merge / discard"}},
 		{Row{Status: Idle}, Offer{Kind: Open}},
 		{Row{Status: Here}, Offer{Kind: Open}},
@@ -82,12 +82,12 @@ func TestFrozenSentences(t *testing.T) {
 	if got := KeptEdits(2, "host-a"); got != "your unsaved edits here were kept as 2 turns from host-a" {
 		t.Error(got)
 	}
-	if got := Superseded("host-a"); got != "host-a continued this chat. This copy is read-only and may be behind" {
+	if got := Superseded("host-a"); got != "host-a moved this chat. This copy is read-only and may be behind" {
 		t.Error(got)
 	}
 	for got, want := range map[string]string{
 		NoIdentity:       "this machine has no identity yet: codeaf identity import",
-		Unreachable:      "the sync service is not answering",
+		Unreachable:      "the relay is not answering",
 		ClockOff:         "this computer's clock is off by more than 5 minutes",
 		ReplacedGone:     "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)",
 		Replaced:         "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)",
@@ -165,5 +165,36 @@ func TestTooManyNewNamesWhenTheDayFreesUp(t *testing.T) {
 func TestEarlierRemovedNoticeIsStillARemoval(t *testing.T) {
 	if !IsRemovedNotice(earlierRemoved) || !IsRemovedNotice(Removed) || earlierRemoved == Removed {
 		t.Fatal("removal notices from before --replace are no longer recognised")
+	}
+}
+
+// V27 (Part 4): an offline row says when its holder was last seen only when
+// HolderSeen is non-zero, and a zero timestamp renders as nothing.
+func TestAnOfflineRowSaysWhenItWasLastSeenOnlyWhenKnown(t *testing.T) {
+	now := time.Date(2026, time.November, 23, 16, 30, 0, 0, time.Local)
+	seenToday := time.Date(2026, time.November, 23, 14, 2, 0, 0, time.Local)
+	seenEarlier := time.Date(2026, time.January, 2, 14, 2, 0, 0, time.Local)
+
+	unknown := Row{Status: Off, Device: "tower"}
+	if got, want := StatusLineAt(unknown, now), "tower offline"; got != want {
+		t.Fatalf("offline row with unknown HolderSeen = %q, want %q", got, want)
+	}
+	if got, want := StatusLine(unknown), "tower offline"; got != want {
+		t.Fatalf("StatusLine with unknown HolderSeen = %q, want %q", got, want)
+	}
+
+	knownToday := Row{Status: Off, Device: "tower", HolderSeen: seenToday}
+	if got, want := StatusLineAt(knownToday, now), "tower offline · last seen 14:02"; got != want {
+		t.Fatalf("offline row with today HolderSeen = %q, want %q", got, want)
+	}
+
+	knownEarlier := Row{Status: Off, Device: "tower", HolderSeen: seenEarlier}
+	if got, want := StatusLineAt(knownEarlier, now), "tower offline · last seen 2 Jan 14:02"; got != want {
+		t.Fatalf("offline row with earlier HolderSeen = %q, want %q", got, want)
+	}
+
+	running := Row{Status: Running, Device: "tower", HolderSeen: seenToday}
+	if got, want := StatusLineAt(running, now), "held on tower"; got != want {
+		t.Fatalf("running row with HolderSeen = %q, want %q", got, want)
 	}
 }

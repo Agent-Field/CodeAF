@@ -481,6 +481,11 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 			return appwire.Settings{}, err
 		}
 	}
+	if patch.RemoteControl != nil {
+		if err := remoteControlFree(profile); err != nil {
+			return appwire.Settings{}, err
+		}
+	}
 	if patch.WhenPlanPaused != nil {
 		if err := b.setPlanPaused(patch.WhenPlanPaused); err != nil {
 			return appwire.Settings{}, err

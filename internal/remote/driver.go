@@ -36,6 +36,7 @@ package remote
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -90,11 +91,67 @@ func machineLabel(said string) string {
 // room means writing to other connections and no session lock may be held across
 // a write to a pipe that might be slow.
 func (sess *Session) takeLocked(s *server) bool {
+	// A TAKE, OF ANY KIND, ENDS A KEPT KEYBOARD: whoever holds it now holds it
+	// because somebody chose that, and no returning viewer may undo a choice.
+	sess.kept = nil
 	if sess.driver == s {
 		return false
 	}
 	sess.driver = s
 	return true
+}
+
+// keyboardKeepFor is how long a remote viewer's keyboard is held for it after
+// its link ends. It is longer than the road-fallback bound (five seconds, with a
+// relay dial on top) and short enough that a viewer coming back after a real
+// absence finds the keyboard where the person left it.
+const keyboardKeepFor = 30 * time.Second
+
+// keptKeyboard is who held the keyboard when a remote link ended. The identity
+// is the AUTHENTICATED device the door stamped plus the window's own client id:
+// the viewer supplies only the second, so no viewer can claim another device's
+// keyboard by choosing its id.
+type keptKeyboard struct {
+	device   string
+	clientID string
+	at       time.Time
+}
+
+// keepKeyboardLocked remembers the keyboard of a remote viewer whose link has
+// just ended, before it is handed on. A DELIBERATE LEAVE KEEPS NOTHING: a person
+// who closed the view has said they are done typing there.
+func (sess *Session) keepKeyboardLocked(s *server, deliberate bool) {
+	if deliberate || s.remote == nil || !s.remote.Drive || s.remote.Device == "" || s.clientID == "" {
+		return
+	}
+	sess.kept = &keptKeyboard{device: s.remote.Device, clientID: s.clientID, at: time.Now()}
+}
+
+// remoteKeepsKeyboardLocked answers whether a remote viewer arriving now is the
+// one that holds the keyboard, or held it when its last link ended and nobody
+// has used or taken it since (W15, D13). Two shapes of one fact:
+//
+//   - THE NEW LINK ARRIVES BEFORE THE OLD ONE HAS DETACHED (a redial after a
+//     path went silent): the current driver is the same device and window, and
+//     the new connection replaces it, so the old pipe's late detach cannot hand
+//     the keyboard on again.
+//   - THE OLD LINK ENDED FIRST (a planned road swap closes it before it dials
+//     the next): the detach handed the keyboard on, to a window of the host or to
+//     nobody, and [Session.kept] remembers whose it was.
+//
+// A DIFFERENT DEVICE NEVER MATCHES, however it names itself: the comparison is
+// on the device the door authenticated, never on a client id alone. Everything
+// else about arrival is unchanged, and a viewer arriving for the first time
+// still has to press the key to take the keyboard.
+func (sess *Session) remoteKeepsKeyboardLocked(s *server) bool {
+	if s.remote == nil || s.remote.Device == "" || s.clientID == "" {
+		return false
+	}
+	if d := sess.driver; d != nil && d.remote != nil && d.remote.Device == s.remote.Device && d.clientID == s.clientID {
+		return true
+	}
+	k := sess.kept
+	return k != nil && k.device == s.remote.Device && k.clientID == s.clientID && time.Since(k.at) < keyboardKeepFor
 }
 
 // handOnLocked gives the keyboard to the newest surface still in the room, and
@@ -188,7 +245,7 @@ func (s *server) take() Driver {
 	sess.mu.Lock()
 	// EXCEPT FOR A WATCHER, which is the one surface that asked not to be given
 	// this. It is told who does drive, and nothing moves ([Hello.Watch]).
-	if s.watching {
+	if s.watching || (s.remote != nil && !s.remote.Drive) {
 		mine := sess.driverForLocked(s)
 		sess.mu.Unlock()
 		return mine
@@ -223,10 +280,13 @@ func (s *server) mayDrive() error {
 	// held it and an empty seat is not an invitation ([Hello.Watch]). The sentence
 	// is its own: `press enter to take it back` would be advice about a key this
 	// surface deliberately does not have.
-	if s.watching {
+	if s.watching || (s.remote != nil && !s.remote.Drive) {
 		return errors.New(watchingWord)
 	}
 	if sess.driver == nil || sess.driver == s {
+		// A window that is allowed to type is using the keyboard, and a kept one
+		// is a keyboard nobody has used: using it ends the keeping.
+		sess.kept = nil
 		return nil
 	}
 	return errors.New(notDrivingWord(sess.driverForLocked(s)))
@@ -335,7 +395,7 @@ func notDrivingWord(driver Driver) string {
 // that does not know the frame is simply left attached and reading, which is
 // what every build before version 13 does and is not broken.
 func (sess *Session) tellMoved(arriving *server, hello Hello) {
-	if arriving == nil || arriving.watching || hello.Back {
+	if arriving == nil || arriving.watching || arriving.remote != nil || hello.Back {
 		return
 	}
 	sess.mu.Lock()

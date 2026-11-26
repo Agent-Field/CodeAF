@@ -70,6 +70,13 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 		source = "saved"
 	}
 	settings.KnowledgeModel = config.KnowledgeModelRowAt(profile)
+	on := config.RemoteControlAt(profile)
+	settings.RemoteControl = &on
+	if row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyRemoteControl); ok {
+		if name, pinned := row.PinnedBy(); pinned {
+			settings.RemoteControlPinnedBy = name
+		}
+	}
 	settings.Memory = appwire.MemorySettings{Enabled: enabled, Source: source, CostNote: config.MemoryCostNote}
 	settings.Appearance, settings.TextSize = appwire.AppearanceSystem, appwire.TextMedium
 	if file.Appearance != "" {
@@ -100,6 +107,26 @@ func (b *appBackend) applyExtra(patch appwire.SettingsPatch, profile string) err
 	if patch.MemoryEnabled != nil {
 		if err := config.WriteMemoryEnabled(profile, *patch.MemoryEnabled); err != nil {
 			return appEngineError(err)
+		}
+	}
+	if patch.RemoteControl != nil {
+		raw := "off"
+		if *patch.RemoteControl {
+			raw = "on"
+		}
+		if err := applyRow(profile, config.KeyRemoteControl, raw); err != nil {
+			return err
+		}
+		if !*patch.RemoteControl {
+			// OFF IS ABOUT PEOPLE AS WELL AS THE DOOR. The door already stops
+			// handing chats out on its own (it reads the setting on every
+			// ask), but another computer that is already looking at one of
+			// these chats would go on looking, and typing, for as long as it
+			// likes. So their views end now: what they typed is in the chat,
+			// and they read it as the chat closing. ON needs no such step —
+			// the next chat opened is offered, and the ones open stay as they
+			// were.
+			deskHost.endAllViewers()
 		}
 	}
 	for _, row := range []struct {
@@ -324,3 +351,23 @@ func (b *appBackend) ExportSpend(from, to time.Time) (string, error) {
 
 // MemorySettings advertises the live memory switch on the app wire.
 func (b *appBackend) MemorySettings() {}
+
+// RemoteControlSettings makes the hello announce settings.remote_control: the
+// desktop engine always serves the row, off or on, so the window can show the
+// switch before anything is turned on.
+func (b *appBackend) RemoteControlSettings() {}
+
+// remoteControlFree is nil when a write to the Remote control row would take
+// effect, and the engine's own refusal when the environment pins it. It is
+// asked before any other field of a patch lands, so a pinned row refuses the
+// patch whole instead of half applying it (the day limit does the same).
+func remoteControlFree(profile string) error {
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyRemoteControl)
+	if !ok {
+		return appwire.Errorf(appwire.CodeEngine, "this build has no %s setting", config.KeyRemoteControl)
+	}
+	if name, pinned := row.PinnedBy(); pinned {
+		return appwire.Errorf(appwire.CodeBadParams, "%s is set by %s", row.Label, name)
+	}
+	return nil
+}

@@ -1367,6 +1367,7 @@ func (a *app) offsetFor(total, height int) int {
 // an offset in already-rendered memory; the command that materializes history
 // lands later on the update loop.
 func (a *app) scroll(delta int) tea.Cmd {
+	a.touchLive()
 	height := a.viewHeight()
 	total := len(a.visible(a.bodyWidth()))
 	at := a.offsetFor(total, height) + delta

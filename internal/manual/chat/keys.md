@@ -46,7 +46,7 @@ sentence that surprises you can be traced.
 A window that only shows a chat another computer holds has no turns of its own to
 save, so quitting it says nothing of the kind, even if an earlier save attempt on this window failed. On the
 next start, retained turns are published if this computer still holds the chat.
-If another computer has continued it, choose continue here from Home (or, with `idle handoff` on, open it from Home once no computer holds it) to see its newest history;
+If another computer has moved it, choose move here from Home (or, with `idle handoff` on, open it from Home once no computer holds it) to see its newest history;
 local accounting alone does not create a separate chat.
 
 A computer removed from your paired devices keeps saving this chat locally.
@@ -56,10 +56,10 @@ already explains that the chat stays on this computer until you pair it again.
 ## The line the terminal prints after you quit, when another device took the chat over
 
 If codeaf learns while closing that another device took the chat, the restored
-terminal says `<device> continued this chat. This copy is read-only and may be behind`
+terminal says `<device> moved this chat. This copy is read-only and may be behind`
 once. It keeps this notice even when the full-screen chat has already closed.
 
-## Quitting while the sync service is slow — waiting for a final save
+## Quitting while the relay is slow — waiting for a final save
 
 A removed computer quits quietly; it no longer says it is saving to your other devices.
 
@@ -67,16 +67,16 @@ The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
 A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
-The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
+The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers`, using your service's host. If that pending upload was refused because storage is off, the successful receipt is `saved here; relay storage is off for this account, so it stays on this computer`. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
 
 ## One Enter sends — checking which computer holds this chat
 
 A chat held here, or one never shared, sends with one Enter using its local
-hold. Sending does not wait for the sync service to answer. An established
+hold. Sending does not wait for the relay to answer. An established
 outage does not add another network wait to every send.
 
 A copy with no current hold gets one fresh check, bounded to five seconds.
-It sends, offers `Continue this chat here?`, or explains why the words remain
+It sends, offers `Move this chat here?`, or explains why the words remain
 unsent. If you change chats meanwhile, it says
 `chat changed before sending; your words are still unsent`.
 If you edit the draft meanwhile, it says
@@ -774,7 +774,7 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `alt+l` (`opt+l`) | Close the column on the right, or bring it back, in every chat: the same column holds the Tasks and, in a chat in a team, the Traffic. The key is named at the right of the column's header. Under 100 columns it lays the column over the body, and a second press takes it off. Remembered for the next session |
-| `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there |
+| `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there. In a chat opened live from another of your computers (the page *Remote control*): move that chat here; it asks `Move this chat here?` first |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest completed work inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
@@ -1265,9 +1265,9 @@ that has moved on. There is nothing to press; it is automatic.
 - CR and CRLF in a restored draft are normalised to LF.
 - No draft is kept at all if codeaf was started without a draft file.
 
-## Continue here keeps my typed message, pasted text and attachments
+## Move here keeps my typed message, pasted text and attachments
 
-If sending from an older window opens `Continue this chat here?`, choosing `continue here` puts your exact draft in the arrived chat's message box, including spaces, newlines, pasted text and attachments. This also works when the chat reopens in a different folder. It stays unsent until you press enter again. Choosing `leave it there`, or a move that fails, keeps the draft too.
+If sending from an older window opens `Move this chat here?`, choosing `move here` puts your exact draft in the arrived chat's message box, including spaces, newlines, pasted text and attachments. This also works when the chat reopens in a different folder. It stays unsent until you press enter again. Choosing `leave it there`, or a move that fails, keeps the draft too.
 
 ## What a crash does to your draft — what is saved, what comes back, what it will not send
 

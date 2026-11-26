@@ -86,6 +86,9 @@ type Row struct {
 	// HolderRemoved says the last holder was removed from the person's
 	// devices: its lease reads as released and it is never offered (#2072).
 	HolderRemoved bool
+	// HolderSeen is when the directory last heard from the device holding this
+	// row, or zero when unknown.
+	HolderSeen time.Time
 	// BranchRedundant reports that a branch row's saved head is already in its
 	// parent chat's turn history, so archiving the branch loses nothing.
 	BranchRedundant bool

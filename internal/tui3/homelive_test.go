@@ -99,14 +99,14 @@ func TestHomeLiveSource(t *testing.T) {
 
 // TestReleasedChatOnAnotherMachineOffersContinue: a chat the other machine let
 // go of is not open on this one, so enter on it raises the takeover screen and
-// the yes is `continue here`.
+// the yes is `move here`.
 func TestReleasedChatOnAnotherMachineOffersContinue(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, chatlist.Static{
 		{Cell: "c-idle", Title: "Notes on the migration", Device: "host-a", Status: chatlist.Idle, DurableAgo: 26 * 3600e9},
 	}, 200)
 	standOn(t, a, "c-idle")
-	if text := homeText(a); !strings.Contains(text, chatlist.OfferContinue) {
+	if text := homeText(a); !strings.Contains(text, chatlist.OfferMove) {
 		t.Fatalf("a released chat does not offer to continue:\n%s", text)
 	}
 	confirm(t, a)
@@ -128,7 +128,7 @@ func TestNoticeSeamSaysASentenceAtOnce(t *testing.T) {
 		t.Fatal("joining a desk that holds a sentence did not ring the door")
 	}
 	a.route(noticesMsg{})
-	if !saidNote(a, "host-a continued this chat") {
+	if !saidNote(a, "host-a moved this chat") {
 		t.Fatal("the sentence said before the surface joined was lost")
 	}
 

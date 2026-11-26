@@ -50,6 +50,19 @@ type PendingDevice struct {
 	ExpiresAt   time.Time
 }
 
+// DevicePermit is what another computer in this person's roster may do with
+// chats on this computer. Drive is permission to type into them.
+type DevicePermit struct {
+	Watch, Drive bool
+}
+
+// PermitSetter is an optional face of the Approvals door that changes what
+// another paired computer may do with chats on this computer. A nil pointer
+// leaves that half of the permit as it is.
+type PermitSetter interface {
+	SetPermit(id string, watch, drive *bool) error
+}
+
 // DeviceRow is one device of the fleet as the device list shows it.
 type DeviceRow struct {
 	ID       string
@@ -57,8 +70,9 @@ type DeviceRow struct {
 	Platform string
 	Self     bool
 	Revoked  bool
-	Online   bool      // set by the screen from the feed, not by the door
-	LastSeen time.Time // zero when never seen
+	Online   bool          // set by the screen from the feed, not by the door
+	LastSeen time.Time     // zero when never seen
+	Permit   *DevicePermit // nil when this door does not offer the switches
 }
 
 // Approvals is the door onto answering and revoking devices. Nil in [Options]
@@ -95,7 +109,6 @@ const (
 	// approveAnswerTimeout covers an answer's steps: the device record, the
 	// relay's decision, and the lookup when that reply is lost.
 	approveAnswerTimeout = 20 * time.Second
-	joinedFleetWord      = "%s is now paired. Your chats can continue there."
 )
 
 // ErrAnswerNotArrived is an answer the door looked for after a timeout and
@@ -287,6 +300,7 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 	out = append(out, pal.accent(fit("  "+pal.glyph(info.icon)+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
 	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
+	out = append(out, dressed(wrap(pair.PairedControlLine(r.Name), max(width, 4)), pal.ink)...)
 	line := c.line
 	if line == "" && !r.ExpiresAt.After(now) {
 		line = approveGone
@@ -413,7 +427,7 @@ func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
 // second time.
 func (a *app) toastJoined(name, device string) {
 	a.approve.markApproved(device)
-	a.toast(fmt.Sprintf(joinedFleetWord, name))
+	a.toast(pair.ApprovedLine(name))
 }
 
 // toast says a sentence where it is seen at once: in the transcript, and on
@@ -459,7 +473,7 @@ func (a *app) announceJoined() {
 		}
 		a.approve.seq = j.Seq
 		if !a.approve.told(j.Device) {
-			a.toast(fmt.Sprintf(joinedFleetWord, a.approvals.DeviceName(j.Name)))
+			a.toast(pair.ApprovedLine(a.approvals.DeviceName(j.Name)))
 		}
 	}
 }

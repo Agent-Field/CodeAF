@@ -5,8 +5,9 @@ nothing of this file keeps working: the six-digit code path (`/v1/pair`, interna
 internal/pair), `{"v":N}` watch frames, `POST /v1/dir/devices/{id}/revoke` and the existing
 `directory.Device` JSON all stay as they are.
 
-Words in UI strings follow the vocabulary law: "device", "Move here", "Continue here". The words in
-this file (relay, node, lease, manifest) never reach a screen.
+Words in UI strings follow the vocabulary law: "device", "Move here". The words in
+this file (node, lease, manifest) never reach a screen, and "relay" reaches one only as the name of
+the server and its storage switch.
 
 Conventions: JSON bodies; errors are `{"err":"<name>"}` with the status given (the relay's existing
 shape, `wire.js`). Times are Unix milliseconds. `b64u` is unpadded base64url. Every answer carries

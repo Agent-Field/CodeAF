@@ -192,7 +192,7 @@ func r10TerminalSequence(t *testing.T, rounds int, loseReply bool) {
 			if model && users == 1 && answered {
 				return
 			}
-			if !retried && strings.Contains(screen.String()[min(frame, len(screen.String())):], "couldn't confirm taking this chat back from the sync service; try again") {
+			if !retried && strings.Contains(screen.String()[min(frame, len(screen.String())):], "couldn't confirm taking this chat back from the relay; try again") {
 				if users != 0 {
 					t.Fatal("uncertain take-back recorded the draft before admission")
 				}
@@ -267,7 +267,7 @@ func r10TerminalSequence(t *testing.T, rounds int, loseReply bool) {
 		if raw, err := os.ReadFile(filepath.Join(h.work, "node_modules/x/index.js")); err != nil || string(raw) != "kept" {
 			t.Fatalf("ignored install=%q error=%v", raw, err)
 		}
-		for _, forbidden := range []string{"Continue this chat here?", "submit failed: This chat is available to continue here.", "Moved here", "Set this machine up like"} {
+		for _, forbidden := range []string{"Move this chat here?", "submit failed: This chat is available to move here.", "Moved here", "Set this machine up like"} {
 			if strings.Contains(screen.String(), forbidden) {
 				t.Fatalf("terminal showed %q", forbidden)
 			}

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -218,6 +219,9 @@ func startLiveDrive(c cell.Cell, engine cellstore.Engine, report func(error), no
 		OnNotice:  say,
 		OnViewer:  viewer,
 		OnDriving: driving,
+		// With remote control on, a chat is listed on the other computers when
+		// its first turn starts, not when it ends. Off, nothing changes.
+		EarlyRecord: config.RemoteControlOn,
 	})
 	if _, refused := cellsync.RefusalOf(err); refused {
 		return nil, err

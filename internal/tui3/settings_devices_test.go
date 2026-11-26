@@ -339,15 +339,17 @@ func TestSettingsDevicesNKeyRenamesThisDeviceAndEscCancelsTypingWithoutClosingSe
 func TestSettingsDevicesKeysLineShrinksToWhatWorksOnTheCurrentRow(t *testing.T) {
 	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
-	// Single selectable row (empty directory + Add another device): no ↑↓ choose,
-	// enter add present, no r remove.
+	// An empty directory leaves the add row and the `remote control` switch, two
+	// rows to walk, so the legend offers the arrows; the cursor starts on the add
+	// row, which says enter add and never r remove. (Before the switch stood on
+	// this tab the add row was alone and the arrows were not offered.)
 	single, _ := openSettingsDevices(t, &fakeApprovals{}, now)
 	keys := single.sheet.keysLine()
-	if strings.Contains(keys, devicesMoveKey) {
-		t.Fatalf("single-row Devices tab offered %q: %q", devicesMoveKey, keys)
+	if !strings.Contains(keys, devicesMoveKey) {
+		t.Fatalf("a Devices tab with two walkable rows lacked %q: %q", devicesMoveKey, keys)
 	}
 	if !strings.Contains(keys, devicesAddKey) || strings.Contains(keys, devicesGoneKey) {
-		t.Fatalf("single add row keys wrong: %q", keys)
+		t.Fatalf("add row keys wrong: %q", keys)
 	}
 
 	// Multi-row tab: self, removable, and already-removed rows (orderDevices

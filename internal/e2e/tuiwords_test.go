@@ -553,6 +553,77 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
 	},
 
+	// ── a chat another computer runs, carried here ────────────────────────────
+	"moveAsk": {
+		screen: "Move this chat here?",
+		why: "the question Home's card asks before a chat another computer holds is carried to this " +
+			"one. Seven tmux scenarios used to wait for it as a raw string; the verb is Move here " +
+			"everywhere a person meets it, and this is the one place the suite spells the card's head",
+	},
+	"movingHere": {
+		screen: "Moving here",
+		pkg:    "internal/chatlist",
+		why: "what a live view says between choosing Move here and the chat arriving. It is the one " +
+			"sentence of a live view that the terminal and the desktop app both read out of chatlist",
+	},
+
+	"moveFailed": {
+		screen: "could not move this chat here",
+		why: "the note a live view carries when a Move here did not finish: it sits beside the live foot " +
+			"(`on desktop · live`) and the words still in the box, which is how a person knows nothing moved",
+	},
+
+	// ── a chat another computer runs, worked in from here ────────────────────
+	"liveLegend": {
+		screen: " · live",
+		why: "the foot's host piece on a chat opened live (`on desktop · live`): the one mark that tells a " +
+			"person the chat is still running on the other computer and that nothing moved",
+	},
+	"liveMessageHint": {
+		screen: "Message ",
+		why: "the empty box of a live view names the computer the words go to (`Message desktop`), where an " +
+			"ordinary conversation says what to ask",
+	},
+	"liveRoadDirect": {
+		screen: "live · direct",
+		pkg:    "internal/chatlist",
+		why: "the `road` row of /status on a view whose two computers have connected to each other: " +
+			"the one place a person is told the view left the relay, and what the direct-road scenarios wait for",
+	},
+	"liveRoadRelay": {
+		screen: "live · relay",
+		pkg:    "internal/chatlist",
+		why: "the `road` row of /status on a view that travels the relay, the word phase 1 shipped; " +
+			"a view held to the relay (CODEAF_REMOTE_ROAD=relay) must keep saying it",
+	},
+	"liveWentOffline": {
+		screen: "went offline",
+		pkg:    "internal/chatlist",
+		why: "the banner of a view whose host stopped answering. It must stand beside the last view and the " +
+			"words typed in the box, which the scenario checks in the same breath",
+	},
+	"liveWatchOnly": {
+		screen: "watch, not type",
+		pkg:    "internal/chatlist",
+		why: "the reason a computer that may only watch gives for its box, and the refusal a send gets back; " +
+			"the clause that names the fix (`Change that in /devices there`) follows it",
+	},
+	"liveWatching": {
+		screen: "typing from",
+		pkg:    "internal/chatlist",
+		why: "what a live view without the keyboard says about who has it (`typing from desktop now`, or " +
+			"`typing from the other computer now` when the holder has no name yet); it stands where the box " +
+			"would be, so a draft cannot hide it, and pressing enter there takes the keyboard and sends nothing",
+	},
+
+	// ── a pairing, read where the approving person reads it ──────────────────
+	"pairedControlLine": {
+		screen: "can also see and control your chats",
+		pkg:    "internal/pair",
+		why: "the pairing screen of the computer that approved says the new one can open its chats and type " +
+			"into them, because that is the power a pairing now hands over and a person should not learn it later",
+	},
+
 	// ── a landing that is the person's call (#268, the implementation) ───
 	"settleAskWord": {
 		screen: "nobody could check it",

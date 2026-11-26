@@ -118,7 +118,7 @@ func TestSettingsListsEveryRowByItsRegistryKey(t *testing.T) {
 			t.Errorf("the listing does not carry the row %s", row.Key)
 		}
 	}
-	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Privacy"} {
+	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Devices", "Privacy"} {
 		if !strings.Contains(text, category) {
 			t.Errorf("the listing does not name the %q group", category)
 		}

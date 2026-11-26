@@ -24,7 +24,7 @@ import (
 const (
 	// LostLine and BackLine are the only two things the door says on its own,
 	// once each per spell of the sync service being out of reach.
-	LostLine = "moving chats between your computers is paused while the sync service is out of reach"
+	LostLine = "moving chats between your computers is paused while they cannot reach each other"
 	BackLine = "moving chats between your computers works again"
 
 	// The registration backoff doubles from a second up to ten seconds. In a
@@ -69,15 +69,55 @@ type ServeConfig struct {
 	SecretsPage int
 	// ChatTitle reads the name of one local conversation for a paired peer.
 	ChatTitle func(id string) string
+	// Live serves an authenticated live-view tunnel for device until ctx ends
+	// or the tunnel closes. When nil, live-intent connections are refused
+	// before Noise completes.
+	Live func(ctx context.Context, tun io.ReadWriteCloser, device string) error
+	// LiveRoad is Live for a handler that must know which road carried the
+	// tunnel: "relay" for a stream that came through the registration, "direct"
+	// for one the Direct host handed to [door.AcceptStream]. When it is set it
+	// serves every live tunnel and Live is not consulted; a direct stream is
+	// refused before Noise completes when it is nil.
+	LiveRoad func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error
+	// Direct, when set, is called once as Serve starts with the acceptor the
+	// peer-to-peer host hands each opened data-channel stream to. The context is
+	// the lifetime of Serve itself, NOT of any one registration: a direct tunnel
+	// does not ride the relay, so the relay registration dropping and being
+	// remade must not end it.
+	Direct func(ctx context.Context, accept StreamAcceptor)
+	// Revoked subscribes to device-removal notifications for the life of one
+	// registration and calls gone with any device ids that were removed.
+	Revoked func(ctx context.Context, gone func(devices []string)) (stop func())
 	// Ready, when set, is called after every successful registration, before
 	// the door starts answering. It must not block.
 	Ready func()
 }
 
+// StreamAcceptor takes one peer-to-peer stream whose far end has not yet been
+// authenticated and runs the whole connection on the calling goroutine: Noise,
+// the device hello, the roster, then the live handler. It returns when the
+// connection ends and closes the stream either way.
+type StreamAcceptor func(ctx context.Context, stream io.ReadWriteCloser)
+
+// liveHandler is the one function that serves every live tunnel, whichever of
+// the two config fields supplied it, or nil when the door serves none.
+func (c ServeConfig) liveHandler() func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error {
+	switch {
+	case c.LiveRoad != nil:
+		return c.LiveRoad
+	case c.Live != nil:
+		live := c.Live
+		return func(ctx context.Context, tun io.ReadWriteCloser, device, _ string) error {
+			return live(ctx, tun, device)
+		}
+	}
+	return nil
+}
+
 func (c ServeConfig) check() error {
 	address, err := url.Parse(strings.TrimSpace(c.Service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return errors.New("filesdoor: a door needs a sync service address that looks like https://relay.example.com")
+		return errors.New("filesdoor: a door needs a relay address that looks like https://relay.example.com")
 	}
 	if c.Roster == nil || c.Store == nil || c.LockPath == "" {
 		return errors.New("filesdoor: a door needs a roster, a store and a lock file")
@@ -124,7 +164,21 @@ func Serve(ctx context.Context, cfg ServeConfig) error {
 	}
 	defer release(lock)
 
-	d := &door{cfg: cfg, key: key, roster: &rosterCache{fetch: cfg.Roster, now: time.Now, ttl: ttl}}
+	d := &door{
+		cfg:         cfg,
+		key:         key,
+		liveCancels: make(map[string][]liveCancel),
+	}
+	d.roster = &rosterCache{fetch: cfg.Roster, now: time.Now, ttl: ttl, onGone: d.evict}
+	d.serveCtx = ctx
+	// DIRECT STREAMS ARE OWNED BY THIS CONTEXT AND NOT BY A REGISTRATION. They are
+	// waited for when Serve ends, so nothing touches the roster or the live
+	// handler once Serve has returned, and they are never waited for by a
+	// registration that merely dropped.
+	defer d.closeDirect()
+	if cfg.Direct != nil {
+		cfg.Direct(ctx, d.AcceptStream)
+	}
 	(&registrar{
 		service:  cfg.Service,
 		key:      key,
@@ -133,7 +187,7 @@ func Serve(ctx context.Context, cfg ServeConfig) error {
 		ready:    cfg.Ready,
 		say:      cfg.Say,
 		now:      time.Now,
-		wait:     sleep,
+		wait:     jitteredSleep,
 	}).run(ctx)
 	return nil
 }
@@ -179,6 +233,10 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func jitteredSleep(ctx context.Context, d time.Duration) error {
+	return sleep(ctx, relay.Jitter(d))
 }
 
 // registrar keeps the door registered under its name. It deliberately never
@@ -243,17 +301,133 @@ type door struct {
 	cfg    ServeConfig
 	key    *ecdh.PrivateKey
 	roster *rosterCache
+
+	// serveCtx is the lifetime of Serve, kept so a direct stream can be tied to it.
+	serveCtx context.Context
+
+	liveMu      sync.Mutex
+	liveCount   int
+	liveNextID  uint64
+	liveCancels map[string][]liveCancel
+
+	// directMu guards the direct-stream bookkeeping. directClosed is set once
+	// Serve is ending, after which a stream is refused rather than started, so
+	// directWG.Add can never race the Wait that closeDirect runs.
+	directMu     sync.Mutex
+	directCount  int
+	directClosed bool
+	directWG     sync.WaitGroup
+}
+
+type liveCancel struct {
+	id     uint64
+	cancel context.CancelFunc
+}
+
+func (d *door) admitLive() bool {
+	d.liveMu.Lock()
+	defer d.liveMu.Unlock()
+	if d.liveCount >= relay.LiveStreams {
+		return false
+	}
+	d.liveCount++
+	return true
+}
+
+func (d *door) releaseLive() {
+	d.liveMu.Lock()
+	d.liveCount--
+	d.liveMu.Unlock()
+}
+
+// admitDirect takes one of the host's MaxDirect direct-stream slots, before
+// Noise, so a flood of streams costs a counter and not a handshake. It refuses
+// once Serve is ending.
+func (d *door) admitDirect() bool {
+	d.directMu.Lock()
+	defer d.directMu.Unlock()
+	if d.directClosed || d.directCount >= MaxDirect {
+		return false
+	}
+	d.directCount++
+	d.directWG.Add(1)
+	return true
+}
+
+func (d *door) releaseDirect() {
+	d.directMu.Lock()
+	d.directCount--
+	d.directMu.Unlock()
+	d.directWG.Done()
+}
+
+// closeDirect stops new direct streams and waits for the open ones, which end
+// because their contexts derive from Serve's, now done.
+func (d *door) closeDirect() {
+	d.directMu.Lock()
+	d.directClosed = true
+	d.directMu.Unlock()
+	d.directWG.Wait()
+}
+
+func (d *door) trackLive(device string, cancel context.CancelFunc) func() {
+	d.liveMu.Lock()
+	d.liveNextID++
+	id := d.liveNextID
+	if d.liveCancels == nil {
+		d.liveCancels = make(map[string][]liveCancel)
+	}
+	d.liveCancels[device] = append(d.liveCancels[device], liveCancel{id: id, cancel: cancel})
+	d.liveMu.Unlock()
+	return func() {
+		d.liveMu.Lock()
+		entries := d.liveCancels[device]
+		for i, entry := range entries {
+			if entry.id == id {
+				entries = append(entries[:i], entries[i+1:]...)
+				break
+			}
+		}
+		if len(entries) == 0 {
+			delete(d.liveCancels, device)
+		} else {
+			d.liveCancels[device] = entries
+		}
+		d.liveMu.Unlock()
+	}
+}
+
+func (d *door) evict(devices []string) {
+	var cancels []context.CancelFunc
+	d.liveMu.Lock()
+	for _, dev := range devices {
+		for _, entry := range d.liveCancels[dev] {
+			cancels = append(cancels, entry.cancel)
+		}
+		delete(d.liveCancels, dev)
+	}
+	d.liveMu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
 }
 
 // hold owns accepted streams until the registration ends, and waits for every
 // connection to finish before it returns, so nothing touches the store once
 // Serve has returned.
 func (d *door) hold(ctx context.Context, registration *relay.Registration) {
-	stop := context.AfterFunc(ctx, func() { _ = registration.Close() })
+	holdCtx, cancelHold := context.WithCancel(ctx)
+	stop := context.AfterFunc(holdCtx, func() { _ = registration.Close() })
 	defer stop()
 	var connections sync.WaitGroup
 	defer connections.Wait()
+	defer cancelHold()
 	defer registration.Close()
+	if d.cfg.Revoked != nil {
+		if stopRevoked := d.cfg.Revoked(holdCtx, d.evict); stopRevoked != nil {
+			defer stopRevoked()
+		}
+	}
 	for {
 		stream, err := registration.Accept()
 		if err != nil {
@@ -262,25 +436,112 @@ func (d *door) hold(ctx context.Context, registration *relay.Registration) {
 		connections.Add(1)
 		go func() {
 			defer connections.Done()
-			d.answer(ctx, stream)
+			d.answer(ctx, holdCtx, stream)
 		}()
 	}
 }
 
-// answer runs one connection: tunnel, hello, then requests one at a time.
-func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser) {
+// answer runs one connection: tunnel, hello, then either the live handler or
+// file-transfer requests one at a time.
+//
+// TWO CONTEXTS, BECAUSE THE TWO KINDS OF CONNECTION END DIFFERENTLY. A files
+// connection ends with ctx, as it always has: when a registration drops, one
+// that is mid-transfer is left to finish. A live link may stay open for hours
+// and nothing finishes it, so it ends with registrationEnded, or the
+// registrar could never register again while one was open.
+func (d *door) answer(ctx, registrationEnded context.Context, stream io.ReadWriteCloser) {
+	d.serveStream(ctx, registrationEnded, stream, false)
+}
+
+// AcceptStream runs one peer-to-peer stream through the same door a relay
+// stream goes through: the same Noise handshake against the same door key, the
+// same device hello, the same roster and revocation, and the same live
+// handler. It is the [StreamAcceptor] the Direct host is handed.
+//
+// THE DIFFERENCE IS THE INTENT AND THE PROLOGUE, AND THE HOST CHOOSES THEM. A
+// direct stream completes only with [pair.IntentDirect] and
+// [DirectTunnelPrologue]; the relay registration's prologue map has no direct
+// entry, and this one has nothing else, so a stream made for one road can never
+// finish against the other, or against the files door, even though every one
+// of them uses the same static door key. What the door learns about the road
+// is therefore never something the viewer says.
+//
+// IT IS OWNED BY THE LIFETIME OF SERVE. A relay registration dropping and being
+// remade must not kill a healthy direct tunnel, so the stream's context is
+// derived from ctx and ended when Serve ends, and never from a registration.
+func (d *door) AcceptStream(ctx context.Context, stream io.ReadWriteCloser) {
+	if d.serveCtx == nil {
+		_ = stream.Close()
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(d.serveCtx, cancel)()
+	d.serveStream(ctx, ctx, stream, true)
+}
+
+// serveStream is the body both [door.answer] and [door.AcceptStream] share.
+func (d *door) serveStream(ctx, registrationEnded context.Context, stream io.ReadWriteCloser, direct bool) {
 	defer stream.Close()
 	defer context.AfterFunc(ctx, func() { _ = stream.Close() })()
 	guard := newWatch(handshakeWithin, func() { _ = stream.Close() })
 	defer guard.stop()
 
-	tunnel, err := pair.AcceptWithKeyPrologue(stream, d.key, FilesTunnelPrologue)
+	live := d.cfg.liveHandler()
+	prologues := map[byte]string{}
+	switch {
+	case direct:
+		if live != nil {
+			prologues[pair.IntentDirect] = DirectTunnelPrologue
+		}
+	default:
+		prologues[pair.IntentFiles] = FilesTunnelPrologue
+		if live != nil {
+			prologues[pair.IntentLive] = LiveTunnelPrologue
+		}
+	}
+	admitted := byte(0)
+	defer func() {
+		d.releaseAdmitted(admitted)
+	}()
+	tunnel, intent, err := pair.AcceptWithKeyPrologues(stream, d.key, func(intent byte) bool {
+		switch intent {
+		case pair.IntentLive:
+			if live == nil || !d.admitLive() {
+				return false
+			}
+		case pair.IntentDirect:
+			if live == nil || !d.admitDirect() {
+				return false
+			}
+		default:
+			return true
+		}
+		admitted = intent
+		return true
+	}, prologues)
 	if err != nil {
 		return
 	}
 	in, out := kickReader{tunnel, guard}, kickWriter{tunnel, guard}
 	device, err := d.acceptHello(ctx, in, out, tunnel)
 	if err != nil {
+		return
+	}
+	if intent == pair.IntentLive || intent == pair.IntentDirect {
+		road := "relay"
+		if intent == pair.IntentDirect {
+			road = "direct"
+		}
+		// A live view may sit quiet for minutes while the person reads, so the
+		// files door's request watchdog must stop once the hello has finished.
+		guard.stop()
+		d.answerLive(registrationEnded, tunnel, device, road, live)
+		// The slot is given back as soon as the view ends, not when this
+		// goroutine unwinds, so a viewer that redials at once finds it free.
+		d.releaseAdmitted(admitted)
+		admitted = 0
+		_ = tunnel.Close()
 		return
 	}
 	// From here the same timer is the idle bound, moved forward by every byte.
@@ -316,6 +577,72 @@ func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser) {
 			return
 		}
 	}
+}
+
+// releaseAdmitted gives back the slot an admitted connection took, if it took
+// one: the live count for the relay, the direct count for a peer-to-peer one.
+func (d *door) releaseAdmitted(intent byte) {
+	switch intent {
+	case pair.IntentLive:
+		d.releaseLive()
+	case pair.IntentDirect:
+		d.releaseDirect()
+	}
+}
+
+// answerLive runs a live-view connection under a revocable context and a
+// periodic roster re-check. A roster error younger than the roster cache's TTL
+// is masked by the cached answer and keeps the link; a failure once the TTL has
+// expired returns an error from allows and closes the tunnel so a removed
+// device's view is never extended past the TTL. It is the same for both roads:
+// a removed device loses its direct tunnel as fast as its relay one.
+func (d *door) answerLive(ctx context.Context, tunnel *pair.Tunnel, device, road string, live func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error) {
+	linkCtx, cancelLink := context.WithCancel(ctx)
+	defer cancelLink()
+	// A CANCELLED LINK CLOSES ITS TUNNEL whatever the handler does with its
+	// context: a removed device's view must end, not wait for the handler to
+	// notice.
+	defer context.AfterFunc(linkCtx, func() { _ = tunnel.Close() })()
+	untrack := d.trackLive(device, cancelLink)
+	defer untrack()
+
+	recheck := liveRecheck
+	if recheck == DefaultRosterFor && d.roster.ttl < recheck {
+		recheck = d.roster.ttl
+	}
+	if recheck <= 0 {
+		recheck = DefaultRosterFor
+	}
+	recheckDone := make(chan struct{})
+	defer func() {
+		cancelLink()
+		<-recheckDone
+	}()
+	go func() {
+		defer close(recheckDone)
+		ticker := time.NewTicker(recheck)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-linkCtx.Done():
+				return
+			case <-ticker.C:
+				allowed, err := d.roster.allows(linkCtx, device)
+				if err != nil {
+					_ = tunnel.Close()
+					cancelLink()
+					return
+				}
+				if !allowed {
+					d.evict([]string{device})
+					cancelLink()
+					return
+				}
+			}
+		}
+	}()
+
+	_ = live(linkCtx, tunnel, device, road)
 }
 
 // reply is one response before it is written.

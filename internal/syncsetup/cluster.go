@@ -208,7 +208,7 @@ func (s *Sync) ClusterNames(ctx context.Context, status clusterctl.Status) map[u
 	key := directory.MetadataKey(s.Identity.CellKey())
 	for _, member := range status.Members {
 		if member.Anchor {
-			names[member.Node] = "the sync service"
+			names[member.Node] = "the relay"
 			continue
 		}
 		if err != nil {

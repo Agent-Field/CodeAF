@@ -209,7 +209,7 @@ func (d seamFloorDoor) Tell(ctx context.Context, id int, words, said string) (st
 	if answer = strings.TrimSpace(answer); answer == "" {
 		return fmt.Sprintf("The words were passed to %s's main agent. It finished its turn and said nothing: read %s again for what it did. %s", ref, ref, mode), nil
 	}
-	return fmt.Sprintf("The words were passed to %s's main agent, which answered: %s\n\nRelay that to the person in your own plain words. %s", ref, answer, mode), nil
+	return fmt.Sprintf("The words were passed to %s's main agent, which answered: %s\n\nTell the person that in your own plain words. %s", ref, answer, mode), nil
 }
 
 // Press presses one action job id offers its person, as the person.

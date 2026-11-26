@@ -80,12 +80,12 @@ func (h *copiedPingPong) surfaceTake(s *syncsetup.Sync, taker takeover, root, do
 	<-screen.ready
 	if door == "home" {
 		h.wait("Home continuation offer", func() bool {
-			return strings.Contains(screen.String(), "Continue "+from+"'s latest chat here?")
+			return strings.Contains(screen.String(), "Move "+from+"'s latest chat here?")
 		})
 		_, _ = io.WriteString(typed, "\x1bc")
 	} else {
 		_, _ = io.WriteString(typed, "continue this copied chat\r")
-		h.wait("copied chat card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
+		h.wait("copied chat card", func() bool { return strings.Contains(screen.String(), "Move this chat here?") })
 		_, _ = io.WriteString(typed, "1\r")
 	}
 	var got copiedTakeResult
@@ -100,7 +100,7 @@ waiting:
 		case got = <-result:
 			break waiting
 		case <-tick.C:
-			if !confirmed && strings.Contains(screen.String(), "Continue this chat here?") {
+			if !confirmed && strings.Contains(screen.String(), "Move this chat here?") {
 				confirmed = true
 				_, _ = io.WriteString(typed, "1\r")
 			}

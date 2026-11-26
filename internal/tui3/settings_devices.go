@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -29,7 +30,7 @@ const (
 	// tabDevices is the category title on the settings bar, placed between
 	// Connections and Privacy.
 	tabDevices   = "Devices"
-	storageLabel = "sync storage"
+	storageLabel = "relay storage"
 	// devicesAddKey is the key legend clause for the row that starts pairing
 	// another computer.
 	devicesAddKey = "enter add"
@@ -110,8 +111,28 @@ func (s *sheet) buildDevices() {
 	s.items = append(s.items, sheetItem{
 		dev: &deviceSheetRow{add: true},
 	})
+	s.items = append(s.items, s.devicesSettingItems()...)
 	s.cursor = s.clampCursor(s.cursor)
 	s.syncDeviceCursor()
+}
+
+// devicesSettingItems are the registry rows that belong to this tab, which is
+// `remote control` today. They stand AFTER the computers and the add row, so a
+// cursor that starts on the first computer starts there still, and they are
+// ordinary [sheetItem] rows, so the cursor, the toggle and the hover are the
+// code every other tab runs. THE TAB DRAWS THEM ONLY ONCE THE COMPUTERS ARE
+// READ ([sheet.buildDevices] returns before this while they load, fail, or
+// cannot work here): the loading and failure sentences are what a tab with
+// nothing on it says, and a switch for reaching other computers is absent
+// without a list of them.
+func (s *sheet) devicesSettingItems() []sheetItem {
+	rows := s.tabRows()
+	out := make([]sheetItem, 0, len(rows))
+	for _, row := range rows {
+		meta, _ := s.metaFor(row)
+		out = append(out, sheetItem{row: row, meta: meta})
+	}
+	return out
 }
 
 // devEmptyWord is the single sentence drawn when the Devices tab has no rows to
@@ -235,10 +256,10 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		if !ok {
 			return 0
 		}
-		s.items = append(s.items,
-			sheetItem{head: tabDevices},
-			sheetItem{dev: &deviceSheetRow{unavailable: true}},
-		)
+		if !s.devicesHeadStands() {
+			s.items = append(s.items, sheetItem{head: tabDevices})
+		}
+		s.items = append(s.items, sheetItem{dev: &deviceSheetRow{unavailable: true}})
 		return score
 	}
 	type devHit struct {
@@ -271,7 +292,7 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		}
 	}
 	if s.storageCode != "" {
-		if score, ok, at, size := s.matchHits([]string{storageLabel, "request access", tabDevices}, terms); ok {
+		if score, ok, at, size := s.matchHits([]string{storageLabel, "request access", tabDevices, config.LegacySyncStorage}, terms); ok {
 			best = max(best, score)
 			matched = append(matched, devHit{item: sheetItem{dev: &deviceSheetRow{storage: true}, hitAt: at, hitLen: size}, score: score})
 		}
@@ -287,11 +308,26 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		return 0
 	}
 	sort.SliceStable(matched, func(i, j int) bool { return matched[i].score > matched[j].score })
-	s.items = append(s.items, sheetItem{head: tabDevices})
+	if !s.devicesHeadStands() {
+		s.items = append(s.items, sheetItem{head: tabDevices})
+	}
 	for _, one := range matched {
 		s.items = append(s.items, one.item)
 	}
 	return best
+}
+
+// devicesHeadStands says whether the group being built already carries the
+// Devices heading, which it does when a registry row of this tab (`remote
+// control`) matched the search first. Two headings over one group would read as
+// two tabs.
+func (s *sheet) devicesHeadStands() bool {
+	for at := len(s.items) - 1; at >= 0; at-- {
+		if s.items[at].heading() {
+			return s.items[at].head == tabDevices
+		}
+	}
+	return false
 }
 
 // devRowLines renders one row of the Devices tab through the sheet's standard
@@ -393,7 +429,7 @@ func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
 // under the cursor: `r remove` only on a removable computer, `↑↓ choose` only
 // when more than one row can be walked, and `enter add` on the add row.
 func (s *sheet) devicesKeysLine() string {
-	if s.dev != nil && s.dev.removing != nil {
+	if s.dev != nil && s.dev.confirming() {
 		return s.dev.hint()
 	}
 	if s.devTyping() {
@@ -409,7 +445,8 @@ func (s *sheet) devicesKeysLine() string {
 	if restful > 1 {
 		out = append(out, devicesMoveKey)
 	}
-	if item, ok := s.current(); ok && item.dev != nil && !item.dev.unavailable {
+	item, ok := s.current()
+	if ok && item.dev != nil && !item.dev.unavailable {
 		if item.dev.storage {
 			if s.storageState == "off" {
 				out = append(out, "enter request access")
@@ -419,11 +456,11 @@ func (s *sheet) devicesKeysLine() string {
 		} else {
 			out = append(out, devicesNameKey)
 			if s.dev != nil && item.dev.index >= 0 && item.dev.index < len(s.dev.rowsOf) {
-				if row := s.dev.rowsOf[item.dev.index]; !row.Self && !row.Revoked {
-					out = append(out, devicesGoneKey)
-				}
+				out = append(out, s.dev.rowActionKeys(s.dev.rowsOf[item.dev.index])...)
 			}
 		}
+	} else if ok && item.dev == nil && item.row.Key != "" {
+		out = append(out, "enter change")
 	}
 	out = append(out, "←→ categories", devicesCloseKey)
 	return strings.Join(out, " · ")

@@ -189,7 +189,7 @@ func TestQuitContinuationFirstSend(t *testing.T) {
 	deadline := time.Now().Add(35 * time.Second)
 	for {
 		screen := b.capture()
-		if strings.Contains(screen, "Continue this chat here?") {
+		if strings.Contains(screen, say(t, "moveAsk")) {
 			t.Fatalf("first send raised the continuation card:\n%s", screen)
 		}
 		if strings.Contains(screen, "This copy is read-only and may be behind") {

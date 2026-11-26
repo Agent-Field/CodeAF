@@ -24,6 +24,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,7 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 	}
 	from := s.callerAddress(r)
 	if !s.allow(&s.regs, from, RegistrationsPerMinute) {
+		w.Header().Set("Retry-After", s.retryAfter())
 		http.Error(w, "too many registrations from here — wait a minute", http.StatusTooManyRequests)
 		return
 	}
@@ -250,6 +252,7 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 		return
 	}
 	if !s.allow(&s.dials, s.callerAddress(r), DialsPerMinute) {
+		w.Header().Set("Retry-After", s.retryAfter())
 		http.Error(w, "too many connections from here — wait a minute", http.StatusTooManyRequests)
 		return
 	}
@@ -270,7 +273,8 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 		return
 	}
 
-	stream, err := reg.carrier.open()
+	class := doorOf(r)
+	stream, err := reg.carrier.open(class)
 	if err != nil {
 		// 429, as a rate limit is: the machine is full now, and a surface
 		// that tries again in a minute may find room.
@@ -290,21 +294,92 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 	// THE SPLICE, WHICH IS THE WHOLE SERVICE. Bytes from the surface go to the
 	// machine and bytes from the machine go to the surface, and this function
 	// counts them and looks at nothing. There is no branch here on what a byte
-	// is, because there is nothing in this package that could tell.
+	// is, because there is nothing in this package that could tell. The only
+	// branch is on the CLASS the surface claimed, and that decides whether the
+	// copy is also held to a rate (see [Server.carry]).
 	done := make(chan struct{}, 2)
 	go func() {
-		n, _ := io.Copy(stream, conn)
+		n, over := s.carry(stream, conn, class)
 		reg.add(n, 0)
+		if over {
+			s.note(name, "a live surface was cut for its rate")
+			cutForRate(conn)
+		}
 		_ = stream.Close()
 		done <- struct{}{}
 	}()
 	go func() {
-		n, _ := io.Copy(conn, stream)
+		n, over := s.carry(conn, stream, class)
 		reg.add(0, n)
+		if over {
+			s.note(name, "a live surface was cut for its rate")
+			cutForRate(conn)
+		}
 		_ = conn.Close()
 		done <- struct{}{}
 	}()
 	<-done
+}
+
+// doorOf is the class a dial claimed. ONLY THE TWO KNOWN CLASSES ARE CLASSES:
+// anything else, an absent header included, is no class at all, so an older
+// client and a class a later build adds are held to the full [MaxStreams] exactly
+// as every dial was before the header existed.
+func doorOf(r *http.Request) string {
+	switch said := r.Header.Get(HeaderDoor); said {
+	case DoorLive, DoorMove:
+		return said
+	}
+	return ""
+}
+
+// carry copies src to dst and says how many bytes it moved and whether it
+// stopped because the stream went over its rate. A stream that did not claim the
+// live class is copied exactly as it always was, with no counting: a move's
+// large answers and every older client's traffic are never held to a rate.
+func (s *Server) carry(dst io.Writer, src io.Reader, class string) (moved int64, over bool) {
+	if class != DoorLive {
+		moved, _ = io.Copy(dst, src)
+		return moved, false
+	}
+	var rate breaker
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if rate.charge(n, s.now()) {
+				return moved, true
+			}
+			written, werr := dst.Write(buf[:n])
+			moved += int64(written)
+			if werr != nil {
+				return moved, false
+			}
+		}
+		if err != nil {
+			return moved, false
+		}
+	}
+}
+
+// cutForRate ends a surface's connection because its stream went over its rate.
+// A WebSocket surface is told why, with close code 1008 (policy violation); a
+// raw one has no close code to carry and is simply closed.
+func cutForRate(conn net.Conn) {
+	if ws, ok := conn.(*wsConn); ok {
+		_ = ws.socket.Close(websocket.StatusPolicyViolation, breakerReason)
+		return
+	}
+	_ = conn.Close()
+}
+
+// retryAfter is how long a refused caller should wait, in whole seconds: what
+// is left of the minute its allowance is counted in, and never less than one, so
+// nobody is told to come back at once and be refused again.
+func (s *Server) retryAfter() string {
+	now := s.now()
+	left := now.Truncate(time.Minute).Add(time.Minute).Sub(now)
+	return strconv.Itoa(max(1, int((left+time.Second-1)/time.Second)))
 }
 
 func (r *registration) add(up, down int64) {

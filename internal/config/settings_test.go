@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
@@ -373,6 +374,62 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 		if message := err.Error(); message == "" || strings.Contains(message, "strconv") {
 			t.Fatalf("%s error is not plain language: %v", key, err)
 		}
+	}
+}
+
+func TestRemoteControlIsOffByDefaultAndTheEnvironmentOverridesTheRow(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_HOME", dir)
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyRemoteControl)
+	if !ok {
+		t.Fatalf("%s is not registered", KeyRemoteControl)
+	}
+	if RemoteControlAt(dir) || RemoteControlOn() || row.Value() != "off" {
+		t.Fatalf("default remote_control = %v / %v / %q, want off", RemoteControlAt(dir), RemoteControlOn(), row.Value())
+	}
+
+	pres := row.ChatPresentation()
+	if pres.Label != "remote control" {
+		t.Fatalf("presentation label = %q, want %q", pres.Label, "remote control")
+	}
+	for _, wantAlias := range []string{"other computer", "type from another computer", "drive"} {
+		if !slices.Contains(pres.Aliases, wantAlias) {
+			t.Fatalf("presentation aliases %v missing %q", pres.Aliases, wantAlias)
+		}
+	}
+
+	if err := row.Apply("on"); err != nil {
+		t.Fatalf("apply on: %v", err)
+	}
+	if !RemoteControlAt(dir) || !RemoteControlOn() || row.Value() != "on" {
+		t.Fatalf("row on remote_control = %v / %v / %q, want on", RemoteControlAt(dir), RemoteControlOn(), row.Value())
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "0")
+	if RemoteControlAt(dir) || RemoteControlOn() {
+		t.Fatalf("env 0 with row on should be off")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "maybe")
+	if !RemoteControlAt(dir) || !RemoteControlOn() {
+		t.Fatalf("env maybe with row on should be ignored and keep row on")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+	if err := row.Apply("off"); err != nil {
+		t.Fatalf("apply off: %v", err)
+	}
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	if !RemoteControlAt(dir) || !RemoteControlOn() {
+		t.Fatalf("env 1 with row off should be on")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "maybe")
+	if RemoteControlAt(dir) || RemoteControlOn() {
+		t.Fatalf("env maybe with row off should be ignored and keep row off")
 	}
 }
 
@@ -1551,5 +1608,78 @@ func TestTheTaskModelRowSaysTheCrewPicksWhenBlank(t *testing.T) {
 	}
 	if !strings.Contains(row.Hint, "/crew") || strings.Contains(row.Hint, "the model you are talking to when") {
 		t.Fatalf("the task model row's hint: %q", row.Hint)
+	}
+}
+
+// V36 / D14 / D15: the road and STUN variables are read through the one
+// environment door (so the legacy spelling still works the way every other
+// codeaf variable's does), the road is relay-only only for the exact word
+// "relay", and the STUN list is the default pair, a custom list, or none.
+func TestTheRoadAndStunVariablesAreReadThroughTheEnvironmentDoor(t *testing.T) {
+	road, stun := "CODEAF_REMOTE_ROAD", "CODEAF_REMOTE_STUN"
+	t.Setenv(road, "")
+	t.Setenv(stun, "")
+	t.Setenv(env.Legacy(road), "")
+	t.Setenv(env.Legacy(stun), "")
+
+	if RemoteRoadRelayOnly() {
+		t.Fatal("an unset CODEAF_REMOTE_ROAD kept the road on the relay")
+	}
+	for _, value := range []string{"relay", "RELAY", "  Relay  "} {
+		t.Setenv(road, value)
+		if !RemoteRoadRelayOnly() {
+			t.Fatalf("CODEAF_REMOTE_ROAD=%q did not keep the road on the relay", value)
+		}
+	}
+	for _, value := range []string{"auto", "direct", "relayed", "1", "off"} {
+		t.Setenv(road, value)
+		if RemoteRoadRelayOnly() {
+			t.Fatalf("CODEAF_REMOTE_ROAD=%q kept the road on the relay; only \"relay\" does", value)
+		}
+	}
+	// The retired spelling of the variable is still honoured through the door.
+	t.Setenv(road, "")
+	t.Setenv(env.Legacy(road), "relay")
+	if !RemoteRoadRelayOnly() {
+		t.Fatal("the door's fallback spelling of CODEAF_REMOTE_ROAD was not read")
+	}
+	t.Setenv(env.Legacy(road), "")
+
+	defaults := []string{"stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"}
+	if got := RemoteSTUN(); !slices.Equal(got, defaults) {
+		t.Fatalf("the default STUN list = %v, want Cloudflare then Google %v", got, defaults)
+	}
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  []string
+	}{
+		{"off means none", "off", []string{}},
+		{"off is case blind", " OFF ", []string{}},
+		{"one host and port", "stun.example.org:3478", []string{"stun:stun.example.org:3478"}},
+		{"a stun url", "stun:stun.example.org:19302", []string{"stun:stun.example.org:19302"}},
+		{"a list keeps its order and drops repeats", "a.example.org:1, stun:b.example.org:2 ,a.example.org:1", []string{"stun:a.example.org:1", "stun:b.example.org:2"}},
+		{"a bare host takes the standard port", "stun.example.org", []string{"stun:stun.example.org:3478"}},
+		{"an ipv6 address", "[2001:db8::1]:3478", []string{"stun:[2001:db8::1]:3478"}},
+		{"no turn server is ever accepted", "turn:relay.example.org:3478,turns:relay.example.org:5349", defaults},
+		{"a bad port is dropped and the rest kept", "a.example.org:99999,b.example.org:3478", []string{"stun:b.example.org:3478"}},
+		{"nothing usable reads as unset", "http://x.example.org/, ,", defaults},
+	} {
+		t.Setenv(stun, tc.value)
+		if got := RemoteSTUN(); !slices.Equal(got, tc.want) {
+			t.Fatalf("%s: CODEAF_REMOTE_STUN=%q gave %v, want %v", tc.name, tc.value, got, tc.want)
+		}
+	}
+	// The off switch returns an empty list and never nil-versus-default: a
+	// caller has to be able to tell "none" from "unset".
+	t.Setenv(stun, "off")
+	if got := RemoteSTUN(); got == nil || len(got) != 0 {
+		t.Fatalf("off returned %#v, want an empty non-nil list", got)
+	}
+	// And the retired spelling works through the door here too.
+	t.Setenv(stun, "")
+	t.Setenv(env.Legacy(stun), "off")
+	if got := RemoteSTUN(); len(got) != 0 {
+		t.Fatalf("the door's fallback spelling of CODEAF_REMOTE_STUN was not read: %v", got)
 	}
 }

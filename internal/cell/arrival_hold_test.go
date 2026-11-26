@@ -342,8 +342,8 @@ func TestW10bFailedArrivalWhoseOwnerDiedKeepsRefusingEveryProcess(t *testing.T) 
 		if err == nil {
 			t.Fatalf("%s: waiter on a failed arrival whose owner is gone = nil; want a refusal, the tree is a partial one", when)
 		}
-		if !errors.Is(err, ErrWorkspaceArrivalAbandoned) || !strings.Contains(err.Error(), reason) || !strings.Contains(err.Error(), "continue the chat here again") {
-			t.Fatalf("%s: refusal = %v; want it to carry the reason %q and say to continue the chat here again", when, err, reason)
+		if !errors.Is(err, ErrWorkspaceArrivalAbandoned) || !strings.Contains(err.Error(), reason) || !strings.Contains(err.Error(), "move the chat here again") {
+			t.Fatalf("%s: refusal = %v; want it to carry the reason %q and say to move the chat here again", when, err, reason)
 		}
 		if took > 2*time.Second {
 			t.Fatalf("%s: the refusal took %s; with no owner left there is nothing to wait for", when, took)

@@ -34,7 +34,7 @@ func TestAFailedLookAtThisComputersCopyIsNotBlamedOnTheFolder(t *testing.T) {
 
 		screen := homeText(a)
 		card := strings.Join(strings.Fields(strings.NewReplacer("│", " ").Replace(strings.Join(cardRows(a), " "))), " ")
-		if !strings.Contains(card, continueCheckFails) {
+		if !strings.Contains(card, moveCheckFails) {
 			t.Fatalf("automatic=%v: the card does not say the check failed:\n%s", automatic, screen)
 		}
 		if strings.Contains(screen, "could not be put in this folder") || noted(a, "could not be put in this folder") {
@@ -50,7 +50,7 @@ func TestAFailedLookAtThisComputersCopyIsNotBlamedOnTheFolder(t *testing.T) {
 	a.autoContinue = true
 	a.machineRead.rows = []chatlist.Row{row}
 	a.continuationReady(continuationChecked{row: row, automatic: true, generation: a.continueGeneration, err: directory.ErrLeaseHeld})
-	if strings.Contains(homeText(a), continueCheckFails) {
+	if strings.Contains(homeText(a), moveCheckFails) {
 		t.Fatal("a lease taken meanwhile was reported as a failed check")
 	}
 }

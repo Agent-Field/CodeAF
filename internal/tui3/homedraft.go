@@ -321,7 +321,7 @@ func (a *app) targetDestinations() []string {
 	world.Projects = a.home.everyProject()
 	launch := a.home.launch
 	if launch == "" {
-		launch = a.workspace
+		launch = a.ownWorkspace()
 	}
 	in := homeGridInput{world: world, launch: launch, bucket: a.home.bucket}
 	out := make([]string, 0, len(world.Projects)+1)

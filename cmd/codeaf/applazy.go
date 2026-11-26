@@ -182,7 +182,7 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 			if !a.lastLive.IsZero() && !now.After(a.lastLive.Add(appLazyHotWindow)) {
 				hot[id] = true
 			}
-			if a.live != nil || a.transcript == "" || recovering[id] {
+			if a.live != nil || a.transcript == "" || a.liveOnly() || recovering[id] {
 				continue
 			}
 			if a.listening.IsZero() {

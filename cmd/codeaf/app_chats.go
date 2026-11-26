@@ -270,7 +270,7 @@ func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
 	}
 	b.locked(func() {
 		for id, a := range b.agents {
-			if a.transcript != "" {
+			if a.transcript != "" && !a.liveOnly() {
 				local = append(local, entry{id, a.transcript})
 			}
 		}
@@ -697,6 +697,12 @@ func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emi
 			b.locked(func() { a = b.agents[r.LocalAgent] })
 			if a != nil {
 				b.located(a, chatLocation(r))
+				// A WINDOW THAT WAS VIEWING A CHAT THIS COMPUTER HELD, AND SAW
+				// ANOTHER COMPUTER TAKE IT, VIEWS THE NEW HOLDER LIVE instead of
+				// a stale copy (Superseded -> live, app_live_open.go).
+				if b.liveSwapWanted(a, r) {
+					b.liveSwap(r)
+				}
 			}
 		}
 	}

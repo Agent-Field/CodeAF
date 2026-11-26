@@ -43,7 +43,7 @@ func TestOldServiceStillLetsTheOnlyComputerWriteItsChat(t *testing.T) {
 // TestOldServiceLetsLocalTurnsCatchUp pins the lockout's second step: turns
 // this computer saved while it could not publish, on top of the head the
 // service has, are this computer's own work. Reopening the chat publishes them
-// rather than opening it read-only behind "Continue this chat here?".
+// rather than opening it read-only behind "Move this chat here?".
 func TestOldServiceLetsLocalTurnsCatchUp(t *testing.T) {
 	h := newTwoHomes(t, oldService)
 	ctx := context.Background()

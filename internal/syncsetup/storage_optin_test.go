@@ -225,7 +225,7 @@ func TestStorageOptInRequestLinkUsesPublicWording(t *testing.T) {
 		t.Fatal(err)
 	}
 	query := link.Query()
-	if query.Get("title") != "sync storage access: "+id || query.Get("body") != "Please turn on sync storage for my account.\n\nRequest code: "+id {
+	if query.Get("title") != "relay storage access: "+id || query.Get("body") != "Please turn on relay storage for my account.\n\nRequest code: "+id {
 		t.Fatalf("request wording: %v", query)
 	}
 }

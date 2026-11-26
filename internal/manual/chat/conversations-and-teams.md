@@ -455,7 +455,7 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Use
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). Use
 **Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page
@@ -467,11 +467,11 @@ stops sending and receiving teams and Traffic. What was already exchanged stays,
 including teams and encrypted copies in the vault. Unpaired computers are unaffected.
 The desktop shows another computer's crew grouped and read-only in its chats.
 
-Opening a remote member from terminal Teams raises `Continue this chat here?`
-on Home (`continue here` moves and opens it; `leave it there` changes nothing).
-By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), selecting a released chat on Home also asks **Continue here**. With `idle handoff` on, selecting a released chat on terminal Home (`enter`), or opening a
+Opening a remote member from terminal Teams raises `Move this chat here?`
+on Home (`move here` moves and opens it; `leave it there` changes nothing).
+By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), selecting a released chat on Home also asks **Move here**. With `idle handoff` on, selecting a released chat on terminal Home (`enter`), or opening a
 `can_open` row via `agents.open` in the app, opens it directly with no
-Continue-here step; a live hold or a lapsed hold still asks, including when its holder
+Move-here step; a live hold or a lapsed hold still asks, including when its holder
 was working. Unshared chats, or members under
 `--host` / `--at`, name the other computer (`the other computer` until known):
 open them there. Local members open like Home without an extra ownership lookup.
@@ -479,12 +479,12 @@ open them there. Local members open like Home without an extra ownership lookup.
 A send to one member or manager known to be on another computer is refused until
 you bring that chat here. A room post or multi-member send reaches local members
 and names anyone skipped (`Not reached: @web (on desktop).`); if all are
-elsewhere, nothing is written. Local messages still work when the sync service
+elsewhere, nothing is written. Local messages still work when the relay
 is down, and may wait briefly while an earlier change finishes uploading.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). With **Settings → General →
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). With **Settings → General →
 share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
@@ -498,7 +498,7 @@ consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Traffic sharing is on by default for paired computers through **Settings → General →
 share teams**. Turning it off on either computer stops sharing between them.
@@ -515,8 +515,8 @@ its ordinary log rotation.
 
 A send only to chats known to be elsewhere is refused. A send with local
 recipients is written once and names those not reached. Bring a remote chat
-here first (choose **continue here** by default, or with `idle handoff` on a released chat opens directly on Home or through
-`agents.open` while a live hold or a lapsed hold asks for **continue here**, including when
+here first (choose **move here** by default, or with `idle handoff` on a released chat opens directly on Home or through
+`agents.open` while a live hold or a lapsed hold asks for **move here**, including when
 its holder was working) before sending to it. Under `--host` or `--at`,
 open it on its computer. Decision details, spending records and working copies
 do not travel with Traffic. A decision or escalation whose recipient is
@@ -526,7 +526,7 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Team sharing waits for hosted sync storage approval (Settings → Devices → sync storage); pairing alone does not enable it. A self-hosted sync service with `--store` needs no request.
+Team sharing waits for hosted relay storage approval (Settings → Devices → relay storage); pairing alone does not enable it. A self-hosted relay with `--store` needs no request.
 
 Team sharing is on by default for paired computers. If it was turned off, open
 **Settings → General → share teams** on that computer and choose **on** to resume.
@@ -541,7 +541,7 @@ Turn **share teams** to **off** to stop all team sharing immediately. Teams alre
 
 ## Stop sharing teams with my other computer
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Open **Settings → General →
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). Open **Settings → General →
 share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
 teams, members, manager choices and settings, and recent Traffic between them immediately.
 That computer stops sending and receiving teams and Traffic. Teams already received
@@ -556,7 +556,7 @@ arrive within a few seconds; recent Traffic can take about 2 minutes.
 
 ## First team sharing: backup, duplicate names and global managers
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Paired computers exchange teams automatically while **Settings → General →
 share teams** is on, its default. An unpaired computer is unaffected. Before the
@@ -578,7 +578,7 @@ the original teams. Review manager choices in Teams.
 
 ## Does a shared team's spending cap cover both computers?
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 A team's spending cap counts spending on each computer separately. Sharing the
 team and its cap does not combine the usage meters. A member continued on the

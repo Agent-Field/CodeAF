@@ -16,9 +16,11 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -30,6 +32,9 @@ type approvalsDoor struct {
 	dir      string
 	mailbox  func(relayFlag string) (pair.Mailbox, error)
 	approver func(pair.Mailbox) (pair.Approver, error)
+	// permits is this computer's book of what each paired computer may do here.
+	// Nil reads the book in the default state folder.
+	permits func() *pair.PermitBook
 
 	mu     sync.Mutex
 	asking map[string]pair.Asking // by code: what Pending read, for the answer
@@ -104,7 +109,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	as, err := who.Look(ctx, ref)
 	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
 		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := identity.EndSolo(d.dir); err != nil {
+		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return tui3.PendingDevice{}, err
 		}
 		notePaired(d.dir, route)
@@ -147,7 +152,7 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 				return err
 			}
 		}
-		if err := identity.EndSolo(d.dir); err != nil {
+		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return err
 		}
 		if route, err := d.mailbox(""); err == nil {
@@ -276,8 +281,52 @@ func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 	if own, named := devname.Chosen(d.dir); named {
 		rows = withOwnName(rows, own)
 	}
-	return rows, nil
+	return d.withPermits(id.ID(), rows), nil
 }
+
+// book is the permit book this door reads and writes.
+func (d *approvalsDoor) book() *pair.PermitBook {
+	if d.permits != nil {
+		return d.permits()
+	}
+	return pair.Permits()
+}
+
+// withPermits puts what each other computer may do here on its row, so /devices
+// can show and change it. WITH REMOTE CONTROL OFF IT PUTS NOTHING: the rows,
+// and every line the device list draws from them, are then what they were
+// before the setting existed, and the switches are absent rather than inert.
+// Your own computer and a removed one have no permit to show.
+func (d *approvalsDoor) withPermits(identityID string, rows []tui3.DeviceRow) []tui3.DeviceRow {
+	if identityID == "" || !config.RemoteControlOn() {
+		return rows
+	}
+	book := d.book()
+	for i := range rows {
+		if rows[i].Self || rows[i].Revoked {
+			continue
+		}
+		permit, _ := book.For(identityID, rows[i].ID)
+		rows[i].Permit = &tui3.DevicePermit{Watch: permit.Watch, Drive: permit.Drive}
+	}
+	return rows
+}
+
+// SetPermit changes what one paired computer may do with chats on this one. A nil
+// half is left as it is. It is the same write `codeaf devices permit` makes, so
+// the terminal's keys and the command cannot disagree.
+func (d *approvalsDoor) SetPermit(id string, watch, drive *bool) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("choose a computer first")
+	}
+	who, err := identity.Load(d.dir)
+	if err != nil {
+		return err
+	}
+	return d.book().Set(who.ID(), id, watch, drive, "person")
+}
+
+var _ tui3.PermitSetter = (*approvalsDoor)(nil)
 
 // withOwnName puts this computer's own name on its own row. The directory holds
 // the name this computer last managed to tell it, which is the old one for a
@@ -323,7 +372,16 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return told(client.Revoke(ctx, id))
+	if err := client.Revoke(ctx, id); err != nil {
+		return told(err)
+	}
+	// A REMOVED COMPUTER STOPS BEING ABLE TO WATCH AT ONCE: its open live views
+	// here close, its permit goes, and the last-seen copies kept of its chats go,
+	// the same three things `codeaf devices remove` and the app do.
+	livedoor.NotifyRemoved(d.dir, id)
+	_ = d.book().Forget(id)
+	forgetViewed(d.dir, id)
+	return nil
 }
 
 func (d *approvalsDoor) DeviceName(sealed string) string {

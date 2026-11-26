@@ -65,7 +65,7 @@ func TestHostedWatchDisplacedWindowAsksBeforeHeartbeat(t *testing.T) {
 	defer deadline.Stop()
 	frames := time.NewTicker(time.Millisecond)
 	defer frames.Stop()
-	for !strings.Contains(screen.String(), "continued this chat. This copy is read-only and may be behind") {
+	for !strings.Contains(screen.String(), "moved this chat. This copy is read-only and may be behind") {
 		select {
 		case <-frames.C:
 		case <-deadline.C:
@@ -79,9 +79,9 @@ func TestHostedWatchDisplacedWindowAsksBeforeHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.wait("continue card or unexpected completion", func() bool {
-		return strings.Contains(screen.String(), "Continue this chat here?") || h.modelCalls.Load() != 0
+		return strings.Contains(screen.String(), "Move this chat here?") || h.modelCalls.Load() != 0
 	})
-	if h.modelCalls.Load() != 0 || !strings.Contains(screen.String(), "Continue this chat here?") {
+	if h.modelCalls.Load() != 0 || !strings.Contains(screen.String(), "Move this chat here?") {
 		t.Fatalf("Enter after the displaced notice ran %d model completions instead of asking", h.modelCalls.Load())
 	}
 	h.mu.Lock()
@@ -145,7 +145,7 @@ func takeLiveChatFromHome(t *testing.T, h *hostedMoveRig) (cell.Cell, error) {
 	if _, err := io.WriteString(typed, "\r"); err != nil {
 		return cell.Cell{}, err
 	}
-	h.wait("Home continue card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
+	h.wait("Home continue card", func() bool { return strings.Contains(screen.String(), "Move this chat here?") })
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
 		return cell.Cell{}, err
 	}

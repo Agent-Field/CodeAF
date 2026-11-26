@@ -18,7 +18,7 @@ func TestIdleOpen_R6_LapsedWhileWorkingKeepsTheCard(t *testing.T) {
 	a, _ := heldLab(t, &flipping{status: chatlist.Off}, taker)
 	command := a.homeMachineEnter(homeLine{remote: &row})
 	drain(t, a, command)
-	if row.AutoOpen || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
+	if row.AutoOpen || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), moveAsk) {
 		t.Fatalf("lapsed working hold opened without consent: row=%+v free opens=%d takes=%v\n%s", row, taker.opens, taker.cells, homeText(a))
 	}
 }
@@ -32,7 +32,7 @@ func TestIdleOpen_R6_ReleasedStillOpensDirectly(t *testing.T) {
 	taker := &idleOpenTaker{}
 	a, _ := heldLab(t, &flipping{status: chatlist.Idle}, taker)
 	command := a.homeMachineEnter(homeLine{remote: &row})
-	if !row.AutoOpen || command == nil || strings.Contains(homeText(a), continueAsk) {
+	if !row.AutoOpen || command == nil || strings.Contains(homeText(a), moveAsk) {
 		t.Fatal("released hold did not enter direct opening")
 	}
 	_ = command()

@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -27,6 +28,13 @@ const (
 	peerTitleRefresh  = 20 * time.Second
 	chatPreviewWithin = 12 * time.Second
 )
+
+// appCanLive says a chat may be opened live: another computer is running it, is
+// online and is named, and remote control is on here. With it off no row says
+// anything about live at all.
+func appCanLive(row appwire.ChatRow, fact chatlist.Row, online bool) bool {
+	return !row.Here && row.Status == string(chatlist.Running) && online && fact.DeviceID != "" && config.RemoteControlOn()
+}
 
 // describeChatRows keeps directory projections intact while filling titles from
 // online peers. The inventory lock serializes it with moves and other reads.
@@ -52,6 +60,9 @@ func (c *appChats) describeChatRows(ctx context.Context, s *syncsetup.Sync, rows
 		fact := facts[row.Cell]
 		online := !fact.HolderRemoved && (row.Online == nil || *row.Online)
 		row.CanPreview = !row.Here && fact.Head != "" && (storage || live && online)
+		// A CHAT ANOTHER COMPUTER IS RUNNING CAN BE OPENED LIVE while remote
+		// control is on (app_live_open.go); with it off the row says nothing.
+		row.CanLive = appCanLive(*row, fact, online)
 		if row.Here {
 			continue
 		}
@@ -134,7 +145,7 @@ func (b *appBackend) PreviewChat(id string) (appwire.ChatPreview, error) {
 			return appwire.ChatPreview{}, appEntriesBusy(err)
 		}
 		if errors.Is(err, cellsync.ErrTranscriptTooLarge) {
-			return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "This saved conversation is too large to preview. Continue here to read its full history.")
+			return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "This saved conversation is too large to preview. Move here to read its full history.")
 		}
 		return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "Couldn't load the saved messages. Check that the other computer is running and try again.")
 	}

@@ -8,7 +8,7 @@ import (
 
 // L4-G3: The sync-off command refusal names the service's address.
 func TestL4FixSyncOffWords(t *testing.T) {
-	if SyncOff != "sync is off: set CODEAF_SYNC_URL to your sync service's address" {
+	if SyncOff != "sync is off: set CODEAF_SYNC_URL to your relay's address" {
 		t.Fatal(SyncOff)
 	}
 }

@@ -142,10 +142,36 @@ func (r *Registration) Close() error {
 // a Noise handshake against a pinned key — and nothing else in this tree may
 // put a session frame on this pipe.
 func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error) {
+	conn, err := DialDoor(ctx, service, name, "")
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+// DialDoor is [Dial] that says what the stream is for. A class of [DoorLive] or
+// [DoorMove] is sent in [HeaderDoor], and the empty class sends nothing, which
+// is exactly the dial an older build makes.
+//
+// A CLASS THAT IS NEITHER OF THOSE IS REFUSED HERE AND NOT SENT. The relay would
+// read an unknown value as no class, so a misspelling would quietly turn a
+// viewer's dial into an unclassified one that is held to the full sixteen, the
+// opposite of what the caller meant; the mistake is cheaper to see as an error
+// in the person's own build than as a machine that fills up. The refusal is a
+// sentence about a program and not a person: no screen has a reason to show it.
+func DialDoor(ctx context.Context, service, name, class string) (net.Conn, error) {
 	if !ValidName(name) {
 		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42", name)
 	}
-	return upgrade(ctx, service, DialPrefix+name, http.Header{})
+	header := http.Header{}
+	switch class {
+	case "":
+	case DoorLive, DoorMove:
+		header.Set(HeaderDoor, class)
+	default:
+		return nil, fmt.Errorf("relay: %q is not a dial class — the classes are %q and %q", class, DoorLive, DoorMove)
+	}
+	return upgrade(ctx, service, DialPrefix+name, header)
 }
 
 // upgrade dials the service and takes the connection over.
@@ -158,7 +184,7 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 func upgrade(ctx context.Context, service, path string, header http.Header) (net.Conn, error) {
 	address, err := url.Parse(strings.TrimSpace(service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return nil, fmt.Errorf("%q is not a sync service URL — it looks like https://relay.example.com", service)
+		return nil, fmt.Errorf("%q is not a relay URL — it looks like https://relay.example.com", service)
 	}
 	// The relay address may carry a path of its own (https://host/fabric), and
 	// the door is beneath it, as every other client's route is. Refusals name
@@ -264,7 +290,7 @@ func refusal(base, path string, status int, said string) error {
 	case relaySentence(said):
 		return errors.New(said)
 	default:
-		return fmt.Errorf("the sync service at %s refused this connection (%d) — check the address it was given", base, status)
+		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", base, status)
 	}
 }
 

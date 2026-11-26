@@ -87,7 +87,7 @@ func TestStorageOffContinuePreservesLocalTurns(t *testing.T) {
 			got, err := cont.Take(t.Context(), at.ID)
 			refused := mode == "diverged" || mode == "head moves at acquire"
 			if refused {
-				if err == nil || err.Error() != "cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here" {
+				if err == nil || err.Error() != "cannot move this chat here while relay storage is off because this computer is missing saved turns; your local turns stay here" {
 					t.Fatalf("refusal: %v", err)
 				}
 			} else if err != nil {

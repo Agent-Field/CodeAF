@@ -367,7 +367,7 @@ func appRelayOutage(t *testing.T, competing bool) {
 			var event appwire.AgentChanged
 			_ = json.Unmarshal(f.Data, &event)
 			l := event.Agent.Location
-			return event.Agent.ID == taken.ID && l != nil && !l.Here && l.Holder != nil && l.Holder.Name == "A" && strings.Contains(l.Line, "A continued this chat")
+			return event.Agent.ID == taken.ID && l != nil && !l.Here && l.Holder != nil && l.Holder.Name == "A" && strings.Contains(l.Line, "A moved this chat")
 		})
 		outageWait(t, "O2 pending work kept on relay", func() bool {
 			listing, err := appDeviceSync(t, dirA).Dir.List(t.Context())
@@ -439,7 +439,7 @@ func appRelayOutage(t *testing.T, competing bool) {
 				t.Fatalf("O1 own chat became a viewer: %s", f.Data)
 			}
 		}
-		if f.Event == appwire.EventEntryAdded && strings.Contains(string(f.Data), "B continued this chat") {
+		if f.Event == appwire.EventEntryAdded && strings.Contains(string(f.Data), "B moved this chat") {
 			t.Fatalf("O1 self displacement notice: %s", f.Data)
 		}
 	}

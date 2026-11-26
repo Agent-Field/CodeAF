@@ -143,7 +143,7 @@ func TestContinueCardSendsAndSavesWhileStorageOff(t *testing.T) {
 	if a.machineRead.sendHolds[at.ID].awaitingWriter {
 		t.Fatal("local continuation waits for an uploading writer")
 	}
-	if strings.Contains(plain(frame(a)), "continue here") || strings.Contains(plain(frame(a)), "held on other-computer") {
+	if strings.Contains(plain(frame(a)), "move here") || strings.Contains(plain(frame(a)), "held on other-computer") {
 		t.Fatal("continuation card remained")
 	}
 	typeLine(t, a, "! printf next-local-turn")
@@ -226,7 +226,7 @@ func TestSettingsSamplesOnlyVisibleStorage(t *testing.T) {
 		t.Fatalf("state=%s reads=%d", a.sheet.storageState, door.reads.Load())
 	}
 	a.sheet.tab = 0
-	a.sheet.query.insert("sync storage")
+	a.sheet.query.insert("relay storage")
 	_, cmd = (placeSettings{}).tick(a, time.Now())
 	if cmd == nil {
 		t.Fatal("Settings search did not refresh")
@@ -287,7 +287,7 @@ func TestCloseOlderRemoteSavingReceipt(t *testing.T) {
 			shown := strings.Join(strings.Fields(plain(frame(a))), " ")
 			want := closeSaveFailedWord
 			if receipt {
-				want = "saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers"
+				want = "saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers"
 			}
 			if !strings.Contains(shown, want) {
 				t.Fatalf("receipt=%v frame=%s", receipt, shown)

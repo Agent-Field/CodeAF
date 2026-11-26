@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -110,7 +111,7 @@ func (a *app) pollMachines(now time.Time) tea.Cmd {
 // takes its chat, even while home is closed. A window without a sync source
 // or without a conversation has no directory work to do.
 func (a *app) watchesConversation() bool {
-	return a.machines != nil && a.file != "" && !a.hosted()
+	return a.machines != nil && a.file != "" && !a.hosted() && a.liveFront() == nil
 }
 
 // hurryMachines asks now, for a person who has just arrived.
@@ -126,6 +127,32 @@ func (a *app) fileMachines(msg homeMachinesMsg) {
 	changed := msg.err == nil && !chatlist.Same(a.machineRead.rows, msg.rows)
 	a.machinePoll.landed(now, changed, a.socketUp() && msg.err == nil)
 	if msg.err == nil {
-		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version, sendHolds: a.machineRead.sendHolds, computerRemoved: a.machineRead.computerRemoved, host: a.machineRead.host, checking: a.machineRead.checking}
+		rows := a.withHolderSeen(msg.rows)
+		a.machineRead = machineReading{rows: rows, at: now, version: msg.version, sendHolds: a.machineRead.sendHolds, computerRemoved: a.machineRead.computerRemoved, host: a.machineRead.host, checking: a.machineRead.checking}
 	}
+}
+
+func (a *app) holderSeenFor(deviceID string) time.Time {
+	if deviceID == "" {
+		return time.Time{}
+	}
+	for _, d := range a.devRow.devices {
+		if d.ID == deviceID && !d.LastSeen.IsZero() {
+			return d.LastSeen
+		}
+	}
+	return time.Time{}
+}
+
+func (a *app) withHolderSeen(rows []chatlist.Row) []chatlist.Row {
+	if len(rows) == 0 || len(a.devRow.devices) == 0 {
+		return rows
+	}
+	out := slices.Clone(rows)
+	for i := range out {
+		if out[i].HolderSeen.IsZero() {
+			out[i].HolderSeen = a.holderSeenFor(out[i].DeviceID)
+		}
+	}
+	return out
 }

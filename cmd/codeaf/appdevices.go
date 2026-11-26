@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"runtime"
 	"slices"
 	"sync"
@@ -13,12 +14,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -166,6 +169,18 @@ func (d *appDevices) snapshotState() (appwire.Devices, bool, error) {
 		}
 		view.Devices = append(view.Devices, row)
 	}
+	// WHAT EACH COMPUTER MAY DO IN THIS ONE'S CHATS is read from this computer's
+	// own permit book, and said only while remote control is on: with it off the
+	// rows are as they always were (devices.permit, app_live_open.go).
+	if view.Mode == appwire.DevicesOn && config.RemoteControlOn() {
+		book := pair.Permits()
+		for i := range view.Devices {
+			if row := view.Devices[i]; !row.Self && !row.Removed {
+				p, _ := book.For(id.ID(), row.ID)
+				view.Devices[i].Permit = &appwire.DevicePermit{Watch: p.Watch, Drive: p.Drive}
+			}
+		}
+	}
 	selfAt := slices.IndexFunc(view.Devices, func(row appwire.Device) bool { return row.Self })
 	if selfAt < 0 {
 		view.Devices = append(view.Devices, appwire.Device{ID: self.ID(), Self: true})
@@ -234,6 +249,56 @@ func (b *appBackend) RenameDevice(typed string) (appwire.DeviceRenameResult, err
 	return appwire.DeviceRenameResult{Device: view.Devices[0], Line: line}, nil
 }
 
+var (
+	_ appwire.DevicePermitter   = (*appBackend)(nil)
+	_ appwire.DevicePermitOffer = (*appBackend)(nil)
+)
+
+// DevicePermitsOffered says the desktop may be told about devices.permit: the
+// switches only mean something while remote control is on.
+func (*appBackend) DevicePermitsOffered() bool { return config.RemoteControlOn() }
+
+// PermitDevice sets what a paired computer may do in THIS computer's chats. It
+// edits this computer's own permit book and nothing else: the book never leaves
+// the machine, so it asks the relay for no write and no other computer for its
+// word. Only the switches named change; the host's own watcher closes the open
+// views the change affects.
+func (b *appBackend) PermitDevice(p appwire.DevicePermitParams) (appwire.DevicePermitResult, error) {
+	d := b.devices
+	d.op.Lock()
+	defer d.op.Unlock()
+	view, err := d.snapshot()
+	if err != nil {
+		return appwire.DevicePermitResult{}, err
+	}
+	at := slices.IndexFunc(view.Devices, func(row appwire.Device) bool { return row.ID == p.ID })
+	switch {
+	case at < 0 || view.Mode != appwire.DevicesOn:
+		return appwire.DevicePermitResult{}, appwire.Errorf(appwire.CodeNotFound, "%s", chatlist.DeviceMissing)
+	case view.Devices[at].Self:
+		return appwire.DevicePermitResult{}, appwire.Errorf(appwire.CodeBadParams, "this computer is always allowed in its own chats")
+	case view.Devices[at].Removed:
+		return appwire.DevicePermitResult{}, appwire.Errorf(appwire.CodeNotFound, "%s", chatlist.DeviceMissing)
+	}
+	id, err := identity.Load(d.home)
+	if err != nil || id.ID() == "" {
+		return appwire.DevicePermitResult{}, appwire.Errorf(appwire.CodeEngine, "this computer has no identity yet")
+	}
+	book := pair.Permits()
+	if err := book.Set(id.ID(), p.ID, p.Watch, p.Drive, "person"); err != nil {
+		return appwire.DevicePermitResult{}, appEngineError(err)
+	}
+	view, err = d.snapshot()
+	if err != nil {
+		return appwire.DevicePermitResult{}, err
+	}
+	d.publish(b.emit)
+	row := view.Devices[slices.IndexFunc(view.Devices, func(r appwire.Device) bool { return r.ID == p.ID })]
+	got, class := book.For(id.ID(), p.ID)
+	line := fmt.Sprintf("%s: watch %s, type %s (%s)", row.Name, permitWord(got.Watch), permitWord(got.Drive), permitClassWord(class))
+	return appwire.DevicePermitResult{Device: &row, Line: line}, nil
+}
+
 func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, error) {
 	d := b.devices
 	d.op.Lock()
@@ -274,6 +339,9 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		if err := s.Dir.Revoke(ctx, deviceID); err != nil {
 			return appwire.DeviceRemoveResult{}, deviceError(err)
 		}
+		livedoor.NotifyRemoved(home.Dir(), deviceID)
+		_ = pair.Permits().Forget(deviceID)
+		forgetViewed(home.Dir(), deviceID)
 		line = pair.ChatsRevokedLine(name)
 	}
 	// Success is retained even if a later user-requested refresh cannot reach

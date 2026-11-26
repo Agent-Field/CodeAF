@@ -93,7 +93,7 @@ func r10RetryTakeBack(t *testing.T, first error, unknown int) {
 		t.Fatal("uncertain take-back spent the draft")
 	}
 	if _, card := a.homeAsking(); card {
-		t.Fatal("uncertain take-back offered Continue here")
+		t.Fatal("uncertain take-back offered Move here")
 	}
 	var notes strings.Builder
 	for _, entry := range a.entries {
@@ -110,7 +110,7 @@ func r10RetryTakeBack(t *testing.T, first error, unknown int) {
 			t.Fatal("live uncertain fence spent the draft")
 		}
 		if _, card := a.homeAsking(); card {
-			t.Fatal("live uncertain own fence offered Continue here")
+			t.Fatal("live uncertain own fence offered Move here")
 		}
 		// The relay listing now reports expiry; the next admission must
 		// return a newly acquired fence rather than the uncertain fence.
@@ -126,6 +126,6 @@ func r10RetryTakeBack(t *testing.T, first error, unknown int) {
 		}
 	}
 	if _, card := a.homeAsking(); card {
-		t.Fatal("own held fence offered Continue here")
+		t.Fatal("own held fence offered Move here")
 	}
 }

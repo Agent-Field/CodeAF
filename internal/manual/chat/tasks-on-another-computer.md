@@ -2,7 +2,7 @@
 
 ## Can a task run on my other computer
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Yes. Pair both computers with the same identity and run `codeaf serve --take-tasks` on the
 computer that will do the task. Both ends need Linux or macOS; Windows cannot
@@ -31,7 +31,7 @@ same calls again; new calls from the other computer are added once.
 
 ## Run a task on my mac mini
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Pair your Mac mini and this computer, then run `codeaf serve --take-tasks` on the mini.
 Use its shown name, quoting names that contain spaces:
@@ -148,7 +148,7 @@ setting names another computer, without a special placement sentence.
 
 ## codeaf serve --take-tasks takes tasks from paired computers
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Plain `codeaf serve` opens only the machine connection and does not take tasks.
 Run `codeaf serve --take-tasks` on the paired computer that should take tasks. It prints
@@ -213,9 +213,9 @@ requires updating both ends before retrying.
 
 ## The task copy could not be sent
 
-Task copies wait for hosted sync storage approval (Settings → Devices → sync storage); chats can still move by blind pass-through, but a task copy is sent through that storage. A self-hosted sync service with `--store` needs no request.
+Task copies wait for hosted relay storage approval (Settings → Devices → relay storage); chats can still move by blind pass-through, but a task copy is sent through that storage. A self-hosted relay with `--store` needs no request.
 
-While storage is off, sending or taking a task copy is refused on this computer before anything is sealed or asked of the sync service: it makes no request to the service's store at all, not even the question of whether an object is already there. The refusal is the same storage-off sentence as before.
+While storage is off, sending or taking a task copy is refused on this computer before anything is sealed or asked of the server: it makes no request to the server's store at all, not even the question of whether an object is already there. The refusal is the same storage-off sentence as before.
 
 `the task copy changed while it was being sent; try again` keeps the copy here.
 Finish or pause the edits, then retry the task.

@@ -363,6 +363,18 @@ type appConn struct {
 	// Lent says this is a factory stage the factory owns, lent as a view
 	// (app_lend.go): its model, posture and budget are not the app's to set.
 	Lent bool
+	// Remote says this is a LIVE VIEW of a chat another computer holds
+	// (app_live_open.go): the conversation runs there, and its model, posture,
+	// budget and client tools are that computer's to set, never this one's.
+	Remote bool
+	// Gone is closed when the connection is released, for what watches it and
+	// must stop with it; nil where nothing does.
+	Gone <-chan struct{}
+	// Held says this desktop keeps the chat behind its holder door
+	// ([appDeskHost]), so another computer may be in it and the keyboard may be
+	// theirs. It is false with remote control off, which is the chat as it
+	// always was.
+	Held bool
 }
 
 type appOpener func(appOpenAsk) (*appConn, error)
@@ -413,39 +425,52 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// carry on by itself (appinterrupted.go).
 		HoldInterruptedWork: ask.HoldInterruptedWork,
 	}
+	return appOpenAssembled(hello, func(h remote.Hello) (*remote.Engine, error) {
+		// THE APP'S OWN OPENER FIRST, so a process half that failed for the
+		// want of a key before the window handed one over is opened again
+		// now; [assembleEngine] then finds it open. Without it a first
+		// message sent after the key arrived failed on the memo's old error.
+		if _, err := openAppEngineProcess(); err != nil {
+			return nil, err
+		}
+		eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
+		if err == nil {
+			// In-process chats are the desktop's hot path. Remote surfaces keep
+			// one frame per event until someone measures them.
+			eng.DeltaWindow = remote.DefaultDeltaWindow
+			err = enableAppConversationModels(eng.Agent, ask.Models)
+		}
+		if err == nil && ask.AutomaticModels != nil {
+			if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
+				err = door.SetAutomaticModels(*ask.AutomaticModels)
+			} else {
+				err = fmt.Errorf("model selection policy is unsupported")
+			}
+		}
+		return eng, err
+	})
+}
+
+// appOpenAssembled opens the conversation boot builds as the app's own, over
+// one in-process attach, and returns the connection the app holds it by.
+//
+// WHEN REMOTE CONTROL IS ON the conversation is kept by a persistent session the
+// desktop's holder door can hand to another computer's viewer ([appDeskHost]);
+// when it is off, or the door could not start, it is the loopback it has always
+// been. Either way the connection's release ends the chat, and what the app sees
+// through it is the same.
+func appOpenAssembled(hello remote.Hello, boot func(remote.Hello) (*remote.Engine, error)) (*appConn, error) {
 	// The agent this boot built, kept so the app can tell when somebody else
-	// closes it (below). Boot runs once, before Loopback returns.
+	// closes it (below). Boot runs once, before the attach returns.
 	var booted atomic.Pointer[closedAgent]
-	loop, err := remote.Loopback(hello, remote.Options{
-		Boot: func(h remote.Hello) (*remote.Engine, error) {
-			// THE APP'S OWN OPENER FIRST, so a process half that failed for the
-			// want of a key before the window handed one over is opened again
-			// now; [assembleEngine] then finds it open. Without it a first
-			// message sent after the key arrived failed on the memo's old error.
-			if _, err := openAppEngineProcess(); err != nil {
-				return nil, err
+	loop, held, err := deskHost.open(hello, func(h remote.Hello) (*remote.Engine, error) {
+		eng, err := boot(h)
+		if err == nil && eng != nil {
+			if c, ok := eng.Agent.(closedAgent); ok {
+				booted.Store(&c)
 			}
-			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
-			if err == nil {
-				// In-process chats are the desktop's hot path. Remote surfaces keep
-				// one frame per event until someone measures them.
-				eng.DeltaWindow = remote.DefaultDeltaWindow
-				err = enableAppConversationModels(eng.Agent, ask.Models)
-			}
-			if err == nil && ask.AutomaticModels != nil {
-				if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
-					err = door.SetAutomaticModels(*ask.AutomaticModels)
-				} else {
-					err = fmt.Errorf("model selection policy is unsupported")
-				}
-			}
-			if err == nil {
-				if c, ok := eng.Agent.(closedAgent); ok {
-					booted.Store(&c)
-				}
-			}
-			return eng, err
-		},
+		}
+		return eng, err
 	})
 	if err != nil {
 		return nil, err
@@ -462,13 +487,22 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	release := func() {
 		once.Do(func() {
 			close(stop)
+			// OFF THE DOOR FIRST, so nobody joins a chat that is closing.
+			held.drop()
+			held.endViewers()
 			recordFinalSaveFailure(loop.Close())
+			held.close()
 		})
 	}
 	if c := booted.Load(); c != nil {
 		watchAgentClosed(*c, stop, release)
 	}
-	return appConnOf(loop.Client, release, true), nil
+	conn := appConnOf(loop.Client, release, true)
+	if held != nil {
+		// WHAT WATCHES THE KEYBOARD STOPS WITH THE CHAT ([appBackend.watchHeldDriver]).
+		conn.Held, conn.Gone = true, stop
+	}
+	return conn, nil
 }
 
 // appJoinExisting joins only a conversation an engine already holds.
@@ -700,6 +734,14 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
+	// liveMu guards liveHosts, the roads to the other computers this process
+	// holds live views on (app_live_open.go). It is a leaf lock: nothing else is
+	// taken or called while it is held. liveViews counts the live agents, so the
+	// hook every agents.* call goes through costs nothing when there are none.
+	liveMu    sync.Mutex
+	liveHosts map[string]*appLiveHost
+	liveViews atomic.Int32
+
 	// unreadSay is held from working an agent's unread and saved spend out
 	// to saying them, so the last readings the window hears are the latest
 	// (appunread.go). It is taken before mu and the app file's lock, never
@@ -856,6 +898,13 @@ type appAgent struct {
 	// viewOpen preserves the person's open view through idle sweeps. Retiring
 	// it would let its next read immediately take back the released hold.
 	viewOpen bool
+	// liveRemote is set once the agent has been opened as a live view of a chat
+	// another computer holds (app_live_open.go); nil for every other agent.
+	liveRemote *appLiveRemote
+	// heldKeyboard is who holds the keyboard of this chat when it is held here
+	// and another window than the desktop's own has it (app_held_keyboard.go);
+	// nil says the desktop's window holds it. Guarded by the backend's lock.
+	heldKeyboard *appwire.LiveDriver
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
 	// What it has said to the person (appunread.go): repliedAt its last
@@ -1342,7 +1391,7 @@ func (b *appBackend) findLocal(id string) (*appAgent, error) {
 	held := false
 	b.locked(func() {
 		a = b.agents[id]
-		held = a != nil && a.transcript != ""
+		held = a != nil && (a.transcript != "" || a.liveRemote != nil)
 	})
 	if held {
 		// A cached transcript is not a lease on another window's working state.
@@ -1444,7 +1493,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	var beyond []beyondWalk
 	b.locked(func() {
 		for id, a := range b.agents {
-			if !seen[id] && !a.view.FactoryOwned && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
+			if !seen[id] && !a.view.FactoryOwned && !a.liveOnly() && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
 				beyond = append(beyond, beyondWalk{view: a.view, transcript: a.transcript, said: a.saidLocked()})
 			}
 		}
@@ -1960,7 +2009,14 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		}
 	})
 	var moved bool
-	b.locked(func() { moved = a.windowMoved })
+	var liveRemote *appLiveRemote
+	b.locked(func() { moved, liveRemote = a.windowMoved, a.liveRemote })
+	// A LIVE VIEW IS OPENED OVER THE LIVE DOOR, NEVER BUILT HERE: the chat runs
+	// on another computer, so this process spends nothing on it, moves nothing
+	// and is not held by the day's cap (app_live_open.go).
+	if liveRemote != nil {
+		return b.ensureLive(a, liveRemote)
+	}
 	if moved {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeConflict, "%s", appWindowConflict)
 	}
@@ -2165,6 +2221,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
 	b.openingNotices(a, conn)
+	if conn.Held {
+		b.watchHeldDriver(a, conn)
+	}
 	lane, stop := conn.Conv.WatchTaskUpdates()
 	live.stopTasks = stop
 	id := view.ID
@@ -3933,6 +3992,13 @@ func (b *appBackend) EntriesWithFallback(id, before string, limit int) (appwire.
 	if err != nil {
 		return appwire.EntriesResult{}, err
 	}
+	// A LIVE VIEW READS ITS HISTORY OVER THE LIVE DOOR, never from a folder
+	// here and never from a saved head (app_live_open.go).
+	var liveView bool
+	b.locked(func() { liveView = a.liveRemote != nil })
+	if liveView {
+		return b.liveEntries(a, before, limit)
+	}
 	if a.hosted != nil {
 		return b.hostedEntries(a, before, limit)
 	}
@@ -4403,8 +4469,8 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 		live = a.live
 		live.lastUse = b.now()
 	})
-	if live.conn.Lent {
-		return appwire.Agent{}, errLentStage("model")
+	if live.conn.Lent || live.conn.Remote {
+		return appwire.Agent{}, appFenceError(live.conn, "model")
 	}
 	if checked, ok := live.conn.Conv.(interface{ SetModelChecked(string) error }); ok {
 		if err := checked.SetModelChecked(model); err != nil {
@@ -4953,6 +5019,9 @@ func (b *appBackend) Close() error {
 	}
 	b.clientTools.disconnect()
 	appClientToolsBackend.CompareAndSwap(b, nil)
+	// The links to other computers go first: a view being redialled would
+	// otherwise hold the relay's tunnel while the app leaves.
+	b.closeLive()
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun
@@ -5109,6 +5178,9 @@ func (b *appBackend) Close() error {
 	}
 	wg.Wait()
 	lap("conversations")
+	// THE HOLDER DOOR GOES DOWN LAST OF THE CHATS' BUSINESS: every chat has
+	// been let go, so nothing is left for another computer to be handed.
+	deskHost.closeListener()
 	// An unfinished crew open owns its gate but has no held conversation to
 	// release. Optional file cleanup must not join that open; retain its files.
 	var settled []*appAgent
@@ -5234,6 +5306,17 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 		live = a.live
 		keep = live == nil || a.viewOpen || live.running || a.readers > 0 || now.Sub(live.lastUse) < appAgentIdle
 	})
+	// A CHAT ANOTHER COMPUTER IS WATCHING THROUGH THIS DESKTOP IS KEPT, whatever
+	// the clock says: the viewer is somebody looking at it, the same as a view
+	// open here (app_live.go). The clock starts again when the viewer leaves.
+	if !keep && b.deskViewed(a) {
+		b.locked(func() {
+			if a.live == live {
+				live.lastUse = b.now()
+			}
+		})
+		return
+	}
 	// A member of an open crew stays held while it has work in flight or a
 	// reason the crew would open it again at once; one with nothing to do goes
 	// like any other, and the crew opens it when traffic comes (applazy.go).

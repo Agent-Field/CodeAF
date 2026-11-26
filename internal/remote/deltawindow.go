@@ -22,6 +22,20 @@ import (
 // cannot fold the desktop's text deltas arriving 25 milliseconds apart.
 const DefaultDeltaWindow = 33 * time.Millisecond
 
+// DeltaWindowFor returns the engine's streamed-text folding window for a home's
+// remote-control posture: [DefaultDeltaWindow] when remote control is on, and
+// zero — one frame per event — when it is off.
+func DeltaWindowFor(remoteControlOn bool) time.Duration {
+	return deltaWindowFor(remoteControlOn)
+}
+
+func deltaWindowFor(on bool) time.Duration {
+	if on {
+		return DefaultDeltaWindow
+	}
+	return 0
+}
+
 // DeltaBytes is the flush threshold for a pending run, not a frame size cap.
 // Folding a chunk can cross it; a chunk already at or above it travels alone.
 const DeltaBytes = 4 << 10

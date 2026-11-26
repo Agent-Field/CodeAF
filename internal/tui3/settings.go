@@ -521,6 +521,14 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "idle handoff", widget: widgetToggle,
 		about: config.IdleHandoffHint,
 	},
+	// REMOTE CONTROL SITS ON THE DEVICES TAB, below the computers it is about
+	// (settings_devices.go). It is a registry row like the ones above, so the
+	// toggle, the write and the "set by CODEAF_REMOTE_CONTROL" note are the code
+	// every other switch already runs.
+	config.KeyRemoteControl: {
+		tab: tabDevices, label: "remote control", widget: widgetToggle,
+		about: config.RemoteControlHint,
+	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
 	// what: they are about what codeaf may REACH on your behalf, which is the
@@ -1602,6 +1610,11 @@ func (s *sheet) build() {
 			if !ok || meta.tab != title || crewSeatKey(row.Key) {
 				continue
 			}
+			// THE SWITCH FOR REACHING OTHER COMPUTERS IS ABSENT WHEN THEY CANNOT BE
+			// REACHED, in a search as on the tab (settings_devices.go).
+			if row.Key == config.KeyRemoteControl && s.devicesUnavailable() != "" {
+				continue
+			}
 			score, hit, at, n := s.settingMatch(row, meta, title, terms)
 			if !hit {
 				continue
@@ -2328,7 +2341,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 	}
 	s := &a.sheet
 	defer a.touch()
-	if s.dev != nil && s.dev.removing != nil {
+	if s.dev != nil && s.dev.confirming() {
 		cmd, _ := s.dev.key(a, msg.String())
 		return cmd, true
 	}
@@ -2413,29 +2426,19 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 
 	case "enter":
 		return a.activate(), true
-	case "r":
+	case "r", "n", "w", "t":
+		key := msg.String()
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
 				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
-					return a.revoke(s.dev), true
+					cmd, _ := s.dev.key(a, key)
+					return cmd, true
 				}
 			}
 			return nil, true
 		}
-		s.query.insert("r")
-		s.build()
-	case "n":
-		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
-			if s.dev != nil && s.dev.loaded {
-				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
-					s.dev.startNaming()
-				}
-			}
-			return nil, true
-		}
-		s.query.insert("n")
+		s.query.insert(key)
 		s.build()
 	case " ", "space":
 		// A SPACE WHILE A SEARCH IS TYPED IS A WORD IN THE QUERY and not a

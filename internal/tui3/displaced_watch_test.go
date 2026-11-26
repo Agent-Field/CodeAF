@@ -48,7 +48,7 @@ func TestKnownDisplacementOutranksTheCachedWriterHold(t *testing.T) {
 				desk.Say(chatlist.Superseded("other computer"))
 				a.saidNotices()
 			}
-			if !strings.Contains(plain(lastNote(t, a)), "continued this chat") {
+			if !strings.Contains(plain(lastNote(t, a)), "moved this chat") {
 				t.Fatal("displacement was not shown")
 			}
 			a.input.setText("keep these words unsent")

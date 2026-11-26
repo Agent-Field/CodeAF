@@ -1472,6 +1472,20 @@ func (a *app) scopeWorkspace() string {
 			}
 		}
 	}
+	return a.ownWorkspace()
+}
+
+// ownWorkspace is the folder on THIS computer that Home starts things in when
+// nothing points elsewhere: this window's workspace, and never the folder of a
+// live view in front, which is a path on the computer that runs that chat and
+// may not exist here. A new conversation started from Home in a folder this
+// computer does not have is the failure this prevents, and so is a project row
+// for a folder nobody here can open. For a local conversation in front it is
+// exactly [app.workspace].
+func (a *app) ownWorkspace() string {
+	if a.liveView != nil {
+		return strings.TrimSpace(a.workspaceBeforeLive)
+	}
 	return strings.TrimSpace(a.workspace)
 }
 

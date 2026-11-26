@@ -67,7 +67,7 @@ func TestRemovedComputerOffersNoContinuation(t *testing.T) {
 			drain(t, a, a.recordMachines(homeMachinesMsg{err: directory.ErrRevoked}))
 		}
 		text := homeText(a)
-		if strings.Contains(text, "latest chat here?") || strings.Contains(text, "continue here") {
+		if strings.Contains(text, "latest chat here?") || strings.Contains(text, "move here") {
 			t.Errorf("removed computer offered continuing: %s", text)
 		}
 		if !strings.Contains(text, removedPairNotice) {

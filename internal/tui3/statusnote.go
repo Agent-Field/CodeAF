@@ -117,6 +117,9 @@ func (a *app) statusItems() []deckItem {
 		}
 		items = append(items, item)
 	}
+	if road := a.liveRoadWord(); road != "" {
+		items = append(items, deckItem{label: "road", value: road})
+	}
 	if a.relayStorageOff() {
 		items = append(items, deckItem{label: storageLabel, value: "off"})
 	} else if word := a.syncSpaceWord(); word != "" {

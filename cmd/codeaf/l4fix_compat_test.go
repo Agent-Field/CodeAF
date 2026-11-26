@@ -114,7 +114,7 @@ func TestL4FixTwoChatQuitReceipt(t *testing.T) {
 		t.Fatal("a successful detach poisoned the idle chat's upload receipt")
 	}
 	raw, _ := os.ReadFile(out.Name())
-	if strings.TrimSpace(string(raw)) != "saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers" {
+	if strings.TrimSpace(string(raw)) != "saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers" {
 		t.Fatalf("receipt=%s", raw)
 	}
 }

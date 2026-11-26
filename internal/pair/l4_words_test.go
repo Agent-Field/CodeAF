@@ -42,7 +42,7 @@ func TestL4PairCompletionVoice(t *testing.T) {
 	if got := (Joined{With: "laptop-a"}).Sentence(); got != "Paired with laptop-a. Run codeaf to open your chats." {
 		t.Fatal(got)
 	}
-	if got := PairedChatsLine("desk-b"); got != "desk-b is now paired. Your chats can continue there." {
+	if got := PairedChatsLine("desk-b"); got != "desk-b is now paired. desk-b can also see and control your chats here. Change that in /devices." {
 		t.Fatal(got)
 	}
 	if got := WaitingChatsLine("a b c"); got != "Waiting for approval on your other device; it should show: a b c" {
@@ -116,7 +116,7 @@ func TestL4ServeRemedyIsLocal(t *testing.T) {
 // L4-H6d: code-pairing server failures use the same sentence as devices and cluster.
 func TestL4CodePairServiceFailure(t *testing.T) {
 	got := phraseBox(wireauth.ErrUnavailable, "http://127.0.0.1:8901")
-	if got.Error() != "the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute" {
+	if got.Error() != "the relay at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute" {
 		t.Fatal(got)
 	}
 }

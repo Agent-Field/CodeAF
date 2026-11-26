@@ -836,12 +836,12 @@ Each Follow PR round posts a brief ordinary assistant message naming its observe
 trigger: failing CI checks, review feedback, conflicts, or the final readiness
 review. The worker is asked to give one or two sentences when its investigation,
 repair approach or verification changes, roughly once a minute during lengthy
-work. Complete model messages are relayed at journal boundaries; reasoning, tool
-output, abandoned streams and partial replies are not relayed.
+work. Complete model messages are passed on at journal boundaries; reasoning, tool
+output, abandoned streams and partial replies are not passed on.
 
 The same job conversation receives these messages below the running Follow PR
 frame, without another card or requiring the person to open the worker chat.
-Only the first paragraph is relayed, capped at the existing 400-character stage
+Only the first paragraph is passed on, capped at the existing 400-character stage
 summary size; the complete text remains in the worker chat. Duplicate updates
 are suppressed, and model updates are at least 30 seconds apart per round. This
 adds no periodic model calls and does not promise a timed heartbeat when a model

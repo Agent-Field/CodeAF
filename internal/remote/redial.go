@@ -35,10 +35,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 const (
@@ -55,19 +57,54 @@ const (
 	// opens it again. Roaming buys the person not having to type it.
 	RoamWindow = 5 * time.Minute
 
-	// firstBackoff is the pause before the first retry and slowestBackoff the
-	// ceiling it doubles up to. The first is short because most drops are a
-	// blip and the pipe is there a second later; the ceiling exists because
-	// every attempt spawns an ssh process on this machine and a hundred of them
-	// against a machine that is switched off is a person's laptop working for
-	// nothing.
-	firstBackoff   = 1 * time.Second
 	slowestBackoff = 15 * time.Second
+
+	defaultFirstBackoff = 1 * time.Second
+	firstRetrySpread    = 5 * time.Second
+	jitterLow           = 0.75
+	jitterSpan          = 0.5
 
 	// resumeTail is how long a resumed stream may stay silent before it is
 	// treated as a turn that ended while nobody was watching. See
 	// [Client.watchTail] for the whole of why it exists.
 	resumeTail = 3 * time.Second
+
+	// defaultPlannedNoteAfter is how long a PLANNED redial may take before the screen
+	// says `reconnecting`. A swap between two roads the viewer itself chose is
+	// over in milliseconds on a network that works, and a sentence about a link
+	// that was never lost would be the screen inventing a fault; an attempt that
+	// outlasts this is no longer a swap, and the same sentence an unplanned drop
+	// says is the true one. It is the default of [plannedNoteAfter].
+	defaultPlannedNoteAfter = 750 * time.Millisecond
+)
+
+// plannedNoteAfter is a variable so that a test can ask the question without
+// sleeping for most of a second.
+var plannedNoteAfter = defaultPlannedNoteAfter
+
+// firstBackoff is the floor of the pause before the first retry and
+// slowestBackoff the ceiling the base wait doubles up to. The first retry
+// draws from [1 s, 6 s) via [relay.FirstRetry] and each doubled wait is
+// spread into [0.75, 1.25) via [relay.Jitter] so a dropped relay does not
+// see every surface return in the same second; the ceiling exists because
+// every attempt spawns an ssh process or a dial on this machine and a
+// hundred of them against a machine that is switched off is a person's
+// laptop working for nothing.
+var (
+	firstBackoff = defaultFirstBackoff
+	retryFirst   = relay.FirstRetry
+	retryJitter  = relay.Jitter
+	retryRand    func() float64
+	redialSleep  = func(stop <-chan struct{}, d time.Duration) bool {
+		timer := time.NewTimer(d)
+		select {
+		case <-stop:
+			timer.Stop()
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
 )
 
 // Dialer opens ONE fresh transport to the engine. It is the seam the redial
@@ -82,6 +119,27 @@ type Roaming struct {
 	Dial Dialer
 	// Window is how long to keep trying, and zero is [RoamWindow].
 	Window time.Duration
+	// MaxLine bounds one inbound line on every link this client reads (see
+	// [WithMaxLine]). Zero keeps the unbounded reader local pipes and sockets use.
+	MaxLine int
+	// ResendUnanswered resends in-flight Submit, FollowUp and Steer calls that
+	// carry a ClientID when a redial lands on a host advertising
+	// [Welcome.MessageRepeat], and mints an id for sends that left it empty.
+	ResendUnanswered bool
+	// OnGap is called when the engine reports that a resumed stream's ring
+	// evicted events older than its first retained sequence number. Nil ignores
+	// the frame and continues reading the retained events.
+	OnGap func(Gap)
+	// SpreadReturns says this road is dialled through a relay, which can drop
+	// every viewer in the same instant, so the first retry waits one second plus
+	// a random spread of up to five and each later wait is scaled by a random
+	// 0.75 to 1.25 (V22, W10). IT IS OPT-IN BECAUSE A FIX KEEPS DEFAULTS: an ssh
+	// `--host` pipe, a local socket and an engine on a pipe are reached by one
+	// person's own dial, nobody returns with them, and spreading their first
+	// retry over six seconds would have made every one of those slower to come
+	// back for a reason that is not theirs. Left false, a road keeps the schedule
+	// it always had, a fixed first pause and then the doubling.
+	SpreadReturns bool
 }
 
 func (r *Roaming) window() time.Duration {
@@ -107,7 +165,7 @@ func Roam(host string, hello Hello, roam Roaming) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := newClient(host, hello)
+	c := newClient(host, hello, WithMaxLine(roam.MaxLine))
 	c.roam = &roam
 	if _, err := c.attach(conn); err != nil {
 		_ = conn.Close()
@@ -161,6 +219,45 @@ func plural(n int, word string) string {
 
 // ── the loop ────────────────────────────────────────────────────────────────
 
+// farEndEnded is what an error says when the link under a reader ended because
+// the far end CLOSED THE VIEW ON PURPOSE and said why (livedoor's
+// `remote-control-off`), as opposed to the link failing. It is an interface for
+// the reason [plannedRedial] is: this package cannot import livedoor, and the
+// reason itself is read through the `Reason() string` every channel error of a
+// live door already has.
+type farEndEnded interface{ EndsView() bool }
+
+// endedByFarEnd answers the closed reason the far end ended the view with, and
+// whether the cause is one of those.
+func endedByFarEnd(cause error) (reason string, ended bool) {
+	var ender farEndEnded
+	if !errors.As(cause, &ender) || !ender.EndsView() {
+		return "", false
+	}
+	var spoken interface{ Reason() string }
+	if errors.As(cause, &spoken) {
+		return spoken.Reason(), true
+	}
+	return "", false
+}
+
+// plannedRedial is what an error says when the link under a reader ended
+// because the road that carries it was CHANGED ON PURPOSE (livedoor's
+// `road-change`), not because anything failed. It is an interface so that this
+// package, which cannot import livedoor, can still tell the two apart.
+//
+// A planned redial has nothing to wait for: the far end is up, the new road is
+// already open, and the pause an unplanned drop takes exists to let a relay that
+// restarted breathe.
+type plannedRedial interface{ PlannedRedial() bool }
+
+// isPlannedRedial reports whether the cause of a lost link asked for the
+// immediate redial.
+func isPlannedRedial(cause error) bool {
+	var planned plannedRedial
+	return errors.As(cause, &planned) && planned.PlannedRedial()
+}
+
 // lost is what the reader does when the link under it stops, and it answers
 // whether reading may carry on. True means a live pipe is in place and the
 // stream state has been reconciled with what the engine says; false means this
@@ -176,6 +273,15 @@ func (c *Client) lost(cause error) bool {
 		c.bury(cause)
 		return false
 	}
+	// A FAR END THAT ENDED THIS VIEW ON PURPOSE IS NOT A BLIP. It is up, it
+	// answered, and what it said was that it will not carry the view, so thirty
+	// minutes of redials would only be thirty minutes of a screen claiming the
+	// connection is being repaired. The client is buried at once, and what it says
+	// is the far end's own sentence ([Client.gone]).
+	if _, ended := endedByFarEnd(cause); ended {
+		c.bury(cause)
+		return false
+	}
 
 	// THE CALLS IN FLIGHT FAIL AND THE STREAMS DO NOT. A call is a round trip
 	// whose answer was on the pipe that just died, and its caller is waiting on
@@ -183,19 +289,46 @@ func (c *Client) lost(cause error) bool {
 	// has not stopped because this laptop's wifi did. That difference is the
 	// whole reason the surface can be redialled under a person without the
 	// conversation noticing.
+	planned := isPlannedRedial(cause)
 	c.mu.Lock()
 	c.reconnecting = true
-	waiting := c.calls
-	c.calls = map[uint64]chan result{}
+	// THE NOTE IS LATE AND THE REFUSAL IS NOT. Calls are refused for the whole
+	// gap, because between the new pipe being handed over and its welcome being
+	// read a call written onto it would arrive before the hello; that part is
+	// protocol and cannot wait. What a planned redial delays is only the SENTENCE
+	// ([Client.LinkNote]), so a road swap that takes a few milliseconds shows the
+	// person nothing at all.
+	if planned {
+		c.noteAt = time.Now().Add(plannedNoteAfter)
+	} else {
+		c.noteAt = time.Time{}
+	}
+	var waiting []chan result
+	if roam.ResendUnanswered {
+		for id, answer := range c.calls {
+			if _, ok := c.pendingSends[id]; ok {
+				continue
+			}
+			delete(c.calls, id)
+			waiting = append(waiting, answer)
+		}
+	} else {
+		for _, answer := range c.calls {
+			waiting = append(waiting, answer)
+		}
+		c.calls = map[uint64]chan result{}
+		c.pendingSends = map[uint64]Frame{}
+	}
 	c.mu.Unlock()
 	refusal := errors.New(c.roamingRefusal())
 	for _, answer := range waiting {
 		answer <- result{err: refusal}
 	}
 
-	welcome, err := c.redial(roam)
+	welcome, err := c.redial(roam, planned)
 	c.mu.Lock()
 	c.reconnecting = false
+	c.noteAt = time.Time{}
 	c.mu.Unlock()
 	if err != nil {
 		// A refusal the far end MADE is worth repeating; a redial that simply
@@ -212,7 +345,45 @@ func (c *Client) lost(cause error) bool {
 	c.reconcile(left, welcome)
 	c.retakeLanes(left, welcome)
 	c.resendClientTools()
+	c.resendUnansweredSends(left, welcome, refusal)
 	return true
+}
+
+func (c *Client) resendUnansweredSends(left string, welcome Welcome, refusal error) {
+	c.mu.Lock()
+	if c.roam == nil || !c.roam.ResendUnanswered || !welcome.MessageRepeat || conversationSwitched(left, welcome.SessionFile) {
+		var failed []chan result
+		for id := range c.pendingSends {
+			if answer, ok := c.calls[id]; ok {
+				delete(c.calls, id)
+				failed = append(failed, answer)
+			}
+		}
+		c.pendingSends = map[uint64]Frame{}
+		c.mu.Unlock()
+		for _, answer := range failed {
+			answer <- result{err: refusal}
+		}
+		return
+	}
+	var frames []Frame
+	for id, frame := range c.pendingSends {
+		if _, ok := c.calls[id]; ok {
+			frames = append(frames, frame)
+		} else {
+			delete(c.pendingSends, id)
+		}
+	}
+	c.mu.Unlock()
+	if len(frames) == 0 {
+		return
+	}
+	sort.Slice(frames, func(i, j int) bool { return frames[i].ID < frames[j].ID })
+	guard.Go("remote/resend-unanswered", func() {
+		for _, frame := range frames {
+			_ = c.write(frame)
+		}
+	})
 }
 
 // conversationSwitched reports whether the engine came back with a DIFFERENT
@@ -295,11 +466,35 @@ func (c *Client) retakeLanes(left string, welcome Welcome) {
 	}
 }
 
+// redialPause is how long to wait before an attempt. A road that does not
+// spread its returns ([Roaming.SpreadReturns]) keeps the schedule it always had:
+// the base wait, which the loop doubles up to [slowestBackoff].
+func redialPause(first bool, wait time.Duration, spread bool) time.Duration {
+	if !spread {
+		return wait
+	}
+	if first {
+		if wait != defaultFirstBackoff {
+			return wait
+		}
+		if retryRand != nil {
+			return defaultFirstBackoff + time.Duration(retryRand()*float64(firstRetrySpread))
+		}
+		return retryFirst()
+	}
+	if retryRand != nil {
+		return time.Duration(float64(wait) * (jitterLow + retryRand()*jitterSpan))
+	}
+	return retryJitter(wait)
+}
+
 // redial is the backoff loop: a pause, an attempt, a longer pause, until the
-// engine answers or the window runs out.
-func (c *Client) redial(roam *Roaming) (Welcome, error) {
+// engine answers or the window runs out. A PLANNED redial makes its first
+// attempt with no pause at all; the attempts after it keep the schedule.
+func (c *Client) redial(roam *Roaming, planned bool) (Welcome, error) {
 	deadline := time.Now().Add(roam.window())
 	wait := firstBackoff
+	first := true
 	for {
 		if c.stopped() {
 			return Welcome{}, errors.New("this connection is closed")
@@ -307,13 +502,13 @@ func (c *Client) redial(roam *Roaming) (Welcome, error) {
 		if time.Now().After(deadline) {
 			return Welcome{}, errors.New("the redialling ran out of time")
 		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-c.stop:
-			timer.Stop()
-			return Welcome{}, errors.New("this connection is closed")
-		case <-timer.C:
+		if !(first && planned) {
+			pause := redialPause(first, wait, roam.SpreadReturns)
+			if !redialSleep(c.stop, pause) {
+				return Welcome{}, errors.New("this connection is closed")
+			}
 		}
+		first = false
 
 		conn, err := roam.Dial()
 		if err == nil {

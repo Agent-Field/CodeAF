@@ -1296,6 +1296,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		ClientTools: clientTools,
 		TeamsPaired: teamPaired,
 		SyncService: chatSyncService(),
+		DeltaWindow: remote.DeltaWindowFor(config.RemoteControlOn()),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)
 			if !ok {

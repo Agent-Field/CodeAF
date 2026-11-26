@@ -42,7 +42,7 @@ func TestIdleRelease_R6_ReleasedWindowOfflineSendSaysWhy(t *testing.T) {
 	const words = "answer these kept words when sync returns"
 	_, err = f.b.Send(f.agent.ID, words, "")
 	var wire *appwire.Error
-	const want = "the sync service is not answering, so this chat cannot be taken back yet; your words are still in the box"
+	const want = "the relay is not answering, so this chat cannot be taken back yet; your words are still in the box"
 	if !errors.As(err, &wire) || wire.Code != appwire.CodeUnreachable || wire.Message != want {
 		t.Fatalf("released offline send = %v; want one unreachable refusal: %q", err, want)
 	}

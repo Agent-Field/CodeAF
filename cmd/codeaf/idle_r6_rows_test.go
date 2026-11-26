@@ -84,7 +84,7 @@ func TestIdleOpen_R6_LapsedWhileWorkingKeepsTheCard(t *testing.T) {
 		t.Fatalf("fixture must lapse while working: %+v", before)
 	}
 	if row.CanOpen || !row.CanTake || row.Here || row.Status != "off" {
-		t.Fatalf("app lapsed working row must keep Continue here: %+v", row)
+		t.Fatalf("app lapsed working row must keep Move here: %+v", row)
 	}
 	if before.Cell.Head != after.Cell.Head || before.Cell.Lease != after.Cell.Lease {
 		t.Fatal("listing a lapsed chat took it")

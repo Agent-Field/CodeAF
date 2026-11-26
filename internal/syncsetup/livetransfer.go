@@ -35,9 +35,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
@@ -280,36 +284,113 @@ var filesDoors = struct {
 }{runs: map[string]*doorRun{}}
 
 type doorRun struct {
-	stop context.CancelFunc
-	done chan struct{}
+	stop          context.CancelFunc
+	done          chan struct{}
+	remoteControl bool
 }
 
 // ensureFilesDoor starts this home's files door in this process if it is not
 // running. Which process of the home actually registers is decided by the lock
-// inside the door, so every codeaf process may call this.
+// inside the door, so every codeaf process may call this. It is also what ends
+// the remote-control part of a door: the person turning remote control off is
+// seen at the next call, which the watch loop of [StartLiveTransfer] makes at
+// least every [liveWatchEvery] in every process that opens chats, with or
+// without live transfer.
 func (s *Sync) ensureFilesDoor() {
-	if !s.liveCarries() {
+	wantRC := config.RemoteControlOn()
+	if !s.liveCarries() && !s.remoteControlWanted() {
+		// THE DOOR HAS NO REASON TO RUN, and the one case that needs ending is a
+		// run that is serving remote control the person has just turned off:
+		// without this, the early return left it up, and every view already open
+		// on it stayed connected until the process quit. A run that was never
+		// serving remote control, and a computer that has no other computer yet,
+		// are left exactly as they were.
+		if !wantRC {
+			s.endRemoteControlRun()
+		}
 		return
 	}
 	filesDoors.Lock()
-	defer filesDoors.Unlock()
-	if _, ok := filesDoors.runs[s.Home]; ok {
-		return
+	if existing, ok := filesDoors.runs[s.Home]; ok {
+		if existing.remoteControl == wantRC {
+			filesDoors.Unlock()
+			return
+		}
+		delete(filesDoors.runs, s.Home)
+		filesDoors.Unlock()
+		if existing.remoteControl && !wantRC {
+			// The door goes on for live transfer, so the views end with a reason
+			// they can say, and the run restarts below without the live handlers.
+			s.endRemoteControlViews()
+		}
+		existing.stop()
+		<-existing.done
+		filesDoors.Lock()
+		if current, ok := filesDoors.runs[s.Home]; ok && current.remoteControl == wantRC {
+			filesDoors.Unlock()
+			return
+		}
 	}
+	defer filesDoors.Unlock()
 	cfg, err := s.filesDoorConfig()
 	if err != nil {
 		log.Printf("blind pass-through: opening the live store: %v", err)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &doorRun{stop: cancel, done: make(chan struct{})}
+	// Remote control is carried by whichever of the two live handlers is set: Live
+	// alone, or LiveRoad when the direct road is on.
+	servesLive := cfg.Live != nil || cfg.LiveRoad != nil
+	run := &doorRun{stop: cancel, done: make(chan struct{}), remoteControl: servesLive}
 	filesDoors.runs[s.Home] = run
-	go func() {
-		defer close(run.done)
+	homeDir := s.Home
+	var watchWG sync.WaitGroup
+	if servesLive {
+		watchWG.Add(1)
+		guard.Go("syncsetup.permitsWatch", func() {
+			defer watchWG.Done()
+			pair.Permits().Watch(ctx, livePermitWatchEvery, func() {
+				livedoor.DefaultRegistry(homeDir).PermitsChanged("")
+			})
+		})
+	}
+	guard.Go("syncsetup.filesdoor", func() {
+		defer func() {
+			cancel()
+			watchWG.Wait()
+			close(run.done)
+		}()
 		if err := filesdoor.Serve(ctx, cfg); err != nil && ctx.Err() == nil {
 			log.Printf("blind pass-through: files door: %v", err)
 		}
-	}()
+	})
+}
+
+// endRemoteControlViews closes every live view open on this home's door. It
+// leans on the door's own permit read, which answers "no watching" while remote
+// control is off, so each open tunnel closes the way it does for a permit that
+// took watching away, and the viewer's link then finds a refusal and not a door
+// that is merely quiet. It holds no lock of ours.
+func (s *Sync) endRemoteControlViews() {
+	livedoor.DefaultRegistry(s.Home).PermitsChanged("")
+}
+
+// endRemoteControlRun ends this home's door when it is running to serve remote
+// control and nothing else needs it any more, and waits for it to let go of its
+// lock, which is what a restart onto a door without the live handlers does too.
+// A door that never served remote control is left alone.
+func (s *Sync) endRemoteControlRun() {
+	filesDoors.Lock()
+	run, ok := filesDoors.runs[s.Home]
+	if !ok || !run.remoteControl {
+		filesDoors.Unlock()
+		return
+	}
+	delete(filesDoors.runs, s.Home)
+	filesDoors.Unlock()
+	s.endRemoteControlViews()
+	run.stop()
+	<-run.done
 }
 
 // filesDoorConfig is everything one process needs to serve this home's files
@@ -323,7 +404,7 @@ func (s *Sync) filesDoorConfig() (filesdoor.ServeConfig, error) {
 	if liveDoorStore != nil {
 		store = liveDoorStore(s.Home, store)
 	}
-	return filesdoor.ServeConfig{
+	cfg := filesdoor.ServeConfig{
 		Service:   s.Relay,
 		Identity:  s.Identity,
 		Device:    s.Device,
@@ -337,7 +418,9 @@ func (s *Sync) filesDoorConfig() (filesdoor.ServeConfig, error) {
 		// from the live store.
 		Secrets:     s.serveSecrets,
 		SecretsPage: liveSecretsPage,
-	}, nil
+	}
+	s.attachRemoteControl(&cfg)
+	return cfg, nil
 }
 
 // stopFilesDoor ends this process's door for one home and waits for it to let
@@ -362,9 +445,17 @@ func (s *Sync) activeDevices(ctx context.Context) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.RememberDevices(l.Devices)
 	active := make(map[string]bool, len(l.Devices))
+	var revoked []string
 	for id, d := range l.Devices {
 		active[id] = !d.Revoked
+		if d.Revoked {
+			revoked = append(revoked, id)
+		}
+	}
+	if len(revoked) > 0 {
+		livedoor.DefaultRegistry(s.Home).Revoke(revoked...)
 	}
 	return active, nil
 }

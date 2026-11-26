@@ -60,7 +60,7 @@ func TestTakeRootPickerPreservesDraftAndSendsOnlyAfterSuccess(t *testing.T) {
 			}
 			a.putComposer(composerState{})
 			spend(t, a, a.tookTakeover(msg))
-			if noted(a, continueFails) {
+			if noted(a, moveFails) {
 				t.Fatal("a folder choice was reported as a failed take")
 			}
 			if outcome == "cancel first" {
@@ -89,7 +89,7 @@ func TestTakeRootPickerPreservesDraftAndSendsOnlyAfterSuccess(t *testing.T) {
 			if (outcome == "cancel first" || outcome == "cancel second" || outcome == "removed") && fake.calls != 1 {
 				t.Fatal("cancelled or removed computer retried the take")
 			}
-			if (outcome == "cancel first" || outcome == "cancel second") && noted(a, continueFails) {
+			if (outcome == "cancel first" || outcome == "cancel second") && noted(a, moveFails) {
 				t.Fatal("cancellation reported a failed take")
 			}
 			if outcome == "failure" && !a.machineRead.sendHolds[heldCell].blocked {

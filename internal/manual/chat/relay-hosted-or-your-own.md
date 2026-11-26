@@ -8,7 +8,7 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire.
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 - **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
@@ -17,7 +17,7 @@ Either way the relay sees only ciphertext and the short list on "What can the re
 
 ## Where sync goes by default — stable, staging and dev relay addresses
 
-Unset, each release channel selects its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
+Unset, each release channel selects its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
@@ -30,7 +30,7 @@ CODEAF_SYNC_URL=https://relay.example.com codeaf
 ```
 
 - **A web address** like `https://relay.example.com` or `http://host:8787`. Plain `http` is for trying it out inside an ssh tunnel. An address that is not a web address stops with `CODEAF_SYNC_URL is not a web address like http://host:8787`.
-- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service`. Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
+- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs the relay`. Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
 - **Unset:** a computer that was paired with a named relay uses the relay the pairing saved. Otherwise it uses the hosted default above, if this build has one, and has none if it does not.
 
 Your own computers must all name the same relay and hold the same identity, or they see different chats.
@@ -66,29 +66,29 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 **Any caller with a valid signature may make an identity and store on your relay.** The relay has no list of allowed people: an identity is made from a key, and the relay accepts any key. Keep your relay on a private network, a tailnet or behind a proxy that checks who calls. One identity cannot read another's data.
 
-## My sync service is too old to move chats — update before continuing here
+## My relay is too old to move chats — update before moving here
 
-An older sync service still pairs computers, lists and shows chats, saves every chat you write, and opens or continues a chat no computer holds (one the other computer closed, let go of after about 2 idle seconds when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or let expire). Only taking a chat another computer still holds (running, or idle while `idle handoff` is off, before release, or on an older build) waits for it, because only an updated service can promise that the take displaces the holder you saw. This build says `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Close the chat on that computer (or let it go idle with `idle handoff` on), then continue or open it here. For your own service, replace the running `codeaf relay` with this build; the next attempt uses the update without reopening codeaf.
+An older relay still pairs computers, lists and shows chats, saves every chat you write, and opens or continues a chat no computer holds (one the other computer closed, let go of after about 2 idle seconds when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or let expire). Only taking a chat another computer still holds (running, or idle while `idle handoff` is off, before release, or on an older build) waits for it, because only an updated service can promise that the take displaces the holder you saw. This build says `taking an open chat from another computer waits for a relay update; all else works, so close it there and move it here`. Close the chat on that computer (or let it go idle with `idle handoff` on), then move or open it here. For your own service, replace the running `codeaf relay` with this build; the next attempt uses the update without reopening codeaf.
 
 A chat you write on this computer is never held back by an older service. Releases of codeaf check that the hosted service answers what they need before they ship.
 
-## Starting your own sync service — codeaf relay help and the pairing command
+## Starting your own relay — codeaf relay help and the pairing command
 
 Run `codeaf relay --listen 127.0.0.1:8901 --store <folder>`. The first line is `codeaf relay is listening on 127.0.0.1:8901 — on each computer: codeaf pair --via http://127.0.0.1:8901`. Use an address the other computers can reach; 127.0.0.1 reaches only the computer itself. `codeaf relay --help` lists the ordinary options, and `codeaf help env` lists both service variables.
 
-`CODEAF_SYNC_URL` selects the sync service for chats; `off` disables syncing. `CODEAF_RELAY` is the fallback service override for pairing when `CODEAF_SYNC_URL` is unset, and the remote connection override for `serve` and `chat --at`. An explicit `--via` at pairing selects and remembers the service for later starts. Every instruction for the new computer includes that `--via` argument when the service is your own.
+`CODEAF_SYNC_URL` selects the relay for chats; `off` disables syncing. `CODEAF_RELAY` is the fallback service override for pairing when `CODEAF_SYNC_URL` is unset, and the remote connection override for `serve` and `chat --at`. An explicit `--via` at pairing selects and remembers the service for later starts. Every instruction for the new computer includes that `--via` argument when the service is your own.
 
-## The sync service did not answer — unreachable, slow or unable to agree
+## The relay did not answer — unreachable, slow or unable to agree
 
-A refused connection, failed name lookup or missing route to your own service says `nothing is answering at http://127.0.0.1:8901 — if that is your own sync service, start it there with codeaf relay`. The hosted equivalent is `cannot reach codeaf.agentfield.ai — check this computer's internet connection`.
+A refused connection, failed name lookup or missing route to your own service says `nothing is answering at http://127.0.0.1:8901 — if that is your own relay, start it there with codeaf relay`. The hosted equivalent is `cannot reach codeaf.agentfield.ai — check this computer's internet connection`.
 
-A timeout says `the sync service at http://127.0.0.1:8901 did not answer in time — try again`. A server error says `the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute`. Each sentence uses the address you selected.
+A timeout says `the relay at http://127.0.0.1:8901 did not answer in time — try again`. A server error says `the relay at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute`. Each sentence uses the address you selected.
 
-`codeaf pair`, `codeaf devices` and `codeaf cluster status` say `asking the sync service at 127.0.0.1:8901…` to the error stream after two seconds without an answer, only when that stream is a terminal.
+`codeaf pair`, `codeaf devices` and `codeaf cluster status` say `asking the relay at 127.0.0.1:8901…` to the error stream after two seconds without an answer, only when that stream is a terminal.
 
-## A chat keeps working when the sync service is down
+## A chat keeps working when the relay is down
 
-A sync outage says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`, once per outage. Local saves and rewind keep working. A local save by itself does not prove that syncing recovered. After an actual successful sync call, the chat can say `syncing again`; a sustained renewal outage keeps its existing `this chat is syncing again` recovery line.
+A sync outage says `the relay at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`, once per outage. Local saves and rewind keep working. A local save by itself does not prove that syncing recovered. After an actual successful sync call, the chat can say `syncing again`; a sustained renewal outage keeps its existing `this chat is syncing again` recovery line.
 
 ## Do chat folder names sync through the hosted relay
 

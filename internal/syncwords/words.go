@@ -57,7 +57,7 @@ func ServiceLine(address string) string {
 	if Hosted(address) {
 		kind = "hosted"
 	}
-	return fmt.Sprintf("sync service: %s (%s)", Host(address), kind)
+	return fmt.Sprintf("relay: %s (%s)", Host(address), kind)
 }
 
 // Unreachable distinguishes a personal service from the hosted internet service.
@@ -65,12 +65,12 @@ func Unreachable(address string) string {
 	if Hosted(address) {
 		return "cannot reach " + Host(address) + " — check this computer's internet connection"
 	}
-	return "nothing is answering at " + address + " — if that is your own sync service, start it there with codeaf relay"
+	return "nothing is answering at " + address + " — if that is your own relay, start it there with codeaf relay"
 }
 
 // Struggling is a service that answered but could not finish a coordinated change.
 func Struggling(address string) string {
-	return "the sync service at " + Host(address) + " is up but cannot agree on changes right now; it usually recovers within a minute"
+	return "the relay at " + Host(address) + " is up but cannot agree on changes right now; it usually recovers within a minute"
 }
 
 // Recovered is emitted only after a successful sync-service call.
@@ -80,10 +80,10 @@ const Recovered = "syncing again"
 // LegacyOutage remains the wire spelling for surfaces that predate this vocabulary.
 const LegacyOutage = "this chat is not syncing because other machines are unreachable; it keeps working here"
 
-const outagePrefix = "the sync service at "
+const outagePrefix = "the relay at "
 const outageSuffix = " is not answering; this chat keeps working here and catches up when it is back"
 
-const UnknownOutage = "the sync service is not answering; this chat keeps working here and catches up when it is back"
+const UnknownOutage = "the relay is not answering; this chat keeps working here and catches up when it is back"
 
 // Outage is said once while local work continues through a network outage.
 func Outage(address string) string {
@@ -91,7 +91,7 @@ func Outage(address string) string {
 }
 
 // Asking is the delayed progress sentence for terminal commands.
-func Asking(address string) string { return "asking the sync service at " + Host(address) + "…" }
+func Asking(address string) string { return "asking the relay at " + Host(address) + "…" }
 
 // IsOutage recognizes both generations so mixed builds share one notice ledger.
 func IsOutage(text string) bool {
@@ -99,13 +99,13 @@ func IsOutage(text string) bool {
 }
 
 // SavedHerePending names the same pending upload at app quit and individual close.
-const SavedHerePending = "saved here; it reaches your other devices when the sync service at %s answers"
+const SavedHerePending = "saved here; it reaches your other devices when the relay at %s answers"
 
 // SavedStorageOff is shared by app quit and the close of an individual chat.
-const SavedStorageOff = "saved here; sync storage is off for this account, so it stays on this computer"
+const SavedStorageOff = "saved here; relay storage is off for this account, so it stays on this computer"
 
 // ErrContinueStorageOff preserves local turns when the recorded history is missing here.
-var ErrContinueStorageOff = errors.New("cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here")
+var ErrContinueStorageOff = errors.New("cannot move this chat here while relay storage is off because this computer is missing saved turns; your local turns stay here")
 
 // ErrHolderOffline is a take that cannot finish because the computer that has
 // the chat is not running codeaf, so nothing can send its bytes. The chat is
@@ -132,14 +132,14 @@ func HolderOffline(name string) string {
 	if name == "" {
 		name = "another computer"
 	}
-	return name + " has this chat and is not on right now; open codeaf there, then continue here"
+	return name + " has this chat and is not on right now; open codeaf there, then move here"
 }
 
 // ErrLiveTransferOff is what continuing a chat says when the chat exists only on
 // the computer that shared it by blind pass-through and this computer has that
 // mode switched off: the record is in the list, but the only road to its frames
 // is shut here.
-var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on sync storage to continue it here")
+var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on relay storage to move it here")
 
 // SecretFilesLate is said when a chat has moved here but the files kept out of
 // its saved history (.env and the like) did not come with it, because the
@@ -156,4 +156,4 @@ func SecretFilesLate(name string) string {
 // have to sit on the sync service until that computer took it, and the service
 // keeps nothing of the kind until storage is approved, so the message is not
 // sent: the chat has to be brought here to be written to.
-var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for sync storage, which is off for this account; continue the chat here to write to it")
+var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for relay storage, which is off for this account; move the chat here to write to it")

@@ -54,7 +54,7 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 	standOn(t, a, "c-run")
 	drive(t, a, key("enter"))
 	if a.at(pageHome) || a.file != transcript || a.workspace != work {
-		t.Fatalf("continue here stayed on home or opened %s; wanted %s\n%s", a.file, transcript, homeText(a))
+		t.Fatalf("move here stayed on home or opened %s; wanted %s\n%s", a.file, transcript, homeText(a))
 	}
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "Moved from host-a in 3s") {
 		t.Fatalf("no arrival banner: %s", got)
