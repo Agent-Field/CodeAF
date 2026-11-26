@@ -3258,6 +3258,16 @@ a file from the Kit or export a kept app as a template.
 | `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
 | `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
 
+Format 1 packages can carry the field declarations of a shared type. An
+install binds compatible common keys to the receiving profile's records
+and adds missing declarations. When a shared type is missing, Apply
+creates it. Its local declaration keeps an optional `portable_reuse`
+flag so a subsequent export can offer the same binding. Older archives
+can supply those fields from the package manifest. If two different
+private types use the same alias, Apply stores the new type separately
+and preserves the app's alias and its references. The local
+`package_private` flag records that choice and is omitted on export.
+
 Package proposals are emitted on `apps.change_proposed` and persist in
 `apps.build_state.proposal` and `apps.list.builds[].proposal`. The
 `package` object carries `manifest`, `bindings`, `permissions`, optional
