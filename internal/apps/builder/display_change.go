@@ -112,7 +112,7 @@ func collectionWords(node, other *schema.Node, record schema.RecordType) string 
 			prior, _ := other.Props["columns"].([]any)
 			for _, col := range columns {
 				field, ok := col.(string)
-				if ok && (field == asProperty(other, "board_by") || !slices.Contains(prior, col)) {
+				if ok && (field == asProperty(other, "board_by") || field == asProperty(other, "groupBy") || !slices.Contains(prior, col)) {
 					return "Table with a " + displayName(record.Fields[field].Label, titleWords(field)) + " column"
 				}
 			}
@@ -175,6 +175,17 @@ func (s *Jobs) displaySummary(j *job, t turn) string {
 			return "The " + change.Part + " is now " + article + string(words) + "."
 		}
 		return change.Part + " is ready to try."
+	}
+	if j.App != "" && len(names) == 0 {
+		old, _ := schema.ParseApp([]byte(before[schema.AppFile]))
+		next, _ := schema.ParseApp([]byte(after[schema.AppFile]))
+		for _, command := range next.Commands {
+			if command.For == "" || slices.ContainsFunc(old.Commands, func(prior schema.Command) bool { return prior.ID == command.ID }) {
+				continue
+			}
+			record := displayName(next.Records[command.For].Label, command.For)
+			return "Added " + displayName(command.Label, "an action") + " to " + record + " records."
+		}
 	}
 	return displayName(j.Name, "Your app") + " is ready to try."
 }

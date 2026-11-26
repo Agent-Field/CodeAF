@@ -381,7 +381,8 @@ func TestHeadlessApplyPublishesAndRecordsSkippedLook(t *testing.T) {
 	})
 	state := waitState(t, jobs, draft, builder.Ready)
 	const notice = "look: skipped (desk not running)"
-	if len(state.Checkpoints) != 2 || !strings.Contains(state.Checkpoints[1].Summary, notice) {
+	if len(state.Checkpoints) != 2 || strings.Contains(state.Checkpoints[1].Summary, notice) ||
+		!slices.ContainsFunc(state.Progress, func(event builder.Event) bool { return strings.Contains(event.Line, notice) }) {
 		t.Fatalf("the change card must show the skipped Look: %+v", state.Checkpoints)
 	}
 	if !slices.ContainsFunc(state.Progress, func(event builder.Event) bool {

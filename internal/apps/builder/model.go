@@ -40,8 +40,8 @@ plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Trac
 writes the outline and starts the manifest. Each plan line has id and line.
 Use data for type ids, screens for screen ids, and automation for each
 planned run id. In data, use "create":true for types people add. Put manual
-actions in "actions" by command or run id. List custom parts and steps in
-"extensions" by id, with a short reason. Keep these declarations when
+actions in "actions" by command or run id. Declare extension work with
+"extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}]. Keep these declarations when
 revising the plan. Reuse the plan ids in the compiled definitions.
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing

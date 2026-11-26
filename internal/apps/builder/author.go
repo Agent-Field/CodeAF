@@ -53,6 +53,11 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		if err != nil || strings.TrimSpace(plan.Ask) == "" {
 			return nil, errors.New("plan needs a plan object with a nonempty ask")
 		}
+		for _, extension := range plan.Extensions {
+			if !validTypeWord(extension.ID) || strings.TrimSpace(extension.Reason) == "" {
+				return nil, errors.New("each plan extension needs an id and a reason")
+			}
+		}
 		if len(files[schema.AppFile]) == 0 {
 			if strings.TrimSpace(args.Name) == "" {
 				return nil, errors.New("give the app a name")

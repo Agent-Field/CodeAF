@@ -7,7 +7,7 @@ import (
 
 // An unbound template marker is visible in the resulting draft. Markdown
 // link text can have the same shape, so leave link labels alone.
-var placeholder = regexp.MustCompile(`(?i)\[(?:your |their |recipient |sender |record |contact |first |last |full |company |customer |client |owner |insert )*(?:name|company|person|title|email|date|address|phone|amount|details|signature|message|topic)\]`)
+var placeholder = regexp.MustCompile(`\[\s*[\pL][\pL\pN'’ _-]{0,79}\s*\]`)
 
 func UnboundPlaceholder(text string) string {
 	for _, index := range placeholder.FindAllStringIndex(text, -1) {

@@ -419,10 +419,6 @@ func (j *job) checkpoint(reply string) error {
 	if runes := []rune(summary); len(runes) > 200 {
 		summary = string(runes[:197]) + "…"
 	}
-	if note := (schema.Report{Look: j.Working.Look}).LookNote(); note != "" {
-		summary += " · " + note
-		reply += "\n\n" + note
-	}
 	j.Checkpoints = append(j.Checkpoints, Checkpoint{ID: id, Summary: summary, Screens: j.Screens})
 	j.Saved[id] = j.Working
 	j.Transcript = append(j.Transcript, Message{ID: id, Role: "assistant", Text: reply, Checkpoint: id})
@@ -442,6 +438,9 @@ func (s *Jobs) finish(j *job, event Event) error {
 	}
 	if finished.Proposal != "" && s.opts.Proposed != nil {
 		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal, Kind: "big", Source: "assistant", BaseVersion: j.Base, SummaryLines: []string{"Open the builder to review the change."}}
+		if j.State.State == Ready && j.Working.Passed {
+			p.Display = &DisplayChange{Part: displayName(j.Name, "App"), Before: "Current app", After: "Updated app"}
+		}
 		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
 			p.Screen = s.proposalScreen(j)
 			if p.Screen != "" && len(j.Checkpoints) != 0 {

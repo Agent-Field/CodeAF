@@ -79,6 +79,7 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 	// A Sheet starts closed. Its controls count once an exposed control can open it.
 	sheets := map[string]*schema.Node{}
 	opened := map[string]bool{}
+	recordSheets := map[string]bool{}
 	var visit func(*schema.Node, bool)
 	visit = func(node *schema.Node, inRecord bool) {
 		if node == nil || strings.TrimSpace(node.When) == "false" {
@@ -136,6 +137,7 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 			for _, a := range actions {
 				if id, ok := a["open"].(string); ok {
 					opened[id] = true
+					recordSheets[id] = recordSheets[id] || inRecord
 				}
 			}
 		}
@@ -151,7 +153,7 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 		for id, sheet := range sheets {
 			if opened[id] {
 				delete(sheets, id)
-				visit(sheet, false)
+				visit(sheet, recordSheets[id])
 				visited = true
 			}
 		}
@@ -164,8 +166,16 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 func selectionParameter(raw any) bool {
 	params, _ := raw.(map[string]any)
 	for _, value := range params {
-		if text, ok := value.(string); ok && (strings.HasPrefix(text, "$selection.") || strings.HasPrefix(text, "$record.")) {
-			return true
+		if text, ok := value.(string); ok {
+			if text == "$record.id" {
+				return true
+			}
+			if selection, ok := strings.CutPrefix(text, "$selection."); ok {
+				list, field, _ := strings.Cut(selection, ".")
+				if list != "" && field == "id" {
+					return true
+				}
+			}
 		}
 	}
 	return false
