@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -41,17 +42,19 @@ var (
 // Service resolves profile connections. Person is an engine-owned identity
 // resolver and defaults to the local profile owner.
 type Service struct {
-	Profile string
-	Store   func() (*data.Store, error)
-	Person  func(context.Context) data.PersonPrincipal
+	Microsoft func() (*connect.Manager, error)
+	Profile   string
+	Store     func() (*data.Store, error)
+	Person    func(context.Context) data.PersonPrincipal
 }
 
 type Summary struct {
-	CredentialMode string   `json:"credential_mode,omitempty"`
-	ID             string   `json:"id"`
-	Kind           Kind     `json:"kind"`
-	Reads          []string `json:"reads"`
-	Writes         []string `json:"writes"`
+	CredentialMode string            `json:"credential_mode,omitempty"`
+	ID             string            `json:"id"`
+	Kind           Kind              `json:"kind"`
+	Reads          []string          `json:"reads"`
+	Writes         []string          `json:"writes"`
+	Unavailable    map[string]string `json:"unavailable,omitempty"`
 }
 
 type Query struct {
@@ -59,6 +62,7 @@ type Query struct {
 	Connection string    `json:"connection"`
 	Read       string    `json:"read"`
 	Args       Arguments `json:"args,omitempty"`
+	Cursor     string    `json:"cursor,omitempty"`
 	Limit      int       `json:"limit,omitempty"`
 	id         string
 	filters    map[string]any
@@ -74,14 +78,18 @@ func (a *Arguments) UnmarshalJSON(raw []byte) error {
 type Source = data.QuerySource
 
 type Page struct {
-	Rows    []data.Row `json:"rows"`
-	Source  Source     `json:"source"`
-	HasMore bool       `json:"has_more,omitempty"`
+	Rows       []data.Row `json:"rows"`
+	Source     Source     `json:"source"`
+	HasMore    bool       `json:"has_more,omitempty"`
+	Next       string     `json:"next,omitempty"`
+	Checkpoint string     `json:"checkpoint,omitempty"`
+	Removed    []string   `json:"removed,omitempty"`
 }
 
 // The profile alias is selected by callers. The immutable registration ID
 // names the identity namespace even when a second profile uses the same alias.
 type registration struct {
+	graphGrant string
 	Config
 	Binding string `json:"binding"`
 }
@@ -155,6 +163,12 @@ func (s Service) Register(c Config, credential string) error {
 
 func validateCredential(kind Kind, credential string) (string, error) {
 	credential = strings.TrimSpace(credential)
+	if kind == Microsoft365 {
+		if credential != "" {
+			return "", errors.New("Microsoft 365 uses browser sign-in")
+		}
+		return "", nil
+	}
 	if credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
 		return "", errors.New("the connection needs one credential line")
 	}
@@ -179,7 +193,11 @@ func (s Service) List(app string) ([]Summary, error) {
 		if json.Unmarshal(definitions[id], &c) != nil || c.App != app || app == "" || c.ID != id || !cell.ValidID(c.Binding) {
 			continue
 		}
-		out = append(out, Summary{ID: id, Kind: c.Kind, CredentialMode: c.CredentialMode, Reads: slices.Sorted(maps.Keys(c.Reads)), Writes: slices.Sorted(maps.Keys(c.Writes))})
+		summary := Summary{ID: id, Kind: c.Kind, CredentialMode: c.CredentialMode, Reads: slices.Sorted(maps.Keys(c.Reads)), Writes: slices.Sorted(maps.Keys(c.Writes))}
+		if c.Kind == Microsoft365 {
+			s.graphAvailable(c, &summary)
+		}
+		out = append(out, summary)
 	}
 	return out, nil
 }
@@ -200,6 +218,16 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Microsoft365 {
+		ctx, cancel := context.WithTimeout(ctx, deadline)
+		defer cancel()
+		g, _, err := s.graph(ctx, c)
+		if err != nil {
+			return err
+		}
+		var account graphUser
+		return g.get(ctx, g.address("/me", url.Values{"$select": {"id"}}), "", &account)
 	}
 	secret, err := s.credential(c, s.person(ctx))
 	if err != nil {
@@ -236,6 +264,12 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	}
 	if q.Limit == 0 {
 		q.Limit = defaultRows
+		if c.Kind == Microsoft365 {
+			q.Limit = maxRows
+		}
+	}
+	if q.Cursor != "" && c.Kind != Microsoft365 {
+		return Page{}, ErrRejected
 	}
 	sc := data.Scope{App: q.App, Person: s.person(ctx)}
 	store, binding, typ, err := s.bind(c.Config, read, false)
@@ -268,10 +302,28 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 	}
 	fields := map[string]*data.Field{}
-	for name := range read.Fields {
+	if c.Kind == Microsoft365 && binding.Common != graphCommon(read.Table) {
+		return Page{}, ErrSourcePermission
+	}
+	for name, column := range read.Fields {
+		if c.Kind == Microsoft365 && graphContentField(column) {
+			continue
+		}
 		f, err := sourceField(read, typ, name)
+		if c.Kind == Microsoft365 && graphPersonColumn(read, column) {
+			if field := typ.Fields[name]; field != nil && !field.Hidden && !field.Masked && field.Computed == "" &&
+				(field.Type == data.TypeRefs || field.Type == data.TypeRef) {
+				f, err = field, nil
+			}
+		}
 		if err != nil {
 			return Page{}, err
+		}
+		if c.Kind == Microsoft365 && column == "meeting" {
+			_, target, targetErr := store.LiveBinding(sc, f.To, false)
+			if targetErr != nil || target.Common != data.CommonEvent {
+				return Page{}, ErrSourcePermission
+			}
 		}
 		if (f.Masked || typ.FieldPolicy(f) != "") && read.OrderBy != "" && read.OrderBy == read.Fields[name] {
 			store.AuditRecordPolicy(sc, typ, "source_sort_refused")
@@ -289,6 +341,22 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, err
 	}
 	maps.Copy(args, q.filters)
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	var graph graphSource
+	if c.Kind == Microsoft365 {
+		if rowPolicy {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, ErrSourcePermission
+		}
+		graph, c.graphGrant, err = s.graph(ctx, c)
+		if err != nil {
+			return Page{}, err
+		}
+		if q.id != "" && q.Cursor != "" {
+			return Page{}, ErrRejected
+		}
+	}
 	if q.id != "" {
 		key, err := effectKey(store, c, read, binding, q.id)
 		if err != nil {
@@ -296,17 +364,21 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		args[read.Key] = key
 	}
-	secret, err := s.credential(c, sc.Person)
-	if err != nil {
-		store.AuditRecordPolicy(sc, typ, "source_read_refused")
-		return Page{}, err
+	var secret string
+	if c.Kind != Microsoft365 {
+		secret, err = s.credential(c, sc.Person)
+		if err != nil {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, err
+		}
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, deadline)
-	defer cancel()
 	observed := time.Now().UTC()
 	var rows []map[string]any
+	var gp graphPage
 	switch c.Kind {
+	case Microsoft365:
+		gp, err = s.graphRows(ctx, graph, c, read, store, sc, q, args)
+		rows = gp.rows
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
@@ -321,7 +393,12 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		return Page{}, err
 	}
-	if c.CredentialMode == CredentialPerson {
+	if c.Kind == Microsoft365 {
+		if err := s.checkGraphGrant(ctx, c); err != nil {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, err
+		}
+	} else if c.CredentialMode == CredentialPerson {
 		current, err := s.credential(c, sc.Person)
 		if err != nil || current != secret {
 			store.AuditRecordPolicy(sc, typ, "source_read_refused")
@@ -336,6 +413,14 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	page := Page{
 		Rows:   make([]data.Row, 0, min(len(rows), q.Limit)),
 		Source: Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
+	}
+	if c.Kind == Microsoft365 {
+		page.Next, page.Checkpoint = gp.next, gp.checkpoint
+		page.HasMore = gp.next != ""
+		page.Removed, err = knownGraphRemovals(store, c, read, binding, gp.removed)
+		if err != nil {
+			return Page{}, err
+		}
 	}
 	seen := map[string]bool{}
 	names := slices.Sorted(maps.Keys(fields))
@@ -390,7 +475,14 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 				meta.Masked = append(meta.Masked, name)
 				continue
 			}
-			mapped, err := mappedSourceValue(store, sc, read, field, value)
+			var mapped any
+			if c.Kind == Microsoft365 && field.Type == data.TypeRef && read.Fields[name] == "meeting" {
+				mapped = value
+			} else if c.Kind == Microsoft365 && (field.Type == data.TypeRef || field.Type == data.TypeRefs) && graphPersonColumn(read, read.Fields[name]) {
+				mapped, err = graphReference(store, sc, field, value)
+			} else {
+				mapped, err = mappedSourceValue(store, sc, read, field, value)
+			}
 			if err != nil {
 				return Page{}, err
 			}
@@ -400,9 +492,15 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			row["_meta"] = meta
 		}
 		// The stable source key uses any existing reviewed crosswalk entry.
-		id, found, err := store.LookupBoundIdentity(binding, externalKey(c, read, key))
+		identity := externalKey(c, read, key)
+		id, found, err := store.LookupBoundIdentity(binding, identity)
+		if err == nil && !found && c.Kind == Microsoft365 {
+			if common := graphIdentity(read, raw); common.Binding != "" {
+				id, err = store.LinkIdentity(binding.Common, common, "")
+			}
+		}
 		if err == nil && !found {
-			id, err = store.LinkIdentity(binding.Common, externalKey(c, read, key), "")
+			id, err = store.LinkIdentity(binding.Common, identity, id)
 		}
 		if err != nil {
 			return Page{}, errors.New("the source identity could not be linked")
@@ -412,6 +510,9 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	}
 	// TODO(R1): use the same binding when the type gains a mirror or native
 	// route. A live read persists only the crosswalk, never source values.
+	if c.Kind == Microsoft365 {
+		page.Source.MappingEpoch, page.Source.ResidencyEpoch = state.Epochs.Mapping, state.Epochs.Residency
+	}
 	if read.Residency != nil {
 		if err := route.checkEpoch(); err != nil {
 			return Page{}, err
@@ -464,6 +565,10 @@ func encodeSourceKey(value any) (string, error) {
 
 func externalKey(c registration, read Read, key string) data.ExternalKey {
 	object := read.Table
+	if c.Kind == Microsoft365 {
+		account := sha256.Sum256([]byte(c.graphGrant))
+		object += "/" + read.GraphDrive + "/" + fmt.Sprintf("%x", account)
+	}
 	if c.Kind == HTTP {
 		object = read.Path + "#" + read.Rows
 	}
@@ -480,7 +585,8 @@ func matchArgs(input map[string]any, read Read, fields map[string]*data.Field, t
 		if !ok {
 			return nil, errors.New("this read does not declare that argument")
 		}
-		if field := fields[name]; field != nil && (field.Masked || typ.FieldPolicy(field) != "" || field.Type == data.TypeRef) {
+		if field := fields[name]; field != nil && (field.Masked || typ.FieldPolicy(field) != "" ||
+			field.Type == data.TypeRef && (read.GraphMeetingRead == "" || target != "meeting")) {
 			return nil, errors.New("a read cannot match on a masked or crosswalk field")
 		}
 		if !boundedScalar(value) || value == nil {
@@ -533,6 +639,9 @@ func (s Service) SetPersonCredential(ctx context.Context, app, id, credential st
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Microsoft365 {
+		return errors.New("Microsoft 365 uses browser sign-in")
 	}
 	if c.CredentialMode != CredentialPerson {
 		return errors.New("this connection uses a shared credential")

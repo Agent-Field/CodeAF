@@ -1,0 +1,1 @@
+{"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#users('me')/events/$entity","@odata.etag":"W/\"event-version-2\"","id":"AAMkEvent1","changeKey":"event-version-2","subject":"Daily launch review","start":{"dateTime":"2026-11-26T12:30:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-26T13:00:00.0000000","timeZone":"UTC"}}

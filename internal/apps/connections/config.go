@@ -16,9 +16,10 @@ import (
 type Kind string
 
 const (
-	HTTP     Kind = "http"
-	Postgres Kind = "postgres"
-	MySQL    Kind = "mysql"
+	HTTP         Kind = "http"
+	Postgres     Kind = "postgres"
+	MySQL        Kind = "mysql"
+	Microsoft365 Kind = "microsoft-365"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 
 type Config struct {
 	UserAgent      string           `json:"user_agent,omitempty"`
+	GraphFixture   bool             `json:"graph_fixture,omitempty"`
 	CredentialMode string           `json:"credential_mode,omitempty"`
 	ID             string           `json:"id"`
 	Kind           Kind             `json:"kind"`
@@ -41,17 +43,21 @@ type Config struct {
 // Read maps fields on a bound app type to source columns or JSON properties.
 // Match maps arguments to SQL equality predicates or HTTP query parameters.
 type Read struct {
-	Type      string            `json:"type"`
-	Table     string            `json:"table,omitempty"`
-	Path      string            `json:"path,omitempty"`
-	Columnar  bool              `json:"columnar,omitempty"`
-	Rows      string            `json:"rows,omitempty"`
-	Key       string            `json:"key"`
-	Version   string            `json:"version,omitempty"`
-	Fields    map[string]string `json:"fields"`
-	Match     map[string]string `json:"match,omitempty"`
-	Residency *ResidencyConfig  `json:"residency,omitempty"`
-	OrderBy   string            `json:"order_by,omitempty"`
+	Type             string            `json:"type"`
+	Table            string            `json:"table,omitempty"`
+	Path             string            `json:"path,omitempty"`
+	Rows             string            `json:"rows,omitempty"`
+	Key              string            `json:"key"`
+	Version          string            `json:"version,omitempty"`
+	Fields           map[string]string `json:"fields"`
+	Match            map[string]string `json:"match,omitempty"`
+	Residency        *ResidencyConfig  `json:"residency,omitempty"`
+	GraphDrive       string            `json:"graph_drive,omitempty"`
+	GraphStart       string            `json:"graph_start,omitempty"`
+	GraphEnd         string            `json:"graph_end,omitempty"`
+	GraphMeetingRead string            `json:"graph_meeting_read,omitempty"`
+	OrderBy          string            `json:"order_by,omitempty"`
+	Columnar         bool              `json:"columnar,omitempty"`
 }
 
 // ResidencyConfig admits a Personal fixed export to the type's existing
@@ -103,6 +109,9 @@ func (c Config) validate() error {
 	if c.UserAgent != "" && (c.Kind != HTTP || !userAgent.MatchString(c.UserAgent)) {
 		return errors.New("use a generic client name and version for the User-Agent")
 	}
+	if c.GraphFixture && c.Kind != Microsoft365 {
+		return ErrRejected
+	}
 	switch c.Kind {
 	case HTTP:
 		u, err := url.Parse(c.Origin)
@@ -116,12 +125,16 @@ func (c Config) validate() error {
 		if !fixedPath(c.TestPath) {
 			return errors.New("an HTTP connection needs a fixed GET test path")
 		}
+	case Microsoft365:
+		if c.CredentialMode != CredentialPerson || c.Origin != "" || c.TestPath != "" {
+			return errors.New("Microsoft 365 uses your profile's browser sign-in and the fixed Graph endpoint")
+		}
 	case Postgres, MySQL:
 		if c.Origin != "" || c.TestPath != "" {
 			return errors.New("put the database connection string in the credential")
 		}
 	default:
-		return errors.New("a connection kind is http, postgres or mysql")
+		return errors.New("a connection kind is http, postgres, mysql or microsoft-365")
 	}
 	if len(c.Reads) == 0 || len(c.Reads) > 32 || len(c.Writes) > 32 {
 		return errors.New("a connection needs 1 to 32 reads and can have up to 32 writes")
@@ -132,7 +145,17 @@ func (c Config) validate() error {
 			len(read.Fields) == 0 || len(read.Fields) > 32 || len(read.Match) > 16 {
 			return errors.New("a read needs a name, bound record type, key and field mapping")
 		}
-		if c.Kind == HTTP {
+		if read.Columnar && c.Kind != HTTP {
+			return errors.New("columnar response mapping requires an HTTP read")
+		}
+		if c.Kind != Microsoft365 && (read.GraphDrive != "" || read.GraphStart != "" || read.GraphEnd != "" || read.GraphMeetingRead != "") {
+			return errors.New("Graph options require a Microsoft 365 source")
+		}
+		if c.Kind == Microsoft365 {
+			if err := c.validateGraphRead(read); err != nil {
+				return err
+			}
+		} else if c.Kind == HTTP {
 			if !validReadPath(c.CredentialMode, read) || read.Table != "" || read.OrderBy != "" ||
 				(read.Rows != "" && !propertyPath.MatchString(read.Rows)) {
 				return errors.New("an HTTP read needs a declared path and may name a nested JSON rows property")
@@ -172,7 +195,7 @@ func (c Config) validate() error {
 
 		matched := map[string]bool{}
 		for arg, target := range read.Match {
-			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && read.Fields[arg] != target) {
+			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && c.Kind != Microsoft365 && read.Fields[arg] != target) {
 				return errors.New("a read argument must map to a distinct query parameter or its mapped SQL field")
 			}
 			matched[target] = true
@@ -186,7 +209,11 @@ func (c Config) validate() error {
 		if !alias.MatchString(name) || !ok || len(write.Fields) == 0 || len(write.Fields) > len(read.Fields) {
 			return errors.New("a write needs a name, read binding and writable fields")
 		}
-		if c.Kind == HTTP {
+		if c.Kind == Microsoft365 {
+			if err := validateGraphAction(name, read, write); err != nil {
+				return err
+			}
+		} else if c.Kind == HTTP {
 			if !fixedPath(write.Path) || len(write.Response) > 16 {
 				return errors.New("an HTTP write needs a fixed POST path and at most 16 response fields")
 			}

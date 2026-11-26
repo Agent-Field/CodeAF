@@ -132,7 +132,8 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		Root:      home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: agent,
 		CheckAI: harnesses.Check, AppVersion: files.Version, Render: b.renderRunOutput,
-		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
+		SourceTriggers: sources.PollGraphTrigger,
+		Records:        records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) {
 			b.emit.Emit(appwire.EventRunsChanged, event)
 			if event.Agent || event.Run == appAgentAskRun || strings.HasPrefix(event.Run, appAgentDutyPrefix) {
@@ -156,6 +157,26 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	b.appRuns.Store(e)
 	b.restoreRunApprovals(e)
 	ctx, cancel := context.WithCancel(ctx)
+	sourceDone := make(chan struct{})
+	guard.Go("app/source-triggers", func() {
+		defer close(sourceDone)
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		var last string
+		for ctx.Err() == nil {
+			if err := e.PollSources(ctx); err == nil {
+				last = ""
+			} else if ctx.Err() == nil && err.Error() != last {
+				last = err.Error()
+				fmt.Fprintln(os.Stderr, "app source triggers:", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	})
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
 		defer close(done)
@@ -188,6 +209,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	})
 	return func() {
 		cancel()
+		<-sourceDone
 		<-done
 		if err := e.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "app runs:", err)
