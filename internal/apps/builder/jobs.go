@@ -3,6 +3,7 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -737,6 +738,10 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	}
 	j.Offers = reuseOffers(app, j.App, j.Accepted, catalog)
 	if headless && planning {
+		// Put reuse of actual records before empty types and library suggestions.
+		slices.SortStableFunc(j.Offers, func(a, b Offer) int {
+			return cmp.Compare(b.Count, a.Count)
+		})
 		for _, offer := range j.Offers {
 			line := "Uses " + catalog.reuseText(offer.Type)
 			if offer.App != "" && !slices.Contains(j.Needs, line) {
