@@ -253,6 +253,13 @@ func runSteps(ctx context.Context, app Adapter, steps []Step, vars map[string]an
 			}
 		}
 		if problems := checkReply(body, checks); len(problems) > 0 {
+			if step.Await > 0 {
+				result := decode(body)
+				stoppedAt, _ := resolve(result, "/step")
+				if reason, ok := resolve(result, "/error"); ok {
+					problems = append(problems, fmt.Sprintf("step %v: %v", stoppedAt, reason))
+				}
+			}
 			return fmt.Errorf("%s: %s", step.Method, strings.Join(problems, ", "))
 		}
 		for _, key := range slices.Sorted(maps.Keys(step.Capture)) {

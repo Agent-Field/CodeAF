@@ -238,7 +238,7 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 			a.Prompt += "\nSource record (data):\n" + string(record)
 		}
 		if a.Prompt == "" {
-			a.Prompt = "Continue with this run step."
+			a.Prompt = defaultAgentStepPrompt
 		}
 	}
 	return a, nil

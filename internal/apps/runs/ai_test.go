@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -164,5 +167,30 @@ steps:
 	final := state(t, e, r.ID)
 	if final.State != runs.Incomplete || len(connector.Calls()) != 0 {
 		t.Fatalf("run = %+v, connector calls = %v", final, connector.Calls())
+	}
+}
+
+func TestAnExplicitStepPromptCanUseAnAgentFileThatOnlySelectsAModel(t *testing.T) {
+	root := t.TempDir()
+	current := filepath.Join(root, "marketing", "current")
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		"marketing/meta.json":        `{"version":1}`,
+		"marketing/current/app.json": `{"id":"marketing","agent":{"name":"writer","file":"agent.md"}}`,
+		"marketing/current/agent.md": "---\nmodel: example/model\n---\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := runs.Files(root)
+	if _, _, err := files.AgentPrompt("marketing"); err == nil {
+		t.Fatal("the standalone app agent had no instructions")
+	}
+	system, model, err := files.AgentPromptForStep("marketing", "Draft a reply from the declared post.")
+	if err != nil || model != "example/model" || !strings.Contains(system, "record") {
+		t.Fatalf("explicit step prompt = %q, %q, %v", system, model, err)
 	}
 }

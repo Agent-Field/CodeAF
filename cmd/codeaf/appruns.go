@@ -230,7 +230,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		}
 		var system, model string
 		if call.AI == nil {
-			system, model, err = files.AgentPrompt(call.App)
+			system, model, err = files.AgentPromptForStep(call.App, call.Prompt)
 			if err != nil {
 				return runs.Reply{}, err
 			}
