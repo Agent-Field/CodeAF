@@ -38,13 +38,16 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 		return nil, appwire.Errorf(appwire.CodeNotFound, "The screen is unavailable.")
 	}
 	view, ok := screen.Views[p.View]
-	if !ok || !appAssistantViewSupported(view) || len(view.Group) != 0 || len(view.Aggregate) != 0 {
+	if !ok || !appAssistantViewSupported(view) || len(view.Aggregate) != 0 {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose a supported view that returns individual records.")
 	}
 	ir, err := declaredViewIR(view, p.Args)
 	if err != nil {
 		return nil, err
 	}
+	// A row view carries the grouping keys so the surface can put individual
+	// records in sections or lanes. Aggregate views use the metric door.
+	ir.Group = nil
 	if p.Query != "" {
 		lens, err := queryIR(view.Type, p.Query, nil)
 		if err != nil {

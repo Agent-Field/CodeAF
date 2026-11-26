@@ -349,6 +349,7 @@ or unavailable metric keeps its figure and comparison quiet.
 ## Filter and sort a saved view
 
 A saved view keeps its declared filters when you search or add a filter.
+Grouped lists and timelines keep every row and show it under its group.
 If the view has a limit, the display shows up to that many matches. Changing
 the sort picks that many matches in the new order. Clearing your sort restores
 the saved order.
