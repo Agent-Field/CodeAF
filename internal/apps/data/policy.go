@@ -72,6 +72,17 @@ func (t *Type) FieldPolicy(f *Field) string {
 	return ""
 }
 
+// The local person can read their own native classified values. Explicit
+// masks, source values, and the projections for agents retain their policy.
+func (t *Type) personalFieldPolicy(f *Field, sc Scope, person, by string) string {
+	mode := t.FieldPolicy(f)
+	if mode == "mask" && t.fieldRules[f.Name] == "" &&
+		by != BySync && !sc.isAgent() && !sc.AI && !sc.Flow && sc.attribute(person, "id") == person {
+		return ""
+	}
+	return mode
+}
+
 // Ref values need a scoped lookup before projection when their target
 // type carries a row policy. Unchecked IDs would disclose membership.
 func (sch *schema) withheldRef(f *Field) bool {

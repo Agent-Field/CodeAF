@@ -187,3 +187,42 @@ func TestGrantedAgentCannotCreateOutsideLaunchersRowPolicy(t *testing.T) {
 		t.Fatalf("scoped create: %+v", rows)
 	}
 }
+
+func TestPersonalAmountAndMaskedTotals(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp([]byte(`{"id":"finance","records":{"transaction":{
+		"fields":{"owner":{"type":"text"},"amount":{"type":"money","class":"confidential"},"secret":{"type":"number"},"name":{"type":"text","class":"pii"},"pin":{"type":"number"}},
+		"policy":{"row":{"field":"owner","attribute":"id"},"fields":{"secret":"hide","pin":"mask"}}
+	}},"capabilities":{"records":{"transaction":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	owner := Scope{App: "finance", Person: PersonPrincipal{ID: s.Person()}}
+	viewer := Scope{App: "finance", Person: PersonPrincipal{ID: "viewer"}}
+	rows := mustCreate(t, s, owner, "transaction", map[string]any{"owner": s.Person(), "amount": 100, "secret": 90, "name": "My Name", "pin": 12})
+	for _, amount := range []float64{2.50, 12.75} {
+		mustCreate(t, s, viewer, "transaction", map[string]any{"owner": "viewer", "amount": amount, "secret": 90})
+	}
+	row, err := s.Get(owner, "transaction", rows[0].ID(), false)
+	if err != nil || row["amount"] != float64(100) || row["name"] != "My Name" || row["pin"] != masked {
+		t.Errorf("the owner's data = %v, %v", row, err)
+	}
+	page, err := s.Query(viewer, "transaction", "", "", 10)
+	if err != nil || len(page.Rows) != 2 || page.Rows[0]["amount"] != masked || page.Rows[1]["amount"] != masked {
+		t.Fatalf("viewer rows: %+v, %v", page, err)
+	}
+	if _, err := s.Get(viewer, "transaction", rows[0].ID(), false); err == nil {
+		t.Error("viewer read another person's row")
+	}
+	agg, err := s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "amount"}, {Fn: "avg", Field: "amount"}}})
+	if err != nil || len(agg.Groups) != 1 || agg.Groups[0].Values["sum_amount"] != float64(15.25) || agg.Groups[0].Values["avg_amount"] != float64(7.63) {
+		t.Errorf("viewer totals: %+v, %v", agg, err)
+	}
+	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "secret"}}})
+	if err == nil || !strings.Contains(err.Error(), "Choose a field you can access") {
+		t.Errorf("denied total: %v", err)
+	}
+	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Group: []string{"amount"}, Aggregate: []Agg{{Fn: "count"}}})
+	if err == nil {
+		t.Error("viewer grouped by masked amounts")
+	}
+}

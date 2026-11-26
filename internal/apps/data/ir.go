@@ -18,8 +18,8 @@ import (
 //	           money sum in whole cents so a ledger adds up exactly
 //
 // Policy is applied once, here: a type the scope may not read is refused
-// wherever the IR reaches it, and a masked field is neither searched,
-// grouped nor summed for an app and reads as the mask when selected.
+// wherever the IR reaches it. A masked field cannot be searched or grouped.
+// Sum and average can use masked fields without selecting their values.
 
 // Cond is one condition: Field (a field, or ref.field) Op Value, or, with no
 // Field, free words in Value. Op is one of : > >= < <= is has; a value of :
@@ -419,7 +419,7 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 		if a.Field == "" {
 			return "count(*)", nil
 		}
-		f, err := c.usable(a.Field, sc, "count")
+		f, err := c.aggregateField(sc, a)
 		if err != nil {
 			return "", err
 		}
@@ -428,7 +428,7 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 	default:
 		return "", errorf(CodeInvalid, "%q is not an aggregate; use count, sum, avg, min or max", a.Fn)
 	}
-	f, err := c.usable(a.Field, sc, a.Fn)
+	f, err := c.aggregateField(sc, a)
 	if err != nil {
 		return "", err
 	}
@@ -448,6 +448,23 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 		}
 	}
 	return a.Fn + "(" + col + ")", nil
+}
+
+func (c *compiled) aggregateField(sc Scope, a Agg) (*Field, error) {
+	f, err := c.queryField(a.Field, a.Fn)
+	if err != nil {
+		return nil, err
+	}
+	mode := c.t.FieldPolicy(f)
+	if mode == "hide" || f.Hidden && sc.App != "" || c.sch.withheldRef(f) {
+		c.sch.notePolicy(sc, c.t, "query_field_refused")
+		return nil, fieldErr(f.Name, "%s is hidden by the record policy. Choose a field you can access for %s.", f.Name, a.Fn)
+	}
+	if a.Fn != "sum" && a.Fn != "avg" && (mode == "mask" || f.Masked && sc.App != "") {
+		c.sch.notePolicy(sc, c.t, "query_field_refused")
+		return nil, fieldErr(f.Name, "%s is masked. Use sum or avg for a numeric field, or choose an unmasked field for %s.", f.Name, a.Fn)
+	}
+	return f, nil
 }
 
 // page is one page of the records a compiled query matches, in its order,

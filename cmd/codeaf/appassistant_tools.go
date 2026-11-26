@@ -13,7 +13,7 @@ import (
 )
 
 func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *session.AppScope {
-	scope := &session.AppScope{ID: principal.App, AuthorizeModel: b.appModelAuthorizer(principal.App, false)}
+	scope := &session.AppScope{ID: principal.App, AuthorizeModel: b.appModelAuthorizer(principal.App)}
 	scope.Tools = []bare.Tool{{
 		Name:        "app",
 		Description: "For a requested change to the app itself, call propose_change without parameters before querying records. Use show to find view IDs and action arguments. Query takes params.view and optional params.args. Invoke takes params.action and params.args. If the action requires a revision, give params.expected_rev from the record row's _rev and the record ID as params.args.record.",

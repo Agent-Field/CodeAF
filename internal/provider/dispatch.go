@@ -663,8 +663,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 		}
 		if authorize := c.config.AuthorizeDestination; authorize != nil {
-			u := httpRequest.URL
-			destination := ModelDestination{Model: c.modelFor(request), Endpoint: u.Scheme + "://" + u.Host + u.EscapedPath()}
+			destination := modelDestination(c.modelFor(request), httpRequest.URL)
 			if err := authorize(ctx, destination); err != nil {
 				sharedLimiter.release(false, 0)
 				cancelAttempt()

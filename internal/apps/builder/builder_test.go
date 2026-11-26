@@ -643,3 +643,63 @@ func TestBuildContinuesFromSavedWorkAfterTheCallLimit(t *testing.T) {
 		t.Fatalf("resumed Apply = %+v, %v", meta, err)
 	}
 }
+
+func TestBuilderKeepsSampleValuesOutOfModelContext(t *testing.T) {
+	root := t.TempDir()
+	definitions := store.NewAt(root, nil)
+	draft, err := definitions.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "private-example@example.test"
+	def.Files[schema.SampleFile] = []byte(`{"records":{"contact":[{"id":"00000000000000000000000001","email":"` + marker + `"}]}}`)
+	for rel, body := range def.Files {
+		path := filepath.Join(draft.Dir(), rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta, err := definitions.Promote(draft, "Keep the app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := make(chan string, 1)
+	opts := builder.Options{Home: root, Store: definitions, Model: func() (builder.Completer, error) {
+		asked := false
+		return script(func(_ context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+			if !asked {
+				asked = true
+				return toolCalls(command("context", map[string]any{"file": schema.SampleFile})), nil
+			}
+			raw, _ := json.Marshal(messages)
+			select {
+			case observed <- string(raw):
+			default:
+			}
+			return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "The example file stayed in place."}}}, nil
+		}), nil
+	}}
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	if _, err := jobs.Change(meta.ID, "Update the title"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case prompt := <-observed:
+		if strings.Contains(prompt, marker) || !strings.Contains(prompt, "Existing example rows are withheld") {
+			t.Fatalf("unexpected model context: %s", prompt)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the Builder did not read the example file")
+	}
+}

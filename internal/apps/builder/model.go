@@ -192,6 +192,9 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		if !found || !definitionPath.MatchString(opts.File) {
 			return "", errors.New("that app definition file is unavailable")
 		}
+		if opts.File == schema.SampleFile {
+			return "Existing example rows are withheld. Leave them in place unless the change needs new examples. Use reference for synthetic examples, or set-sample with invented values.", nil
+		}
 		if opts.Offset < 0 || opts.Offset > len(body) || (opts.Offset < len(body) && !utf8.RuneStart(body[opts.Offset])) {
 			return "", errors.New("use the next offset from the previous page")
 		}
@@ -266,7 +269,14 @@ func briefReport(report *schema.Report) *modelReport {
 	// Include every location so one repair can address all the findings.
 	problems := make([]schema.Problem, len(report.Problems))
 	for i, p := range report.Problems {
-		p.Message = briefText(p.Message, 400)
+		switch {
+		case p.File == schema.SampleFile && p.Code != "sample_unavailable":
+			p.Message = "Check the example file at this location. Use synthetic records and valid sample links."
+		case p.Code == "run_failed":
+			p.Message = "The automation could not finish on the example data. Check the reported run and step."
+		default:
+			p.Message = briefText(p.Message, 400)
+		}
 		problems[i] = p
 	}
 	return &modelReport{Problems: problems, Total: len(report.Problems)}
@@ -295,18 +305,6 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
-	var observedClasses []schema.DataClass
-	ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		classes, err := definitionClasses(files, types)
-		for _, class := range classes {
-			if !slices.Contains(observedClasses, class) {
-				observedClasses = append(observedClasses, class)
-			}
-		}
-		return slices.Clone(observedClasses), err
-	})
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
 	execute := func(ctx context.Context, command string) (result string, err error) {

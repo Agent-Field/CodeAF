@@ -261,7 +261,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		}
 		clientConfig := settings.ClientConfig(model)
 		clientConfig.Fallbacks = nil
-		clientConfig.AuthorizeDestination = b.appModelAuthorizer(call.App, false)
+		clientConfig.AuthorizeDestination = b.appModelAuthorizer(call.App)
 		client, err := provider.NewClient(clientConfig)
 		if err != nil {
 			return runs.Reply{}, err

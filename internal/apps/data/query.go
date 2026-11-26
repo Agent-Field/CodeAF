@@ -330,12 +330,20 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 
 // usable is a field a query may sort or group by.
 func (c *compiled) usable(name string, sc Scope, what string) (*Field, error) {
-	f := c.t.field(name)
-	if f == nil {
-		return nil, fieldErr(name, "%s records have no field %q to %s", c.t.Name, name, what)
+	f, err := c.queryField(name, what)
+	if err != nil {
+		return nil, err
 	}
 	if f.Masked && sc.App != "" || c.protectedField(sc, f) {
 		return nil, fieldErr(name, "%s is hidden until revealed, so it cannot be used to %s", name, what)
+	}
+	return f, nil
+}
+
+func (c *compiled) queryField(name, operation string) (*Field, error) {
+	f := c.t.field(name)
+	if f == nil {
+		return nil, fieldErr(name, "%s records have no field %q to %s", c.t.Name, name, operation)
 	}
 	return f, nil
 }
