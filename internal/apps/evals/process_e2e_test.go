@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -282,20 +283,19 @@ func (p *appProcess) waitCheck(ctx context.Context, params any) (BuildState, err
 			Problem  string `json:"problem"`
 			Progress []struct {
 				BuildPass
-				OK     *bool `json:"ok"`
-				Report struct {
-					Problems []struct {
-						Code string `json:"code"`
-						Path string `json:"path"`
-					} `json:"problems"`
-				} `json:"report"`
+				OK     *bool         `json:"ok"`
+				Report schema.Report `json:"report"`
 			} `json:"progress"`
 		}](p.cli(ctx, "build_state", params))
 		if err != nil {
 			return result, err
 		}
 		result.Passes = result.Passes[:0]
+		var lastFinding schema.Report
 		for _, event := range state.Progress {
+			if !event.Report.OK() {
+				lastFinding = event.Report
+			}
 			if len(event.Calls) != 0 {
 				result.Passes = append(result.Passes, event.BuildPass)
 			}
@@ -314,6 +314,9 @@ func (p *appProcess) waitCheck(ctx context.Context, params any) (BuildState, err
 		}
 		switch state.State {
 		case "failed", "needs_you":
+			if !lastFinding.OK() {
+				return result, fmt.Errorf("%s: %s Build activity: %s", state.State, state.Problem, strings.TrimSpace(lastFinding.String()))
+			}
 			return result, fmt.Errorf("%s: %s", state.State, state.Problem)
 		case "ready":
 			if result.Checked {

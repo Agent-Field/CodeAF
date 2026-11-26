@@ -258,6 +258,18 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 		live, err := s.opts.Store.Get(j.App)
 		return live.Meta, err
 	}
+	if len(j.Reuse) > 0 && !j.Publishing {
+		catalog, err := s.catalog(j.App)
+		if err != nil {
+			return store.Meta{}, err
+		}
+		if err := validateReuse(j.Reuse, externalTypes(catalog.Types, j.App, j.Draft)); err != nil {
+			return store.Meta{}, err
+		}
+		if err := validateReuseDefinition(j.Working.Files, j.Reuse); err != nil {
+			return store.Meta{}, err
+		}
+	}
 	if !j.Working.CheckComplete {
 		// A pre-Look build may have stopped after publishing but before
 		// recording the receipt. It can finish only that same publication.
