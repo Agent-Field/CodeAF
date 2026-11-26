@@ -79,7 +79,23 @@ type DataProcessResult struct {
 	WorkItems   []DataRow              `json:"work_items"`
 	Timers      []DataRow              `json:"timers"`
 	Signoffs    []DataRow              `json:"signoffs"`
+	Approval    *ProcessApproval       `json:"approval,omitempty"`
 	Timeline    []ProcessTimelineEntry `json:"timeline"`
+}
+
+type ProcessApproval struct {
+	Rule      string                `json:"rule"`
+	Order     string                `json:"order"`
+	Statement string                `json:"statement,omitempty"`
+	Steps     []ProcessApprovalStep `json:"steps"`
+}
+
+type ProcessApprovalStep struct {
+	Role     string `json:"role"`
+	Approver string `json:"approver"`
+	Signoff  string `json:"signoff,omitempty"`
+	Ready    bool   `json:"ready"`
+	Blocked  string `json:"blocked,omitempty"`
 }
 
 type ProcessTransition struct {
