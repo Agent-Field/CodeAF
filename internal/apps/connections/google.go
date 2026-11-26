@@ -198,7 +198,7 @@ func (g googleSource) rows(ctx context.Context, object string, args map[string]a
 	case "drive", "transcripts":
 		q := "trashed = false"
 		if object == "transcripts" {
-			q += " and mimeType = 'application/vnd.google-apps.document' and name contains 'Transcript'"
+			q += " and mimeType = 'application/vnd.google-apps.document' and fullText contains 'Transcript'"
 		}
 		return g.driveRows(ctx, object, q, limit)
 	}

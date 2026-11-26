@@ -21,6 +21,7 @@ func installDailyBrief(b *appBackend, fixture bool, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	defer defs.Discard(draft)
 	files, err := fs.Sub(dailyBriefFiles, "samples/daily-brief")
 	if err != nil {
 		return err
