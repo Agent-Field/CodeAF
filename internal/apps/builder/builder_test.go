@@ -356,8 +356,16 @@ func TestPlanNamesTheCallLimitWhenTheTurnKeepsWorking(t *testing.T) {
 	}
 	defer jobs.Close()
 	_, err = jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
-	if err == nil || !strings.Contains(err.Error(), "20-call limit") {
-		t.Fatalf("plan error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "continue") {
+		t.Fatalf("expected a continuation message, got %v", err)
+	}
+	summaries, err := jobs.List()
+	if err != nil || len(summaries) != 1 {
+		t.Fatalf("drafts = %+v, %v", summaries, err)
+	}
+	state, err := jobs.State(summaries[0].Draft)
+	if err != nil || !strings.Contains(string(state.Plan), "Outline revision") {
+		t.Fatalf("the unfinished outline was lost: %+v, %v", state, err)
 	}
 }
 
@@ -489,5 +497,65 @@ func TestConflictingApplyLeavesTheDraftDiscardableAfterRestart(t *testing.T) {
 	live, err := opts.Store.Get(first.ID)
 	if err != nil || live.Meta.Version != second.Version {
 		t.Fatalf("discard changed the other publication: version %d, %v", live.Meta.Version, err)
+	}
+}
+
+func TestBuildContinuesFromSavedWorkAfterTheCallLimit(t *testing.T) {
+	opts := scriptedApp(t, t.TempDir())
+	original := opts.Model
+	attempt := 0
+	opts.Model = func() (builder.Completer, error) {
+		attempt++
+		if attempt != 2 {
+			return original()
+		}
+		step := 0
+		return script(func(context.Context, []ai.Message, []ai.ToolDefinition) (ai.Message, error) {
+			step++
+			name := fmt.Sprintf("Working title %d", step)
+			call := command("configure", map[string]string{"name": name})
+			call.ID = fmt.Sprintf("rename-%d", step)
+			message := toolCalls(call)
+			message.Content = []ai.ContentPart{{Type: "text", Text: name}}
+			return message, nil
+		}), nil
+	}
+
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(jobs.Close)
+	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Build(plan.Draft); err != nil {
+		t.Fatal(err)
+	}
+	stopped := waitState(t, jobs, plan.Draft, builder.Failed)
+	if !strings.HasPrefix(stopped.Name, "Working title ") || !strings.Contains(stopped.Problem, "Build again to continue") {
+		t.Fatalf("paused draft = %q, %q", stopped.Name, stopped.Problem)
+	}
+	if _, err := jobs.Apply(plan.Draft); err == nil {
+		t.Fatal("an incomplete build was applied")
+	}
+
+	jobs.Close()
+	jobs, err = builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(jobs.Close)
+	restored, err := jobs.State(plan.Draft)
+	if err != nil || restored.Name != stopped.Name {
+		t.Fatalf("reopened draft = %q, %v", restored.Name, err)
+	}
+	if err := jobs.Build(plan.Draft); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, jobs, plan.Draft, builder.Ready)
+	if meta, err := jobs.Apply(plan.Draft); err != nil || meta.Name != stopped.Name {
+		t.Fatalf("resumed Apply = %+v, %v", meta, err)
 	}
 }

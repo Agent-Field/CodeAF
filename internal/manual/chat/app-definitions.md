@@ -30,8 +30,10 @@ rendering, including carrying out a run in a repository.
 ## Fix or revert a broken app and read its versions
 
 `apps.versions` shows each saved version, when it was made, and its request
-and summary. `apps.revert` copies a chosen working version forward as a new
-version. It keeps all earlier versions. An invalid change stays in its draft.
+and summary. `apps.revert` copies a chosen working version's files forward
+unchanged. The result gets a new publication number in `meta.version`.
+The restored manifest keeps its original version and earlier entries stay
+in the history. An invalid change stays in its draft.
 The data store records which saved version is published and commits its data
 grants with that version. If the published snapshot becomes unreadable,
 revert to a working version to publish its definition and grants together.
@@ -82,7 +84,10 @@ types, fields, and screens. The app's records are separate.
 markup part, use `codeaf app parts --for add-view/board` or
 `codeaf app parts --for RecordList`. In an app session, `app context` shows
 the outline, manifest and file names. Ask for an individual definition
-with `app context {"file":"screens/deals.json"}`.
+with `app context {"file":"screens/deals.json"}`. An unchanged file page
+can be reused from its earlier reply. In the scoped app session,
+`app parts {"select":["add-view/board","RecordList"]}` fetches several
+descriptors in one command.
 
 `app look` uses the open desktop to draw the selected screen on example
 records. When the desktop renderer is connected, Check draws every screen
@@ -96,8 +101,11 @@ change card show `look: skipped (desk not running)`. You can keep the
 checkpoint and choose **Apply**. The standalone `app look` command returns
 `desk_unavailable` until the renderer connects.
 
-If a build stops, reopen it to see the reason in the build progress. If
-the saved app changed during editing, discard the stale draft to start
+If a build stops, reopen it to see the reason in the build progress.
+When the Builder runs out of model calls, completed definition changes
+stay in the draft. Use Build again to continue writing, or ask the Builder
+to continue an unfinished plan. Check reports all definition findings
+together before Apply. If the saved app changed during editing, discard the stale draft to start
 from the latest version.
 
 ## How app commands describe a screen and the work it does

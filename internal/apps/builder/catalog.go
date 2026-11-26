@@ -25,22 +25,55 @@ func (p *catalogPart) UnmarshalJSON(raw []byte) error {
 	return p.RawMessage.UnmarshalJSON(raw)
 }
 
+type partsCatalog struct {
+	Kit        int
+	Parts      []catalogPart
+	Registries struct {
+		Views  map[string]json.RawMessage `json:"view_types"`
+		Fields map[string]json.RawMessage `json:"field_types"`
+	}
+}
+
 // Parts reads the same live vocabulary as apps.kit. With an intent it sends
 // just the matching view recipe and part, or a single named markup part.
 func Parts(intent string) (json.RawMessage, error) {
-	if !appcmd.ValidIntent(intent) {
-		return nil, fmt.Errorf("choose one view intent or part name")
-	}
-	var kit struct {
-		Kit        int
-		Parts      []catalogPart
-		Registries struct {
-			Views  map[string]json.RawMessage `json:"view_types"`
-			Fields map[string]json.RawMessage `json:"field_types"`
-		}
-	}
+	var kit partsCatalog
 	if err := json.Unmarshal(schema.KitJSON(), &kit); err != nil {
 		return nil, err
+	}
+	return kit.part(intent)
+}
+
+const maxPartSelectors = 12
+
+// A scoped model can get all the descriptors it needs in one command.
+func batchParts(intents []string) (string, error) {
+	if len(intents) == 0 || len(intents) > maxPartSelectors {
+		return "", fmt.Errorf("choose between 1 and %d catalog selectors", maxPartSelectors)
+	}
+	var kit partsCatalog
+	if err := json.Unmarshal(schema.KitJSON(), &kit); err != nil {
+		return "", err
+	}
+	reply := struct {
+		Parts    map[string]json.RawMessage `json:"parts"`
+		Problems map[string]string          `json:"problems,omitempty"`
+	}{Parts: map[string]json.RawMessage{}, Problems: map[string]string{}}
+	for _, intent := range intents {
+		part, err := kit.part(intent)
+		if err != nil {
+			reply.Problems[intent] = err.Error()
+			continue
+		}
+		reply.Parts[intent] = part
+	}
+	raw, err := json.Marshal(reply)
+	return string(raw), err
+}
+
+func (kit partsCatalog) part(intent string) (json.RawMessage, error) {
+	if !appcmd.ValidIntent(intent) {
+		return nil, fmt.Errorf("choose one view intent or part name")
 	}
 	if intent == "" || intent == "add-view" {
 		view := struct {

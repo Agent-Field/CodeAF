@@ -157,9 +157,16 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 	request := t.Request
 	if request == "" {
 		request = j.LastRequest
+		if j.App == "" {
+			// The outline and accepted reuse arrive through context. The request
+			// still needs the original wording, including details the outline omits.
+			if first := slices.IndexFunc(j.Transcript, func(m Message) bool { return m.Role == "user" }); first >= 0 {
+				request = j.Transcript[first].Text
+			}
+		}
 	}
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
-		Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
+		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Using: j.Accepted, Definition: j.Working.Files, Report: t.Report,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
@@ -169,8 +176,8 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 		state, err := s.State(j.Draft)
 		return state.Presence, err
 	})
-	if err == nil {
-		err = stampAppID(files, j)
+	if err == nil || errors.Is(err, errModelSteps) {
+		err = errors.Join(err, stampAppID(files, j))
 	}
 	return files, reply, err
 }
@@ -243,6 +250,20 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 	}
 	j.WritingFiles = nil
 	j.Screens = screens(j.Working.Files)
+	if errors.Is(err, errModelSteps) {
+		j.Working = snapshot{Files: files}
+		j.describe(catalog)
+		j.State.State = Failed
+		j.Problem = "I ran out of model calls. Your changes are saved. Build again to continue."
+		if t.Stage == Planning {
+			j.Problem = "I ran out of model calls. Your draft is saved. Ask me to continue the plan."
+		} else if len(j.Queue) == 1 {
+			j.Paused = &turn{Stage: t.Stage, Request: t.Request, Target: t.Target}
+		}
+		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
+			{Code: "build_failed", Message: j.Problem},
+		}}})
+	}
 	if errors.Is(err, errCompilerUnavailable) {
 		j.State.State = NeedsYou
 		j.Problem = "This engine needs the screen compiler before it can finish the app."
