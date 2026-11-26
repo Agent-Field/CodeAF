@@ -1,0 +1,24 @@
+{
+  "run": "duplicate",
+  "title": "Duplicate slide",
+  "params": {
+    "source": {
+      "type": "ref",
+      "to": "slides_slide"
+    }
+  },
+  "steps": [
+    {
+      "id": "copy",
+      "records.create": {
+        "type": "slides_slide",
+        "set": {
+          "title": "{{params.source.title}} copy",
+          "body": "$params.source.body",
+          "x": "$params.source.x",
+          "y": "$params.source.y"
+        }
+      }
+    }
+  ]
+}

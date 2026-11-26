@@ -1,0 +1,134 @@
+{
+  "id": "01KAVYH000C0DEAF0000000003",
+  "name": "Slides",
+  "version": 1,
+  "kit": 2,
+  "agent": {"name": "Slides agent", "file": "agent.md"},
+  "records": {
+    "slides_slide": {
+      "label": "Slide",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext",
+          "default": "",
+          "label": "Contents"
+        },
+        "x": {
+          "type": "number",
+          "default": 40
+        },
+        "y": {
+          "type": "number",
+          "default": 120
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "slides_slide": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New slide",
+      "do": [
+        {
+          "records.create": {
+            "type": "slides_slide",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "slides_slide",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "slides_slide"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "slides_slide",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "slides_slide"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "slides_slide",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "slides_slide",
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "pptx": {
+      "label": "Export PPTX",
+      "format": "pptx",
+      "query": {
+        "type": "slides_slide",
+        "select": [
+          "title",
+          "body"
+        ],
+        "window": {
+          "order_by": [
+            "created_at"
+          ]
+        }
+      },
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "pdf": {
+      "label": "Export PDF",
+      "format": "pdf",
+      "record": "slides_slide",
+      "body": "{{title}}\n\n{{body}}"
+    }
+  }
+}

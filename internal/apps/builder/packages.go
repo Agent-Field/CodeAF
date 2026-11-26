@@ -181,6 +181,7 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 		if err != nil {
 			return Proposal{}, err
 		}
+		edit.Publication.Lineage.ForkedFrom = live.Meta.Lineage.ForkedFrom
 		card.Source = "package_update"
 	}
 
@@ -193,8 +194,8 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 		target = j.Draft
 	}
 	var forkFrom string
-	if fork != nil {
-		forkFrom = fork.App
+	if parent := edit.Publication.Lineage.ForkedFrom; parent != nil {
+		forkFrom = parent.App
 	}
 	upstream, bindings, err := archive.Bind(catalog.Types, target, forkFrom)
 	if err != nil {
@@ -204,6 +205,36 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 	files := upstream
 	if edit.Publication.Lineage.Source != nil {
 		edit.Publication.Baseline = upstream
+	}
+	if fork != nil && fork.Source != nil && fork.Source.Publisher == apppackage.BuiltinPublisher {
+		parent, err := s.opts.Store.Get(fork.App)
+		if err != nil {
+			return Proposal{}, err
+		}
+		if parent.Meta.Version != fork.Version || parent.Meta.Lineage == nil {
+			return Proposal{}, store.ErrConflict
+		}
+		base, err := s.opts.Store.PackageBase(fork.App, parent.Meta.Lineage.PackageBaseVersion)
+		if err != nil {
+			return Proposal{}, err
+		}
+		// Rebind the publisher's baseline, not the locally edited parent.
+		// That difference is what a later update must preserve on the fork.
+		raw, err := apppackage.Pack(base, catalog.Types, apppackage.PackOptions{})
+		if err != nil {
+			return Proposal{}, err
+		}
+		publisher, err := apppackage.Read(strings.NewReader(string(raw)))
+		if err != nil {
+			return Proposal{}, err
+		}
+		edit.Publication.Lineage.Source = fork.Source
+		edit.Publication.Baseline, _, err = publisher.Bind(catalog.Types, target, forkFrom)
+		if err != nil {
+			return Proposal{}, err
+		}
+		// Show the signed upstream even though the fork itself is packed locally.
+		source = *fork.Source
 	}
 	if app != "" {
 		files, card.Package.Conflicts, err = apppackage.Merge(edit.Base, live.Files(), upstream, nil)
