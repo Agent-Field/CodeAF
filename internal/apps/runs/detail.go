@@ -44,6 +44,8 @@ func detailStepKind(step Step) string {
 		return "ai"
 	case step.Tool != "":
 		return "tool"
+	case step.Render != nil:
+		return "render"
 	case step.RecordsUpdate != nil:
 		return "records_update"
 	case step.RecordsCreate != nil:
