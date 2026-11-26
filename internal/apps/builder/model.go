@@ -155,10 +155,11 @@ type modelInput struct {
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
 {"fields":{"salary":"hide","tax_id":"mask"}}. To show a person's own rows,
-include policy.row {"field":"owner","attribute":"id"}. Keep the existing
-field definitions when editing the type with add-type. For any new or changed
-field, suggest a class of public, internal, confidential, restricted, or pii
-according to its intended data and any classification the person asked for.`
+include policy.row {"field":"owner","attribute":"id"}. Preserve existing
+classifications and apply any handling the person asked for. A restricted or
+pii field is masked even for the owner. For ordinary titles the owner needs
+to read and edit in Personal, use internal or confidential. Reserve restricted
+and pii for fields whose purpose calls for that protection.`
 
 const screenControlsGuide = `A new record should be creatable with its title and the essential input
 the person supplied. Keep the person's field names as ids: a book's title
