@@ -15,7 +15,8 @@ With Desk connected, choose the offer to use your existing records during
 planning. When the revised outline appears, select **Write it** to build the
 screens. If Check discovers another shared type, the build pauses and asks
 whether to use those records. Choose in the outline to continue. **Keep**
-appears after the engine checks the written screens.
+appears after the engine checks the written screens. A source-less starter such
+as “Start a People list” makes a list for this app.
 
 For a headless build, the plan lists matching reuse as a proposal,
 such as “Uses your existing Contacts from CRM,” and Build continues to Check.
