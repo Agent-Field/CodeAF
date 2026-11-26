@@ -70,6 +70,11 @@ type Proposal struct {
 	Package      *PackageCard `json:"package,omitempty"`
 }
 
+type proposalIntent struct {
+	ID     string  `json:"id"`
+	Target *Target `json:"target,omitempty"`
+}
+
 // Catalog carries shape and counts only. The model adapter projects the
 // fields again so validation metadata such as expressions and defaults stay local.
 type Catalog struct {
@@ -184,7 +189,6 @@ type turn struct {
 	Stage     string
 	Request   string
 	Proposal  string
-	Small     bool
 	Target    *Target
 	Round     int
 	Report    *schema.Report
@@ -200,7 +204,8 @@ type snapshot struct {
 
 type job struct {
 	State
-	Package         *packageEdit `json:",omitempty"`
+	PendingProposal *proposalIntent `json:",omitempty"`
+	Package         *packageEdit    `json:",omitempty"`
 	WritingFiles    map[string]string
 	Working         snapshot
 	Saved           map[string]snapshot
@@ -667,7 +672,11 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 	if s.ctx.Err() != nil {
 		return "", s.ctx.Err()
 	}
-	if j.Publishing || j.Package != nil {
+	if j.Publishing || j.Proposal != nil || j.Package != nil {
+		return "", store.ErrConflict
+	}
+	wantsProposal := proposal != "" || (j.App != "" && target != nil)
+	if wantsProposal && j.PendingProposal != nil && len(j.Queue) != 0 {
 		return "", store.ErrConflict
 	}
 	id, err := cell.NewID(time.Now())
@@ -689,8 +698,13 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 		j.State.State = stage
 		j.Problem = ""
 	}
-	small := proposal != "" && !j.Dirty && len(j.Queue) == 0
-	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small}
+	if wantsProposal && proposal == "" {
+		proposal = id
+	}
+	if proposal != "" {
+		j.PendingProposal = &proposalIntent{ID: proposal, Target: target}
+	}
+	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal}
 	if stage == Writing && request == "" && j.Paused != nil {
 		next = *j.Paused
 		next.ID = id
