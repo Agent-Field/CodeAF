@@ -626,7 +626,7 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 	var out []TypeInfo
 	for _, t := range sch.sortedTypes() {
 		if sc.App != "" {
-			if _, err := sch.allow(sc, t.Name, false); err != nil {
+			if allowed, err := sch.allow(sc, t.Name, false); err != nil || allowed.ID != t.ID {
 				continue
 			}
 		}
@@ -643,6 +643,19 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 		info := TypeInfo{
 			ID: t.ID, Name: t.Name, Common: t.Common, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
 			UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.ID], Ledger: t.Ledger,
+		}
+		if t.packagePrivate {
+			for _, alias := range sortedKeys(sch.bindings[t.DefinedBy]) {
+				if sch.bindings[t.DefinedBy][alias].TypeID == t.ID {
+					if info.Label == "" {
+						info.Label = strings.ReplaceAll(alias, "_", " ")
+					}
+					if sc.App == t.DefinedBy {
+						info.Name = alias
+					}
+					break
+				}
+			}
 		}
 		if t.Lifecycle != nil {
 			lc := t.Lifecycle.LifecycleDef
