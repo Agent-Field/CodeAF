@@ -229,7 +229,7 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err = jobs.State(draft)
-	if err != nil || len(state.Checkpoints) != 3 || len(state.Screens) != 0 || state.Published {
+	if err != nil || state.State != builder.Planning || len(state.Checkpoints) != 3 || len(state.Screens) != 0 || state.Published {
 		t.Fatalf("restore should append a step and reopen the earlier plan: %+v, %v", state, err)
 	}
 	if _, err := jobs.Apply(draft); err == nil {
@@ -245,7 +245,10 @@ func TestInterruptedJobResumesAfterEngineOpens(t *testing.T) {
 	review := make(chan struct{}, 1)
 	reopened.Changed = func(e builder.Event) {
 		if e.Line == "Plan ready to review." {
-			review <- struct{}{}
+			select {
+			case review <- struct{}{}:
+			default:
+			}
 		}
 	}
 	opts.Model = func() (builder.Completer, error) {

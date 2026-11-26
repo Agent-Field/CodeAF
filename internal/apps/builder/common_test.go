@@ -86,7 +86,7 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.Offers) != 2 || plan.Offers[0].Type != "contact" || plan.Offers[0].Count != 4 ||
-		plan.Offers[1].Type != "person" || plan.Offers[1].App != "" || plan.Offers[1].Count != 0 {
+		plan.Offers[1].Type != "person" || plan.Offers[1].App != "" || plan.Offers[1].Count != 0 || plan.Offers[1].Line != "Start a People list" {
 		t.Fatalf("wanted existing contact and library Person offers: %+v", plan.Offers)
 	}
 	<-review

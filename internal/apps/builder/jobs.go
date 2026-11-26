@@ -342,7 +342,10 @@ func (s *Jobs) load(id string) (*job, error) {
 	}
 	// Older builds used Ready for plans with no screens.
 	if j.State.State == Ready && len(j.Screens) == 0 {
-		j.State.State = Planning
+		j.Screens = screens(j.Working.Files)
+		if len(j.Screens) == 0 {
+			j.State.State = Planning
+		}
 	}
 	return &j, nil
 }

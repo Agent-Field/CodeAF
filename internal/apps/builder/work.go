@@ -334,7 +334,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}
 		j.Working.Passed, j.Working.CheckComplete = false, false
 		j.Working.Look = report.Look
-		pendingReuse := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool { return p.Code == "choose_reuse" })
+		reuseQuestion := slices.IndexFunc(report.Problems, func(p schema.Problem) bool { return p.Code == "choose_reuse" })
+		pendingReuse := reuseQuestion >= 0
 		unavailable := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
 			return strings.HasSuffix(p.Code, "_unavailable")
 		})
@@ -342,7 +343,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			j.State.State = NeedsYou
 			j.Problem = "Check found an issue. " + report.Problems[0].Message
 			if pendingReuse {
-				j.Problem = report.Problems[0].Message
+				j.Problem = report.Problems[reuseQuestion].Message
 				event.OK = nil
 			}
 			if unavailable {
@@ -563,7 +564,11 @@ func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catal
 	if len(libraryOffers) > 0 {
 		library := schema.CommonTypes()
 		for _, key := range slices.Sorted(maps.Keys(libraryOffers)) {
-			offers = append(offers, Offer{Type: key, Common: key, Line: "Start with " + library.Types[key].Label})
+			line := "Start with " + library.Types[key].Label
+			if key == "person" {
+				line = "Start a People list"
+			}
+			offers = append(offers, Offer{Type: key, Common: key, Line: line})
 		}
 	}
 	return offers
