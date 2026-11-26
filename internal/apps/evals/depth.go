@@ -24,11 +24,12 @@ func measureDepth(files map[string]string) Depth {
 	var depth Depth
 	runs := make(map[string]schema.Run)
 	for name, body := range files {
-		if path.Dir(name) != "runs" || path.Ext(name) != ".yaml" {
+		ext := path.Ext(name)
+		if path.Dir(name) != "runs" || (ext != ".yaml" && ext != ".yml") {
 			continue
 		}
 		run, err := schema.ParseRun([]byte(body))
-		if err == nil && run.Run != "" && len(run.Steps) > 0 && name == "runs/"+run.Run+".yaml" {
+		if err == nil && run.Run != "" && len(run.Steps) > 0 && name == "runs/"+run.Run+ext {
 			runs[run.Run] = run
 			depth.countSteps(run.Steps)
 		}

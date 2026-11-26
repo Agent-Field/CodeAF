@@ -88,6 +88,9 @@ func runGallery(t *testing.T, key string, noModel bool) {
 				results = append(results, Result{Case: c.Name, Failures: []string{err.Error()}, Adversarial: skippedProbes("engine could not start")})
 				t.Fatal(err)
 			}
+			if snapshots := os.Getenv("CODEAF_APP_EVAL_SNAPSHOTS"); snapshots != "" {
+				engine.snapshots = filepath.Join(snapshots, c.Name)
+			}
 			defer func() {
 				if err := engine.Close(); err != nil {
 					t.Errorf("close app engine: %v", err)
@@ -181,6 +184,9 @@ func TestLiveDesignRubric(t *testing.T) {
 	}
 	var results []Result
 	for _, c := range cases {
+		if c.NoModel && os.Getenv("CODEAF_APP_EVAL_PAID_LOOKS") == "1" {
+			continue
+		}
 		result := Result{Case: c.Name, LookSkipped: skipped}
 		if judge != nil {
 			scoreGalleryLook(t.Context(), &result, c, root, language, judge)

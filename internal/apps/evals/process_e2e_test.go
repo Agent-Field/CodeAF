@@ -25,14 +25,15 @@ import (
 )
 
 type appProcess struct {
-	binary  string
-	home    string
-	env     []string
-	cmd     *exec.Cmd
-	in      io.WriteCloser
-	out     <-chan wireReply
-	id      int
-	onOffer bool
+	binary    string
+	home      string
+	env       []string
+	cmd       *exec.Cmd
+	in        io.WriteCloser
+	out       <-chan wireReply
+	id        int
+	onOffer   bool
+	snapshots string
 }
 
 type wireReply struct {
@@ -238,8 +239,8 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 			Working      struct{ Files map[string]string }
 			WritingFiles map[string]string
 		}
-		raw, err := os.ReadFile(filepath.Join(p.home, "apps", "_drafts", plan.Draft, "build.json"))
-		if err != nil || json.Unmarshal(raw, &saved) != nil {
+		raw, readErr := os.ReadFile(filepath.Join(p.home, "apps", "_drafts", plan.Draft, "build.json"))
+		if readErr != nil || json.Unmarshal(raw, &saved) != nil {
 			return
 		}
 		files := saved.Working.Files
@@ -249,6 +250,11 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 		if files[schema.AppFile] != "" {
 			depth := measureDepth(files)
 			result.Depth = &depth
+			if p.snapshots != "" {
+				if snapshotErr := writeGallerySnapshot(p.snapshots, plan.Draft, files); snapshotErr != nil {
+					err = errors.Join(err, fmt.Errorf("save gallery render input: %w", snapshotErr))
+				}
+			}
 		}
 	}()
 	if err := onPlan(BuildState{Plan: body}); err != nil {
@@ -373,4 +379,39 @@ func (p *appProcess) Usage(ctx context.Context) (Usage, error) {
 		usage.Cost = &totals.USD
 	}
 	return usage, nil
+}
+
+// Snapshot only the definition and synthetic records needed by Desk's renderer.
+// Keep each build separate when one gallery case opens a second app.
+func writeGallerySnapshot(root, draft string, files map[string]string) error {
+	fixture := struct {
+		App     json.RawMessage             `json:"app"`
+		Screens map[string]json.RawMessage  `json:"screens"`
+		Records map[string][]map[string]any `json:"records"`
+	}{
+		App: json.RawMessage(files[schema.AppFile]), Screens: map[string]json.RawMessage{},
+	}
+	var sample schema.Sample
+	if sampleFile := files[schema.SampleFile]; sampleFile != "" {
+		if err := json.Unmarshal([]byte(sampleFile), &sample); err != nil {
+			return err
+		}
+	}
+	fixture.Records = sample.Records
+	if fixture.Records == nil {
+		fixture.Records = map[string][]map[string]any{}
+	}
+	for path, text := range files {
+		if strings.HasPrefix(path, "screens/") && strings.HasSuffix(path, ".json") {
+			fixture.Screens[schema.FileID(path)] = json.RawMessage(text)
+		}
+	}
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, draft+".json"), raw, 0o600)
 }

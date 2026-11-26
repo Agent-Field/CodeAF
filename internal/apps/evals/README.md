@@ -50,11 +50,16 @@ pointing to a run, a tool step with an approval gate, and at least 15 sample
 rows. The raw counts are included. These are definition counts and do not
 establish that the steps execute successfully.
 
+Set `CODEAF_APP_EVAL_SNAPSHOTS` to export each generated app's manifest,
+screens and synthetic records for a separate Desk capture pass.
+Use a fresh directory for each live run.
+
 For the design judge, set `CODEAF_APP_EVAL_LOOKS` to a directory of Desk
 captures made with synthetic data. Save each PNG under
 `<case>/<screen>/<dark|light>-<800|1120>.png`. `TestLiveGallery` includes the score, individual observations and separate
 Critic usage when the capture directory is supplied. Use
 `TestLiveDesignRubric` to score an existing capture set. Set
+`CODEAF_APP_EVAL_PAID_LOOKS=1` for captures from the seven paid cases alone. Set
 `CODEAF_APPS_CRITIC_MODEL` to select a judge, or leave it unset to use the same
 model as the live Builder. An unsupported or unknown vision capability is
 reported as skipped without substituting a model.
