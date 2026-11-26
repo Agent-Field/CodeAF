@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // Check the authored controls before exercising data or asking Desk to render.
@@ -95,15 +96,24 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 				c.collections[node.Bind.Records] = true
 			}
 		case "RecordPage":
-			if node.Bind != nil && node.Bind.Type != "" && node.Bind.Record != "" {
+			if node.Bind == nil || node.Bind.Record == "" {
+				break
+			}
+			// The record watch can only open a saved record ID. A bare list
+			// name or record type doesn't become a selection at runtime.
+			record := node.Bind.Record
+			if !strings.HasPrefix(record, "$") && !strings.Contains(record, "{{") && !cell.ValidID(record) {
+				c.issues = append(c.issues, schema.Problem{File: file, Path: node.ID, Code: "record_binding_invalid",
+					Message: fmt.Sprintf("Choose the record with $selection.<list>.id, $params.id, or a saved record ID. %q is not a record ID.", record)})
+				break
+			}
+			if node.Bind.Type != "" {
 				c.collections[node.Bind.Type] = true
 			}
-			if node.Bind != nil && node.Bind.Record != "" {
-				ids, _ := node.Props["actions"].([]any)
-				for _, id := range ids {
-					if id, ok := id.(string); ok {
-						c.commands[id] = true
-					}
+			ids, _ := node.Props["actions"].([]any)
+			for _, id := range ids {
+				if id, ok := id.(string); ok {
+					c.commands[id] = true
 				}
 			}
 		case "Form", "RecordForm":

@@ -107,6 +107,30 @@ func TestCheckNamesMissingScreenControls(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsALiteralPlaceholderInARecordPage(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const file = "screens/contacts.json"
+	valid := bytes.Replace(def.Files[file], []byte(`"record": "$selection.contacts.id"`), []byte(`"type": "contact", "record": "$selection.contacts.id"`), 1)
+	for _, binding := range []string{"selection", "$selection.contacts.id", "00000000000000000000000001"} {
+		t.Run(binding, func(t *testing.T) {
+			def.Files[file] = bytes.Replace(valid, []byte("$selection.contacts.id"), []byte(binding), 1)
+			report := check.Definition(def, nil)
+			if binding == "selection" {
+				if !slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
+					return p.File == file && p.Code == "record_binding_invalid" && strings.Contains(p.Message, "$selection")
+				}) {
+					t.Fatalf("Check accepted a literal placeholder: %v", report)
+				}
+			} else if !report.OK() {
+				t.Fatalf("Check rejected a valid binding: %v", report)
+			}
+		})
+	}
+}
+
 func TestCheckRejectsACreateButtonMissingRequiredInput(t *testing.T) {
 	def, err := schema.Load("../schema/testdata/crm")
 	if err != nil {
