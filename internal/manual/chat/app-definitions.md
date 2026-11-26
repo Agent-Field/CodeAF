@@ -216,3 +216,44 @@ With the app engine running, use
 `codeaf app data-query '{"app":"APP","type":"account"}'` or
 `codeaf app data-aggregate '{"app":"APP","type":"account","aggregate":[{"fn":"count"}]}'`.
 `codeaf app data-types` shows each field's declared class and visibility.
+
+## Pack an app, export a template to the Kit
+
+With the desk engine open, run `codeaf app pack <app> [file]`. Use the saved app
+ID from `codeaf app list`. The default filename is `<app>.codeaf-app` in the
+current directory. An existing file is preserved. The archive holds the
+definition, common record types and fields, actions, automations and requested
+permissions. The same inputs yield the same hash. It carries no live records
+or personal grants. Example rows from the definition are included by default.
+For a named publisher or version, use
+`codeaf app pack '{"app":"<app>","path":"/absolute/crm.codeaf-app","publisher":"Example","version":"1.0.0","sample":false}'`.
+The publisher label defaults to `local`. The version defaults to the saved
+version followed by `.0.0`. App templates belong with other templates in the Kit.
+
+## Install a package and use my existing people
+
+`codeaf app install <file>` opens a card with the publisher's requested access
+and proposed record bindings. An alias like `contact` can bind to your existing
+People when the package declares that common type. A required field with no compatible destination
+stops the install and names the field. Example rows stay in Check and preview.
+Inspect the card, then run `codeaf app apply '{"draft":"<draft>"}'` to publish.
+Use `codeaf app discard '{"draft":"<draft>"}'` to dismiss it. The live app gets
+the requested grants shown on the card when you Apply.
+
+## Fork an app, see its lineage or accept a package update
+
+`codeaf app fork <app>` opens a card for an independent copy of the definition.
+Apply gives the copy a new ID and its own version history. The apps can continue
+using the same records. A fork follows its own version history and receives no
+publisher updates. The fork can add its own fields to a shared type. Rules
+for shared fields come from the app that defines the type. `codeaf app lineage <app>` shows the installed package
+and version or the app it was forked from.
+
+`codeaf app update <app> <file>` prepares a newer release from the same
+package. The change card merges independent edits and lists competing edits. Changed
+access requests, record privacy rules, and budgets also require a choice.
+For a conflict, choose `local` or `upstream` in
+`codeaf app resolve-package '{"draft":"<draft>","proposal_id":"<id>","choices":{"<conflict-id>":"local"}}'`.
+Give a choice for each conflict. Check runs on the result and Apply is still
+required. A clean update also waits for Apply. The card can be reopened after
+an engine restart with `codeaf app build_state '{"draft":"<draft>"}'`.

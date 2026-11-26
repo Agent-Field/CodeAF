@@ -181,7 +181,7 @@ func (s *Jobs) Restore(id, checkpoint string) error {
 	if err != nil {
 		return err
 	}
-	if j.Publishing {
+	if j.Publishing || j.Package != nil {
 		return store.ErrConflict
 	}
 	snap, ok := j.Saved[checkpoint]
@@ -217,7 +217,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 	if err != nil {
 		return store.Meta{}, err
 	}
-	if len(j.Queue) != 0 {
+	if len(j.Queue) != 0 || (j.Package != nil && !j.Working.CheckComplete) {
 		return store.Meta{}, fmt.Errorf("%w: finish checking before keeping the app", store.ErrConflict)
 	}
 	if !j.Dirty && j.App != "" {
@@ -250,7 +250,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return store.Meta{}, err
 	}
-	if !samePublication(live, j) {
+	if (j.Package != nil && !j.Publishing) || !samePublication(live, j) {
 		// Record the intent before publication. If the process stops between
 		// committing and recording the result, retry recognizes its own published files.
 		if !j.Publishing {
@@ -259,7 +259,13 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 				return store.Meta{}, err
 			}
 		}
-		meta, err := s.opts.Store.PublishBuild(j.Draft, j.App, j.Base, definition(j.Working.Files), j.LastRequest)
+		var meta store.Meta
+		var err error
+		if j.Package != nil {
+			meta, err = s.publishPackage(j)
+		} else {
+			meta, err = s.opts.Store.PublishBuild(j.Draft, j.App, j.Base, definition(j.Working.Files), j.LastRequest)
+		}
 		if err != nil {
 			j.Publishing = false
 			var event Event
@@ -278,6 +284,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 
 	j.App, j.Base, j.Name = live.Meta.ID, live.Meta.Version, live.Meta.Name
 	j.Dirty, j.Publishing, j.Editable = false, false, true
+	j.Proposal, j.Package = nil, nil
 	j.Working = snapshot{Files: live.Files(), Passed: true}
 	j.acceptKeptUses()
 	j.KeptMessages, j.KeptCheckpoints, j.KeptMarks = len(j.Transcript), len(j.Checkpoints), len(j.Marks)
@@ -290,6 +297,9 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 
 func samePublication(live store.Definition, j *job) bool {
 	if live.Meta.Version != j.Base+1 {
+		return false
+	}
+	if j.Package != nil && !sameLineage(live.Meta.Lineage, &j.Package.Publication.Lineage) {
 		return false
 	}
 	files := live.Files()
@@ -347,6 +357,7 @@ func (s *Jobs) Discard(id string) error {
 	j.Working = snapshot{Files: live.Files(), Passed: true}
 	j.acceptKeptUses()
 	j.Queue, j.Paused, j.Dirty, j.Problem, j.State.State = nil, nil, false, "", Ready
+	j.Proposal, j.Package = nil, nil
 	j.WritingFiles = nil
 	j.Presence = nil
 	j.Progress = []Event{}
