@@ -1,0 +1,1 @@
+{"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#users('me')/onlineMeetings","value":[{"id":"MSpkLaunchReview","joinWebUrl":"https://teams.microsoft.com/l/meetup-join/launch-review","subject":"Daily launch review"}]}

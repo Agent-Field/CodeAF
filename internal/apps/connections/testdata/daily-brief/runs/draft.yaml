@@ -1,0 +1,15 @@
+run: draft
+title: Create Outlook draft
+params:
+  to: {type: text}
+  subject: {type: text}
+  body: {type: text}
+steps:
+  - id: prepare-draft
+    tool: connections.m365.create-draft
+    gate: {approval: send}
+    args:
+      set:
+        to: $params.to
+        subject: $params.subject
+        body: $params.body

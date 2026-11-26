@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/check"
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -131,6 +132,17 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 		for _, verb := range cap.Can {
 			replies[connector+"."+verb] = runs.Reply{Output: map[string]any{
 				"id": "sample-item", "thread": "sample-thread", "text": "Example connector response.",
+			}}
+		}
+	}
+	for _, tool := range app.Capabilities.Tools {
+		connection, operation, ok := schema.ParseSourceTool(tool)
+		if !ok {
+			continue
+		}
+		if receipt, ok := connections.GraphFixtureWrite(operation); ok {
+			replies[tool] = runs.Reply{Output: receipt.Response, Effect: &runs.EffectReceipt{
+				Tool: tool, Connection: connection, Version: receipt.Version, Outcome: "committed",
 			}}
 		}
 	}
