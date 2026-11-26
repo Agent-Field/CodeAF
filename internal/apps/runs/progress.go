@@ -189,6 +189,11 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				return nil
 			}
 		default:
+			// A standalone approval has no output to show that it completed.
+			if c.CompletedGates == nil {
+				c.CompletedGates = make(map[string]bool)
+			}
+			c.CompletedGates[step.ID] = true
 			if err := e.advance(c, "", nil); err != nil {
 				return err
 			}
@@ -439,6 +444,7 @@ func (e *Engine) enterRound(c *checkpoint) error {
 		c.Step = parent.ID
 		return e.stop(c, YourCall, "out of rounds")
 	}
+	c.clearGateCompletions(parent.Steps)
 	c.Step = parent.Steps[0].ID
 	c.reset()
 	return e.save(c, "", nil)
@@ -632,6 +638,9 @@ func (e *Engine) jump(c *checkpoint, target string) error {
 	for depth, frame := range c.Frames {
 		for index, step := range steps {
 			if step.ID == target {
+				if index <= frame.Index {
+					c.clearGateCompletions(steps[index:])
+				}
 				c.Frames = c.Frames[:depth+1]
 				c.Frames[depth].Index = index
 				c.Step = target
@@ -643,6 +652,18 @@ func (e *Engine) jump(c *checkpoint, target string) error {
 		}
 	}
 	return e.stop(c, Incomplete, "error handling step is outside this run path")
+}
+
+// Re-entered steps need fresh approval. The previous pass's status only
+// describes the run until the engine starts that path again.
+func (c *checkpoint) clearGateCompletions(steps []Step) {
+	if len(c.CompletedGates) == 0 {
+		return
+	}
+	for _, step := range steps {
+		delete(c.CompletedGates, step.ID)
+		c.clearGateCompletions(step.Steps)
+	}
 }
 
 func (e *Engine) stop(c *checkpoint, state, reason string) error {
