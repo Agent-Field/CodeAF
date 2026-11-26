@@ -77,17 +77,20 @@ func (s *Store) Reverse(sc Scope, typ, id, reason string) (*WriteResult, error) 
 		if err := w.checkRecord(t, rev, uniqueFields(t)); err != nil {
 			return err
 		}
-		if err := w.save(t, rev, true); err != nil {
+		if err := w.save(t, rev, true, sc); err != nil {
 			return err
 		}
 		if err := w.history(t, sc, OpReverse, reason, nil, rev); err != nil {
+			return err
+		}
+		if err := w.assign(sc, t, rev, ""); err != nil {
 			return err
 		}
 		linked := orig.clone()
 		linked.Meta.ReversedBy = rev.ID
 		linked.Rev++
 		linked.UpdatedAt = at
-		if err := w.save(t, linked, false); err != nil {
+		if err := w.save(t, linked, false, sc); err != nil {
 			return err
 		}
 		if err := w.history(t, sc, OpReverse, reason, orig, linked); err != nil {

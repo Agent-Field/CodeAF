@@ -77,7 +77,7 @@ func (s *Store) PublishApp(p AppPublication, previousVersion int) error {
 		}
 		switch {
 		case p.Deleted:
-			w.next, err = forgetApp(w.tx, p.App, w.s.now)
+			w.next, err = forgetApp(w, p.App)
 		case def != nil:
 			w.next, err = registerApp(w, def, p.Bindings)
 		}

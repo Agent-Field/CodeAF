@@ -160,6 +160,7 @@ type TypeDef struct {
 	Freeze     []FreezeRule        `json:"freeze,omitempty"`
 	Lifecycle  *LifecycleDef       `json:"lifecycle,omitempty"`
 	Checklists []checklistDef      `json:"checklists,omitempty"`
+	Rules      ruleDeclarations    `json:"write_rules,omitzero"`
 	// Ledger makes records append-only: never changed or deleted, only
 	// reversed by a new entry.
 	Ledger LedgerOption `json:"ledger"`
@@ -209,12 +210,16 @@ func ParseApp(raw []byte) (*AppDef, error) {
 		}
 		_ = json.Unmarshal(records[name], &fields)
 		t.order = objectKeys(fields.Fields)
+		t.Rules = ruleDeclarations{}
 		def.Records[name] = t
 	}
 	if err := def.readProcess(raw); err != nil {
 		return nil, err
 	}
 	if err := def.readChecklists(raw); err != nil {
+		return nil, err
+	}
+	if err := def.readRules(raw); err != nil {
 		return nil, err
 	}
 	if err := def.check(); err != nil {
