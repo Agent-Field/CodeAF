@@ -166,6 +166,9 @@ type Config struct {
 	// GitHubClientID enables GitHub device sign-in; Team optionally restricts handles.
 	GitHubClientID string
 	Team           []string
+	// RelayURL is the address of the relay this organization runs for its members' computers (`relay_url` in the host config),
+	// empty when it runs none. GET /v1/org tells it to anyone signed in; it is never used by the server itself.
+	RelayURL string
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
 	// ActsClient, when set, is the GitHub client public acts are carried out

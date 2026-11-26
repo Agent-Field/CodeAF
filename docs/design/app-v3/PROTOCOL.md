@@ -1245,7 +1245,7 @@ no longer usable there is refused (`conflict`). When the operator removes a pers
 their agents go to the heir.
 
 Starting an organization (hello `org_setup`, v2 designs J2 and J3). `factory.org_profile`
-`GET /v1/org` answers `{name, description?, set_up, by_hand?}` to anyone signed in;
+`GET /v1/org` answers `{name, description?, set_up, by_hand?, relay?}` to anyone signed in (`relay` is the address of the relay the organization runs for its members' computers, when the operator named one);
 `factory.org_profile_set {name?, description?}` `PUT /v1/org` is the operator's "Start your
 organization" (a name of 1 to 40 characters, a line of at most 200 that every Afi on the
 server is told). `factory.org_setup {since?}` `GET /v1/org/setup` is the operator's own

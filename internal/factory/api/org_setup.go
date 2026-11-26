@@ -12,6 +12,9 @@ type OrgProfile struct {
 	Description string `json:"description,omitempty"`
 	SetUp       bool   `json:"set_up"`
 	ByHand      bool   `json:"by_hand,omitempty"`
+	// Relay is the address of the relay this organization runs for its members' computers, when the operator named one
+	// (`relay_url` in the server's config). It is how a member's codeaf finds it after signing in; nothing here is a secret.
+	Relay string `json:"relay,omitempty"`
 }
 
 // OrgProfilePut is PUT /v1/org, the operator's "Start your organization".

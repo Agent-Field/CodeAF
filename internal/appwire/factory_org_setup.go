@@ -34,6 +34,8 @@ type OrgProfile struct {
 	Description string `json:"description,omitempty"`
 	SetUp       bool   `json:"set_up"`
 	ByHand      bool   `json:"by_hand,omitempty"`
+	// Relay is the address of the relay the organization runs for its members' computers, when it runs one.
+	Relay string `json:"relay,omitempty"`
 }
 
 // OrgProfileSetParams is "Start your organization": a name and a line.
