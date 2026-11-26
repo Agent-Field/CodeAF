@@ -281,6 +281,13 @@ func approvalKind(op OperationManifest) string {
 }
 
 func (c *checker) checkOperation(file, at, tool string, args map[string]any, gate string, screen bool) {
+	if _, _, ok := ParseSourceTool(tool); ok {
+		c.checkTool(file, at, tool, screen)
+		if !screen && gate != "send" {
+			c.add(file, at, CodeSendGateMissing, "An approved source write needs a send approval gate.")
+		}
+		return
+	}
 	if id, ok := extensions.ToolID(tool); ok {
 		raw := c.def.Files["custom/"+id+".step"]
 		if len(raw) == 0 || screen || !contains(c.app.Capabilities.Tools, tool) {

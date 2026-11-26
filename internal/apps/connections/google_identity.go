@@ -1,6 +1,7 @@
 package connections
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
@@ -33,7 +34,7 @@ func googleSourceField(read Read, typ *data.Type, name string) (*data.Field, err
 	return typ.LiveField(name, false)
 }
 
-func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read Read, f *data.Field, raw map[string]any) (any, error) {
+func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read Read, f *data.Field, raw map[string]any, link bool) (any, error) {
 	column := read.Fields[f.Name]
 	common := googleReferenceColumn(read.Table, column)
 	target, err := store.Type(sc, f.To)
@@ -81,6 +82,12 @@ func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read
 			return nil, err
 		}
 		if !found {
+			// Document keys are transport identities. People and companies
+			// require the separate operator link step before a read can
+			// project their IDs. Neither path merges into an existing person.
+			if common != data.CommonDocument && !link {
+				continue
+			}
 			if err := store.AuditPolicy(c.App, target.ID, "source_identity_linked"); err != nil {
 				return nil, err
 			}
@@ -111,4 +118,80 @@ func emailDomain(address string) string {
 	}
 	_, domain, _ := strings.Cut(address, "@")
 	return domain
+}
+
+// LinkGoogleIdentities is the local operator path for reserving exact email
+// and domain identities from the declared Google read. A lookup on an app
+// screen only resolves already reserved keys.
+func (s Service) LinkGoogleIdentities(ctx context.Context, q Query) error {
+	c, err := s.scoped(q.App, q.Connection)
+	if err != nil {
+		return err
+	}
+	read, ok := c.Reads[q.Read]
+	if c.Kind != Google || !ok || !read.GoogleLinkIdentities {
+		return ErrSourcePermission
+	}
+	store, _, typ, err := s.bind(c.Config, read, false)
+	if err != nil {
+		return err
+	}
+	if typ.HasRowPolicy() {
+		return ErrSourcePermission
+	}
+	scope := data.Scope{App: c.App, Person: s.person(ctx)}
+	fields := []*data.Field{}
+	for field, column := range read.Fields {
+		common := googleReferenceColumn(read.Table, column)
+		if common != data.CommonPerson && common != data.CommonOrganization {
+			continue
+		}
+		f, err := googleSourceField(read, typ, field)
+		if err != nil {
+			return err
+		}
+		if (f.Type == data.TypeRef || f.Type == data.TypeRefs) && typ.FieldPolicy(f) == "" {
+			fields = append(fields, f)
+		}
+	}
+	if len(fields) == 0 {
+		return ErrRejected
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	source, grant, err := s.workspace(ctx, c, read.Table, false)
+	if err != nil {
+		return err
+	}
+	c.googleSubject = source.subject
+	args := map[string]any{}
+	if read.GoogleQuery != "" {
+		args["q"] = read.GoogleQuery
+	}
+	limit := read.GoogleLimit
+	if limit == 0 {
+		limit = 50
+	}
+	rows, _, err := source.rows(ctx, read.Table, args, limit)
+	if err != nil {
+		return err
+	}
+	if _, current, err := s.workspace(ctx, c, read.Table, false); err != nil || current != grant {
+		return ErrSourcePermission
+	}
+	current, err := s.scoped(q.App, q.Connection)
+	if err != nil || current.Binding != c.Binding {
+		return ErrConflict
+	}
+	if _, _, currentType, err := s.bind(c.Config, read, false); err != nil || currentType != typ {
+		return ErrSourcePermission
+	}
+	for _, row := range rows {
+		for _, field := range fields {
+			if _, err := googleReferenceValue(store, scope, c, read, field, row, true); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

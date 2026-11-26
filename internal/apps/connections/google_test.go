@@ -210,6 +210,10 @@ func TestGoogleMailIndexRefreshesChangedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := db.PublishApp(data.AppPublication{App: "brief", Version: 1, Metadata: []byte(`{"digest":"brief"}`),
+		Definition: []byte(`{"id":"brief","name":"Brief","version":1,"kit":0}`)}, 0); err != nil {
+		t.Fatal(err)
+	}
 	adapter := googleSource{client: server.Client(), origin: server.URL}
 	ctx := context.Background()
 	read := func(want string, wantReads int) {
@@ -222,7 +226,7 @@ func TestGoogleMailIndexRefreshesChangedMetadata(t *testing.T) {
 		if err != nil || len(rows) != 1 || rows[0]["labels"] != want || metadataReads != wantReads {
 			t.Fatalf("rows=%+v metadata reads=%d err=%v", rows, metadataReads, err)
 		}
-		if err := saveMailIndex(db, key, prev, index); err != nil {
+		if err := saveMailIndex(db, "brief", "google", key, prev, index); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -262,5 +266,68 @@ func TestGoogleDriveChangesRequireCurrentFileAccess(t *testing.T) {
 	state, changes, err = adapter.driveChanges(ctx, state)
 	if err != nil || state.Cursor != "drive-2" || len(changes) != 1 || changes[0].id != "visible" {
 		t.Fatalf("changes=%+v %v %v", state, changes, err)
+	}
+}
+
+func TestGoogleReferenceProjectionResolvesLinkedPeopleAndAttachments(t *testing.T) {
+	ctx := context.Background()
+	place := data.NewPlace(t.TempDir(), data.Options{NoRefresh: true})
+	defer place.Close()
+	db, err := place.Main()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const manifest = `{"id":"brief","name":"Brief","kit":0,"version":1,
+		"records":{
+			"message":{"title":"subject","fields":{
+				"subject":{"type":"text"},"sender":{"type":"ref","to":"person"},
+				"attachment":{"type":"ref","to":"document"}
+			}},
+			"person":{"title":"name","fields":{"name":{"type":"text"}}},
+			"document":{"title":"title","fields":{"title":{"type":"text"}}}
+		},
+		"capabilities":{"records":{"message":"r","person":"r","document":"r"}}}`
+	if err := db.PublishApp(data.AppPublication{App: "brief", Version: 1,
+		Metadata: []byte(`{"digest":"refs"}`), Definition: []byte(manifest)}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for common, typ := range map[data.CommonTypeKey]string{data.CommonMessage: "message", data.CommonPerson: "person", data.CommonDocument: "document"} {
+		if err := db.BindCommonType(common, typ); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := Service{Profile: t.TempDir(), Store: func() (*data.Store, error) { return db, nil }}
+	if err := service.Register(Config{ID: "source", App: "brief", Kind: Google, CredentialMode: CredentialPerson, GoogleFixture: true,
+		Reads: map[string]Read{
+			"messages": {Type: "message", Table: "gmail", Key: "id", GoogleLinkIdentities: true,
+				Fields: map[string]string{"subject": "subject", "sender": "from", "attachment": "attachments"}},
+			"docs": {Type: "document", Table: "attachments", Key: "id", Fields: map[string]string{"title": "title"}},
+		},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	query := Query{App: "brief", Connection: "source", Read: "messages"}
+	page, err := service.Read(ctx, query)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0]["sender"] != nil {
+		t.Fatalf("unlinked sender %+v %v", page, err)
+	}
+	attachmentID, _ := page.Rows[0]["attachment"].(string)
+	if attachmentID == "" {
+		t.Fatal("message did not link to its document")
+	}
+	doc, _, err := service.GetRecord(ctx, "brief", "document", attachmentID, false)
+	if err != nil || doc["title"] != "agenda.pdf" {
+		t.Fatalf("attachment %+v %v", doc, err)
+	}
+	if err := service.LinkGoogleIdentities(ctx, query); err != nil {
+		t.Fatal(err)
+	}
+	page, err = service.Read(ctx, query)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0]["sender"] == nil {
+		t.Fatalf("linked sender %+v %v", page, err)
+	}
+	_, info, _, err := service.PlanQuery(ctx, "brief", data.QueryIR{Type: "message", Select: []string{"attachment.title"}})
+	if err != nil || len(info.Contributors) != 1 || info.Contributors[0].Read != "docs" {
+		t.Fatalf("related Google source %+v %v", info, err)
 	}
 }

@@ -2,18 +2,18 @@ package connections
 
 import (
 	"context"
-	"errors"
-	"slices"
-
 	"encoding/base64"
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"errors"
 	"mime"
 	"net/http"
 	"net/mail"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
 func googleOperation(object, operation string) bool {

@@ -579,5 +579,15 @@ func (s Service) SetGoogleFixture(app, id string, fixture bool) error {
 	if err != nil {
 		return err
 	}
-	return vault.ChangeDefinition(id, previous, raw)
+	if err := vault.ChangeDefinition(id, previous, raw); err != nil {
+		return err
+	}
+	if s.Store == nil {
+		return nil
+	}
+	store, err := s.Store()
+	if err != nil {
+		return err
+	}
+	return store.ClearSourceIndexes(app, id)
 }

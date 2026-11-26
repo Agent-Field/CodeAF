@@ -311,7 +311,11 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, err
 	}
 	maps.Copy(args, q.filters)
-	ctx, cancel := context.WithTimeout(ctx, deadline)
+	budget := deadline
+	if c.Kind == Google && read.Table == "gmail" {
+		budget = 25 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	var google googleSource
 	if c.Kind == Google {
@@ -352,15 +356,19 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	var more bool
 	var index mailIndex
 	var indexKey, previous string
+	window := q.Limit
+	if c.Kind == Google && read.GoogleLimit > 0 {
+		window = min(window, read.GoogleLimit)
+	}
 	switch c.Kind {
 	case Google:
 		if read.Table == "gmail" && q.id == "" && read.GoogleIndex {
 			index, indexKey, previous, err = google.loadMailIndex(ctx, store, c.App, c.ID, q.Read, c.Binding+"/"+c.googleGrant)
 			if err == nil {
-				rows, more, err = google.indexedMail(ctx, &index, googleText(args, "q"), q.Limit)
+				rows, more, err = google.indexedMail(ctx, &index, googleText(args, "q"), window)
 			}
 		} else {
-			rows, more, err = google.rows(ctx, read.Table, args, q.Limit)
+			rows, more, err = google.rows(ctx, read.Table, args, window)
 		}
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
@@ -397,9 +405,14 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, errors.New("the type binding changed during the read")
 	}
 	if indexKey != "" {
-		if err := saveMailIndex(store, indexKey, previous, index); err != nil {
+		if err := saveMailIndex(store, c.App, c.ID, indexKey, previous, index); err != nil {
 			return Page{}, err
 		}
+	}
+	if c.Kind == Google && read.GoogleLimit > 0 && q.Limit >= read.GoogleLimit {
+		// The operator defined a bounded source object, so rows beyond
+		// that window are outside the app's declared dataset.
+		more = false
 	}
 	page := Page{
 		HasMore: more,
@@ -461,7 +474,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			}
 			var mapped any
 			if c.Kind == Google && (field.Type == data.TypeRef || field.Type == data.TypeRefs) {
-				mapped, err = googleReferenceValue(store, sc, c, read, field, raw)
+				mapped, err = googleReferenceValue(store, sc, c, read, field, raw, false)
 			} else {
 				mapped, err = mappedSourceValue(store, sc, read, field, value)
 			}

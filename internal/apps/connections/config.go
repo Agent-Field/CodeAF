@@ -39,6 +39,7 @@ type Config struct {
 // Read maps fields on a bound app type to source columns or JSON properties.
 // Match maps arguments to SQL equality predicates or HTTP query parameters.
 type Read struct {
+	GoogleLimit          int               `json:"google_limit,omitempty"`
 	GoogleIndex          bool              `json:"google_index,omitempty"`
 	GoogleLinkIdentities bool              `json:"google_link_identities,omitempty"`
 	GoogleQuery          string            `json:"google_query,omitempty"`
@@ -129,7 +130,7 @@ func (c Config) validate() error {
 			if !slices.Contains([]string{"gmail", "attachments", "calendar", "drive", "transcripts"}, read.Table) ||
 				read.Path != "" || read.Key != "id" || read.Version != "" && read.Version != "version" ||
 				read.Rows != "" || read.OrderBy != "" || read.Residency != nil ||
-				len(read.GoogleQuery) > maxCell || (read.GoogleIndex || read.GoogleQuery != "") && read.Table != "gmail" ||
+				read.GoogleLimit < 0 || read.GoogleLimit > 100 || len(read.GoogleQuery) > maxCell || (read.GoogleIndex || read.GoogleQuery != "") && read.Table != "gmail" ||
 				len(read.Match) > 1 {
 				return errors.New("a Google read needs a known Workspace object and canonical field mapping")
 			}
@@ -138,7 +139,7 @@ func (c Config) validate() error {
 					return errors.New("only Gmail accepts a search query")
 				}
 			}
-		} else if read.GoogleQuery != "" || read.GoogleIndex || read.GoogleLinkIdentities {
+		} else if read.GoogleQuery != "" || read.GoogleIndex || read.GoogleLinkIdentities || read.GoogleLimit != 0 {
 			return ErrRejected
 		} else if c.Kind == HTTP {
 			if !fixedPath(read.Path) || read.Table != "" || read.OrderBy != "" || (read.Rows != "" && !identifier.MatchString(read.Rows)) {

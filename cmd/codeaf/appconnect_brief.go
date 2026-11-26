@@ -52,7 +52,7 @@ func installDailyBrief(b *appBackend, fixture bool, out io.Writer) error {
 		ID: id, App: app.ID, Kind: connections.Google, CredentialMode: connections.CredentialPerson, GoogleFixture: fixture,
 		Reads: map[string]connections.Read{
 			"messages": {
-				Type: "message", Table: "gmail", Key: "id", Version: "version", GoogleIndex: true, GoogleQuery: "in:inbox newer_than:1d",
+				Type: "message", Table: "gmail", Key: "id", Version: "version", GoogleIndex: true, GoogleLimit: 50, GoogleQuery: "in:inbox newer_than:1d",
 				Fields: map[string]string{"subject": "subject", "sender": "from", "snippet": "snippet", "received": "date"},
 			},
 			"meetings": {

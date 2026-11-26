@@ -57,7 +57,7 @@ func appConnectionError(err error) error {
 }
 
 func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Writer) error {
-	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | content APP CONNECTION READ ID | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture"
+	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | content APP CONNECTION READ ID | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture | link-google-identities APP CONNECTION READ"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -71,6 +71,12 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 	case "daily-brief":
 		if len(args) == 1 || len(args) == 2 && args[1] == "--fixture" {
 			return installDailyBrief(b, len(args) == 2, out)
+		}
+	case "link-google-identities":
+		if len(args) == 4 {
+			return b.appConnections().LinkGoogleIdentities(context.Background(), connections.Query{
+				App: args[1], Connection: args[2], Read: args[3],
+			})
 		}
 	case "google-binding":
 		if len(args) == 4 && (args[3] == "fixture" || args[3] == "live") {

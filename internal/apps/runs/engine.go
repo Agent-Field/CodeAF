@@ -108,9 +108,9 @@ type Engine struct {
 	journal *store.Store
 	lock    *os.File
 	// The clock serializes schedule scanning. Each runnable instance also
-	googleClock sync.Mutex
 	// claims a worker before it can make any effects.
 	clock       sync.Mutex
+	googleClock sync.Mutex
 	outbox      sync.Mutex
 	mu          sync.Mutex
 	checkpoints map[string]json.RawMessage

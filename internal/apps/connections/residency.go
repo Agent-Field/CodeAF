@@ -329,13 +329,17 @@ func (s Service) SyncResidency(ctx context.Context, app, alias string) error {
 
 func (r residencyRoute) source() Source {
 	freshness := string(r.state.Mode)
+	freshFor := 0
+	if r.read.Residency != nil {
+		freshFor = r.read.Residency.FreshForSeconds
+	}
 	if r.state.Mode == data.ResidencyMirror &&
-		time.Since(r.state.CheckedAt) > time.Duration(r.read.Residency.FreshForSeconds)*time.Second {
+		time.Since(r.state.CheckedAt) > time.Duration(freshFor)*time.Second {
 		freshness = "stale"
 	}
 	return Source{Connection: r.config.ID, Read: r.name, Residency: string(r.state.Mode), Freshness: freshness,
 		ObservedAt: r.state.CheckedAt, MappingEpoch: r.state.Epochs.Mapping, ResidencyEpoch: r.state.Epochs.Residency,
-		FreshForSeconds: r.read.Residency.FreshForSeconds}
+		FreshForSeconds: freshFor}
 }
 
 func (s Service) readResident(r residencyRoute, sc data.Scope, q Query) (Page, error) {
@@ -391,7 +395,14 @@ func (s Service) WatchResidency(ctx context.Context) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	lastLive := make(map[string]time.Time)
+	nextPrune := time.Time{}
 	for {
+		if s.Store != nil && time.Now().After(nextPrune) {
+			if store, err := s.Store(); err == nil {
+				_ = store.PruneSourceIndexes()
+			}
+			nextPrune = time.Now().Add(time.Minute)
+		}
 		s.refresh(ctx, lastLive)
 		select {
 		case <-ctx.Done():

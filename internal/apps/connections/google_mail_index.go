@@ -129,7 +129,7 @@ func (g googleSource) indexedMail(ctx context.Context, index *mailIndex, query s
 	return rows, next != "", nil
 }
 
-func saveMailIndex(store *data.Store, key, previous string, index mailIndex) error {
+func saveMailIndex(store *data.Store, app, connection, key, previous string, index mailIndex) error {
 	raw, err := json.Marshal(index)
 	if err != nil {
 		return ErrInvalidRows
@@ -138,8 +138,6 @@ func saveMailIndex(store *data.Store, key, previous string, index mailIndex) err
 		return ErrTooLarge
 	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(raw))
-	if digest == previous {
-		return nil
-	}
-	return store.SaveSourceIndex(key, previous, digest, raw)
+
+	return store.SaveSourceIndex(app, connection, key, previous, digest, raw)
 }

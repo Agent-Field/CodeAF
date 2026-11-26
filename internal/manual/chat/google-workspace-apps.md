@@ -37,6 +37,9 @@ find its connection name.
 Google sources read under the connected account. Set `google_index: true` on
 a Gmail read to retain a bounded header and metadata index in the private
 profile database. Its history cursor refreshes changed headers and labels.
+The index expires 24 hours after its last refresh. Archiving the app or
+switching the fixture/live binding clears it. Daily brief covers the last
+day's inbox, up to 50 messages.
 Mail lists carry MIME
 headers, labels, snippet and attachment metadata. A message body stays on
 Google until a point read. `codeaf app connections content APP CONNECTION READ ID`
@@ -54,9 +57,26 @@ operator's authority. Content reads write a policy log entry without text.
 
 To map mail addresses or meeting attendees to canonical Person IDs, an
 operator sets `google_link_identities: true` and maps those columns to a
-Person ref or refs field. Gmail's `sender_domain` can map to Company, whose
+Person ref or refs field. Run
+`codeaf app connections link-google-identities APP CONNECTION READ` to reserve
+keys from the scoped source. Normal reads resolve those keys and leave an
+unknown Person unset. The operation does not merge people by display name.
+Gmail's `sender_domain` can map to Company, whose
 common type key is `organization`. Bind attachment metadata as Documents
 with the `attachments` read on the same Gmail connection.
+
+## Register a Google app data binding
+
+Use `codeaf app connections register CONFIG.json` with `kind: "google"`,
+`credential_mode: "person"` and a kept app's ID. Set a read's `table` to
+`gmail`, `calendar`, `drive`, `transcripts`, or `attachments`, `key` to
+`id` and `fields` to your record-field mapping. `google_limit` declares
+a bounded slice of at most 100 source records. Use `version` as the
+version property when a Calendar update needs an expected version.
+
+For draft Preview and Check, the binding uses Google-shaped fixtures instead
+of connecting to your account. The `--fixture` install option also uses
+fixtures in the kept app.
 
 ## Draft Gmail, change a Calendar event or comment on Drive
 
