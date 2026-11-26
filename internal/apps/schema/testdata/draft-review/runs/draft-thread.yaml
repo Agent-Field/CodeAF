@@ -1,0 +1,26 @@
+run: draft-thread
+title: Draft three replies and wait for send approval
+budget: {per_run: 0.10}
+params:
+  post: {type: ref, to: post}
+steps:
+  - id: draft
+    ai:
+      prompt: Draft three short replies to {{params.post.text}}.
+      output:
+        type: object
+        required: [replies]
+        additionalProperties: false
+        properties:
+          replies: {type: array, items: {type: string}, minItems: 3, maxItems: 3}
+      example: {replies: ["First reply", "Second reply", "Third reply"]}
+  - id: save
+    loop: {over: $steps.draft.output.replies, as: reply, max: 3}
+    steps:
+      - id: save-reply
+        records.create:
+          type: draft
+          set: {text: $reply, post: $params.post.id}
+  - id: review
+    gate: {approval: send, who: $me}
+    args: {text: $steps.draft.output.replies}
