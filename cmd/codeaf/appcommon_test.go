@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -142,4 +143,92 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 	if !ok || offer.Existing != "contact" || catalog.AppNames[crm.ID] != crm.Name || catalog.Counts["contact"] != 1 {
 		t.Fatalf("reuse offer %+v, app labels %v, counts %v", offer, catalog.AppNames, catalog.Counts)
 	}
+}
+
+func TestAppGetResolvesSharedRecordFields(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	apps := backend.AppDefinitions()
+	keep := func(files map[string]string) store.Meta {
+		t.Helper()
+		draft, err := apps.NewDraft("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range files {
+			path := filepath.Join(draft.Dir(), name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		meta, err := apps.Promote(draft, "Keep")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return meta
+	}
+	files := map[string]string{
+		"plan.json":             `{"ask":"Manage contacts","data":[{"id":"contact","line":"Contacts"}],"screens":[{"id":"contacts","line":"Contacts"}]}`,
+		"screens/contacts.json": `{"screen":"contacts","title":"Contacts","body":{"part":"Stack","id":"contacts"}}`,
+		"app.json": `{"id":"crm","name":"CRM","version":1,"kit":2,"records":{"contact":{
+			"common":"person","title":"full_name","fields":{"full_name":{"type":"text"},"email":{"type":"email"},"private_note":{"type":"text"}},
+			"policy":{"fields":{"private_note":"hide"}}}},"capabilities":{"records":{"contact":"rw"}}}`,
+	}
+	crm := keep(files)
+	files["plan.json"] = `{"ask":"Support contacts","data":[{"id":"customer","line":"Customers"}],"screens":[{"id":"contacts","line":"Contacts"}]}`
+	files["app.json"] = `{"id":"support","name":"Support","version":1,"kit":2,"records":{"customer":{"uses":true,"common":"person","fields":{}}},"capabilities":{"records":{"customer":"rw"}}}`
+	support := keep(files)
+
+	wire := wireOver(t, backend)
+	read := func(id string) map[string]schema.RecordType {
+		t.Helper()
+		var got struct {
+			App      json.RawMessage
+			Resolved map[string]schema.RecordType `json:"resolved_records"`
+		}
+		wire.must("apps.get", map[string]string{"app": id}, &got)
+		authored, err := schema.ParseApp(got.App)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id == support.ID && len(authored.Records["customer"].Fields) != 0 {
+			t.Fatal("apps.get changed the authored definition")
+		}
+		return got.Resolved
+	}
+	got := read(support.ID)
+	if len(got) != 1 || got["customer"].Title != "full_name" || got["customer"].Fields["email"].Type != "email" || got["customer"].Fields["full_name"].Type != "text" {
+		t.Fatalf("Support's local alias did not resolve to the CRM schema: %+v", got)
+	}
+	if _, exists := got["customer"].Fields["private_note"]; exists {
+		t.Fatal("the shared field policy hides private_note")
+	}
+	if got := read(crm.ID); len(got) != 0 {
+		t.Fatalf("own declarations do not need a separate projection: %+v", got)
+	}
+
+	var created, edited appwire.DataWriteResult
+	wire.must("data.create", appwire.DataCreateParams{
+		DataScope: appwire.DataScope{App: crm.ID}, Type: "contact",
+		Set: map[string]any{"full_name": "Ada Example", "email": "ada@old.example"},
+	}, &created)
+	id := created.Rows[0]["id"].(string)
+	wire.must("data.update", appwire.DataUpdateParams{
+		DataScope: appwire.DataScope{App: support.ID}, Type: "customer", IDs: []string{id},
+		Set: map[string]any{"email": "ada@new.example"}, Rev: 1,
+	}, &edited)
+	var history appwire.DataHistoryResult
+	wire.must("data.history", appwire.DataRecordParams{DataScope: appwire.DataScope{App: crm.ID}, Type: "contact", ID: id}, &history)
+	for _, entry := range history.History {
+		if entry.Batch == edited.Batch && entry.App == support.ID && entry.ByKind == data.ByPerson &&
+			entry.Cause == "data.update" && entry.Actor != "" && entry.After["email"] == "ada@new.example" {
+			return
+		}
+	}
+	t.Fatalf("CRM history did not receive the Support edit and its provenance: %+v", history.History)
+
 }

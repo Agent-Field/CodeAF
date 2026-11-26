@@ -125,8 +125,16 @@ func init() {
 	methods["apps.restore_checkpoint"] = buildCall(func(b *builder.Jobs, p appRestoreParams) (*Empty, error) {
 		return done(b.Restore(p.Draft, p.ID))
 	})
-	methods["apps.preview"] = buildCall(func(b *builder.Jobs, p builder.PreviewRequest) (*builder.Preview, error) {
+	methods["apps.preview"] = typed(func(e Engine, p builder.PreviewRequest) (*builder.Preview, error) {
+		b, err := openBuilds(e)
+		if err != nil {
+			return nil, err
+		}
 		res, err := b.Preview(p)
+		if err != nil {
+			return nil, buildError(err)
+		}
+		res.ResolvedRecords, err = resolveAppRecords(e, res.App, res.Scope)
 		return &res, err
 	})
 	methods["apps.apply"] = buildCall(func(b *builder.Jobs, p draftParams) (*appMetaResult, error) {

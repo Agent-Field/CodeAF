@@ -1015,3 +1015,38 @@ func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 	}
 	return out
 }
+
+// SharedRecordShapes projects a single writer schema under the app's declared
+// aliases. Field and type access match the app's reads even when the source
+// app and the consumer use different names.
+func (s *Store) SharedRecordShapes(sc Scope, records map[string]appschema.RecordType) map[string]appschema.RecordType {
+	sch := s.schema.Load()
+	out := map[string]appschema.RecordType{}
+	for alias, record := range records {
+		if !record.Uses {
+			continue
+		}
+		t, err := sch.allow(sc, alias, false)
+		if err != nil {
+			continue
+		}
+		shape := appschema.RecordType{Title: record.Title, Fields: map[string]appschema.Field{}}
+		for name, f := range t.Fields {
+			policy := t.FieldPolicy(f)
+			if f.Hidden || policy == "hide" {
+				continue
+			}
+			field := f.FieldDef.Field
+			field.Masked = field.Masked || policy == "mask"
+			shape.Fields[name] = field
+		}
+		if _, visible := shape.Fields[shape.Title]; !visible {
+			shape.Title = t.titleField()
+		}
+		if _, visible := shape.Fields[shape.Title]; !visible {
+			shape.Title = ""
+		}
+		out[alias] = shape
+	}
+	return out
+}
