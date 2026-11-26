@@ -435,6 +435,25 @@
         "uses": {
           "type": "boolean"
         },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "row": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "attribute"],
+              "properties": {
+                "field": {"type": "string"},
+                "attribute": {"const": "id"}
+              }
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": {"enum": ["hide", "mask"]}
+            }
+          }
+        },
         "fields": {
           "type": "object",
           "propertyNames": {
@@ -514,6 +533,7 @@
         "index": {
           "type": "boolean"
         },
+        "class": {"enum": ["public", "internal", "confidential", "restricted", "pii"]},
         "masked": {
           "type": "boolean"
         },

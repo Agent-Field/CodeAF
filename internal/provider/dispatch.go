@@ -283,7 +283,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
-	if observer != nil {
+	if observer != nil || c.config.AuthorizeDestination != nil {
 		// A followed redirect is a second paid send that no single Do can see, so
 		// an observed send hands the 3xx back instead (it is then an ordinary error).
 		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -660,6 +660,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				sharedLimiter.release(false, 0)
 				cancelAttempt()
 				return nil, &AttemptDeniedError{Cause: err}
+			}
+		}
+		if authorize := c.config.AuthorizeDestination; authorize != nil {
+			u := httpRequest.URL
+			destination := ModelDestination{Model: c.modelFor(request), Endpoint: u.Scheme + "://" + u.Host + u.EscapedPath()}
+			if err := authorize(ctx, destination); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: &ModelDestinationDenied{Cause: err}}
 			}
 		}
 		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the

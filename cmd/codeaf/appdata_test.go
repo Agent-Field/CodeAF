@@ -265,3 +265,56 @@ func TestAppDataSlowWireDoesNotBlockPolicyCommit(t *testing.T) {
 		t.Fatal("the policy reset did not replace the blocked event")
 	}
 }
+
+func TestAppRecordPolicyOnWireAndCLI(t *testing.T) {
+	b, _ := dataBackend(t)
+	s, err := b.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterApp([]byte(`{"id":"policy","records":{"account":{
+		"policy":{"row":{"field":"owner","attribute":"id"},"fields":{"salary":"hide"}},
+		"fields":{"owner":{"type":"person"},"name":{"type":"text"},"salary":{"type":"number"},"customer":{"type":"text","class":"pii"}}
+	}},"capabilities":{"records":{"account":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	w := newActionWire(t, b)
+	_, wireErr := w.call("data.create", map[string]any{"app": "policy", "type": "account", "set": map[string]any{
+		"name": "Mine", "owner": "me", "salary": 100, "customer": "private-pii",
+	}})
+	if wireErr != nil {
+		t.Fatal(wireErr)
+	}
+	params := map[string]any{"app": "policy", "type": "account"}
+	raw, wireErr := w.call("data.query", params)
+	if wireErr != nil {
+		t.Fatal(wireErr)
+	}
+	var page appwire.DataQueryResult
+	if err := json.Unmarshal(raw, &page); err != nil || page.Total != 1 || len(page.Rows) != 1 ||
+		page.Rows[0]["customer"] != "••••" || page.Rows[0]["salary"] != nil {
+		t.Fatalf("wire query %s, %v", raw, err)
+	}
+	query, _ := json.Marshal(params)
+	result, err := b.runAppCLICommand(context.Background(), "data_query", query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(result)
+	if string(out) != string(raw) {
+		t.Fatalf("CLI differs from wire: %s vs %s", out, raw)
+	}
+	raw, wireErr = w.call("data.types", map[string]any{"app": "policy"})
+	if wireErr != nil {
+		t.Fatal(wireErr)
+	}
+	var types appwire.DataTypesResult
+	if err := json.Unmarshal(raw, &types); err != nil || len(types.Types) != 1 || types.Types[0].Count != 1 {
+		t.Fatalf("wire type catalog %s, %v", raw, err)
+	}
+	for _, f := range types.Types[0].Fields {
+		if (f.Name == "customer" && (f.Class != "pii" || !f.Masked)) || (f.Name == "salary" && f.Visibility != "hide") {
+			t.Fatalf("wire field policy is missing: %+v", f)
+		}
+	}
+}

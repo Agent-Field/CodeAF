@@ -160,6 +160,13 @@ type modelInput struct {
 	Report     *schema.Report
 }
 
+const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
+{"fields":{"salary":"hide","tax_id":"mask"}}. To show a person's own rows,
+include policy.row {"field":"owner","attribute":"id"}. Keep the existing
+field definitions when editing the type with add-type. For any new or changed
+field, suggest a class of public, internal, confidential, restricted, or pii
+according to its intended data and any classification the person asked for.`
+
 const contextFilePage = 6 << 10
 
 var schemaName = regexp.MustCompile(`^[a-z0-9-]+\.json$`)
@@ -234,6 +241,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		}
 	}
 	raw, err := json.Marshal(struct {
+		RecordPolicy   string            `json:"record_policy"`
 		Stage          string            `json:"stage"`
 		Manifest       json.RawMessage   `json:"manifest,omitempty"`
 		Plan           json.RawMessage   `json:"plan,omitempty"`
@@ -244,7 +252,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		Using          []string          `json:"using,omitempty"`
 		Report         *modelReport      `json:"report,omitempty"`
 	}{
-		in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		recordPolicyGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
 		unchanged, typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err
@@ -291,6 +299,18 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
+	var observedClasses []schema.DataClass
+	ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		classes, err := definitionClasses(files, types)
+		for _, class := range classes {
+			if !slices.Contains(observedClasses, class) {
+				observedClasses = append(observedClasses, class)
+			}
+		}
+		return slices.Clone(observedClasses), err
+	})
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
 	execute := func(ctx context.Context, command string) (result string, err error) {

@@ -45,6 +45,8 @@ func appConnectionError(err error) error {
 	switch {
 	case errors.Is(err, connections.ErrTooLarge):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
+	case errors.Is(err, connections.ErrSourcePermission), errors.Is(err, connections.ErrPersonCredential):
+		return appwire.Errorf(appwire.CodeNotAllowed, "%s", err)
 	case errors.Is(err, connections.ErrUnavailable):
 		return appwire.Errorf(appwire.CodeUnreachable, "%s", err)
 	}
@@ -52,7 +54,7 @@ func appConnectionError(err error) error {
 }
 
 func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Writer) error {
-	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | register CONFIG.json | bind APP TYPE COMMON"
+	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -92,11 +94,19 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 			if err := decodeAppConnectionJSON(io.LimitReader(file, 128<<10), &cfg); err != nil {
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
-			credential, err := io.ReadAll(io.LimitReader(in, connections.MaxCredentialBytes+2))
-			if err != nil || len(credential) > connections.MaxCredentialBytes+1 {
-				return errors.New("could not read one credential line from stdin")
+			credential, err := readAppSourceCredential(in)
+			if err != nil {
+				return err
 			}
-			return b.appConnections().Register(cfg, string(credential))
+			return b.appConnections().Register(cfg, credential)
+		}
+	case "credential":
+		if len(args) == 3 {
+			credential, err := readAppSourceCredential(in)
+			if err != nil {
+				return err
+			}
+			return b.appConnections().SetPersonCredential(context.Background(), args[1], args[2], credential)
 		}
 	case "bind":
 		if len(args) == 4 {
@@ -112,6 +122,14 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 		}
 	}
 	return errors.New(usage)
+}
+
+func readAppSourceCredential(in io.Reader) (string, error) {
+	credential, err := io.ReadAll(io.LimitReader(in, connections.MaxCredentialBytes+2))
+	if err != nil || len(credential) > connections.MaxCredentialBytes+1 {
+		return "", errors.New("could not read one credential line from stdin")
+	}
+	return string(credential), nil
 }
 
 func decodeAppConnectionJSON(in io.Reader, value any) error {

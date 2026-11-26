@@ -32,7 +32,23 @@ import (
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
+// ModelDestination is the model and completion endpoint on an actual request.
+type ModelDestination struct {
+	Model    string `json:"model"`
+	Endpoint string `json:"endpoint"`
+}
+
+// ModelDestinationDenied carries the app policy's person-facing refusal.
+type ModelDestinationDenied struct{ Cause error }
+
+func (e *ModelDestinationDenied) Error() string { return e.Cause.Error() }
+func (e *ModelDestinationDenied) Unwrap() error { return e.Cause }
+
 type Config struct {
+	// AuthorizeDestination can refuse app data before every physical send,
+	// including retries, routed fallbacks and alternate billing endpoints.
+	AuthorizeDestination func(context.Context, ModelDestination) error
+
 	// SourceID identifies the configured service for usage classification when
 	// its address alone cannot identify it, such as a remote Ollama runner.
 	// It stays local; only a bounded routing category reaches telemetry.

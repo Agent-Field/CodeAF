@@ -21,14 +21,17 @@ const (
 	MySQL    Kind = "mysql"
 )
 
+const CredentialPerson = "person"
+
 type Config struct {
-	ID       string           `json:"id"`
-	Kind     Kind             `json:"kind"`
-	App      string           `json:"app"`
-	Origin   string           `json:"origin,omitempty"`
-	TestPath string           `json:"test_path,omitempty"`
-	Reads    map[string]Read  `json:"reads"`
-	Writes   map[string]Write `json:"writes,omitempty"`
+	CredentialMode string           `json:"credential_mode,omitempty"`
+	ID             string           `json:"id"`
+	Kind           Kind             `json:"kind"`
+	App            string           `json:"app"`
+	Origin         string           `json:"origin,omitempty"`
+	TestPath       string           `json:"test_path,omitempty"`
+	Reads          map[string]Read  `json:"reads"`
+	Writes         map[string]Write `json:"writes,omitempty"`
 }
 
 // Read maps fields on a bound app type to source columns or JSON properties.
@@ -67,6 +70,9 @@ func fixedPath(path string) bool {
 func (c Config) validate() error {
 	if !alias.MatchString(c.ID) || (!alias.MatchString(c.App) && !cell.ValidID(c.App)) {
 		return errors.New("a connection needs a local name and one app scope")
+	}
+	if c.CredentialMode != "" && c.CredentialMode != "shared" && c.CredentialMode != CredentialPerson {
+		return errors.New("a connection credential mode is shared or person")
 	}
 	switch c.Kind {
 	case HTTP:

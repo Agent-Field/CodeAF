@@ -261,6 +261,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		}
 		clientConfig := settings.ClientConfig(model)
 		clientConfig.Fallbacks = nil
+		clientConfig.AuthorizeDestination = b.appModelAuthorizer(call.App, false)
 		client, err := provider.NewClient(clientConfig)
 		if err != nil {
 			return runs.Reply{}, err
@@ -327,6 +328,10 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			if reply != nil {
 				result.Output = reply.Text()
 			}
+		}
+		var policy *provider.ModelDestinationDenied
+		if errors.As(err, &policy) {
+			return result, policy
 		}
 		var stopped session.ErrSpendStopped
 		if errors.As(err, &stopped) && stopped.TaskLimit {
