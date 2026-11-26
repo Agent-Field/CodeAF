@@ -51,7 +51,7 @@ func (e *Engine) agentControlTarget(app, id string) (checkpoint, error) {
 		return checkpoint{}, ErrNotFound
 	}
 	c, err := decode[checkpoint](raw)
-	if err == nil && (c.App != app || c.Harness == "" || c.State != Running && c.State != YourCall) {
+	if err == nil && (c.App != app || c.Harness == "" || c.State != Running && c.State != Finishing && c.State != YourCall) {
 		err = ErrNotFound
 	}
 	return c, err

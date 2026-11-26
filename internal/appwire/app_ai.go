@@ -2,12 +2,13 @@ package appwire
 
 // AppAILaunch selects a declared proposal action and a bounded record scope.
 type AppAILaunch struct {
-	App     string         `json:"app"`
-	Action  string         `json:"action"`
-	Screen  string         `json:"screen,omitempty"`
-	Records []string       `json:"records,omitempty"`
-	Query   *string        `json:"query,omitempty"`
-	Params  map[string]any `json:"params,omitempty"`
+	ClientID string         `json:"client_id,omitempty"`
+	App      string         `json:"app"`
+	Action   string         `json:"action"`
+	Screen   string         `json:"screen,omitempty"`
+	Records  []string       `json:"records,omitempty"`
+	Query    *string        `json:"query,omitempty"`
+	Params   map[string]any `json:"params,omitempty"`
 }
 
 type AppAIReview struct {

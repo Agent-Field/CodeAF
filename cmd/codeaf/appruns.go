@@ -238,6 +238,12 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			model = b.appAIModel(call.AI)
 		}
 		model = v3TalkModel(model, settings)
+		price := config.CrewCallPriceAt(b.crewProfile())
+		if call.AI != nil {
+			if _, _, _, known := price(model); !known {
+				return runs.Reply{}, runs.ErrAIUnavailable
+			}
+		}
 		clientConfig := settings.ClientConfig(model)
 		clientConfig.Fallbacks = nil
 		client, err := provider.NewClient(clientConfig)
@@ -246,7 +252,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		}
 		spend := &session.SpendGuard{
 			Day:      day,
-			Price:    config.CrewCallPriceAt(b.crewProfile()),
+			Price:    price,
 			DayLimit: config.CrewDailyLimit(b.crewProfile()),
 			TaskCap:  call.Remaining, TaskAction: "per-run budget reached",
 		}
@@ -291,7 +297,11 @@ func (b *appBackend) checkCodeafAI(step *schema.AIStep) error {
 	if err != nil {
 		return err
 	}
-	client := settings.ClientConfig(v3TalkModel(b.appAIModel(step), settings))
+	model := v3TalkModel(b.appAIModel(step), settings)
+	client := settings.ClientConfig(model)
+	if _, _, _, known := config.CrewCallPriceAt(b.crewProfile())(model); !known {
+		return runs.ErrAIUnavailable
+	}
 	if client.APIKey == "" && !client.KeyOptional {
 		return runs.ErrAIUnavailable
 	}

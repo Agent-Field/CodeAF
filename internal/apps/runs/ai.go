@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,12 +93,31 @@ func makeProposal(subject string, vars, set map[string]any) (*Proposal, error) {
 
 // StartFanout admits all subjects together and divides one declared budget
 // across them before any worker can spend it.
-func (e *Engine) StartFanout(app, run, screen string, params map[string]any, subjects []string) (string, error) {
+func (e *Engine) StartFanout(app, run, screen string, params map[string]any, subjects []string, clientID string) (string, error) {
 	if len(subjects) == 0 || len(subjects) > 50 {
 		return "", errors.New("choose between 1 and 50 records")
 	}
 	if !validID(app) || !validID(run) {
 		return "", errors.New("valid app and run ids are required")
+	}
+	var receiptKey string
+	var receipt fanoutReceipt
+	if clientID != "" {
+		if len(clientID) > 128 || !validID(clientID) {
+			return "", errors.New("invalid fan-out client id")
+		}
+		receiptKey = "fanout/" + app + "/" + clientID
+		payload, err := json.Marshal([]any{run, screen, params, subjects})
+		if err != nil {
+			return "", err
+		}
+		receipt.Fingerprint = sha256.Sum256(payload)
+		e.mu.Lock()
+		prior, err := e.fanoutReplay(receiptKey, receipt.Fingerprint)
+		e.mu.Unlock()
+		if prior != "" || err != nil {
+			return prior, err
+		}
 	}
 	def, err := e.cfg.Load(app, run)
 	if err != nil {
@@ -150,6 +170,20 @@ func (e *Engine) StartFanout(app, run, screen string, params map[string]any, sub
 		checkpoints = append(checkpoints, c)
 	}
 	e.mu.Lock()
+	if receiptKey != "" {
+		prior, err := e.fanoutReplay(receiptKey, receipt.Fingerprint)
+		if prior != "" || err != nil {
+			e.mu.Unlock()
+			return prior, err
+		}
+		receipt.Queue = queue
+		raw, err := json.Marshal(receipt)
+		if err != nil {
+			e.mu.Unlock()
+			return "", err
+		}
+		rows[receiptKey] = raw
+	}
 	if e.closed || e.closing {
 		e.mu.Unlock()
 		return "", errors.New("app runs are closed")
@@ -169,4 +203,24 @@ func (e *Engine) StartFanout(app, run, screen string, params map[string]any, sub
 		e.changed(c.Run)
 	}
 	return queue, nil
+}
+
+type fanoutReceipt struct {
+	Queue       string   `json:"queue"`
+	Fingerprint [32]byte `json:"fingerprint"`
+}
+
+func (e *Engine) fanoutReplay(key string, fingerprint [32]byte) (string, error) {
+	raw := e.checkpoints[key]
+	if raw == nil {
+		return "", nil
+	}
+	previous, err := decode[fanoutReceipt](raw)
+	if err != nil {
+		return "", err
+	}
+	if previous.Fingerprint != fingerprint {
+		return "", errors.New("that client id already launched a different selection")
+	}
+	return previous.Queue, nil
 }

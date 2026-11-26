@@ -23,6 +23,7 @@ import (
 
 const (
 	Running    = "running"
+	Finishing  = "finishing"
 	YourCall   = "your_call"
 	Done       = "done"
 	Incomplete = "incomplete"
@@ -396,7 +397,7 @@ func (e *Engine) saveLocked(c *checkpoint, clockKey string, clock any) error {
 
 func (e *Engine) track(r Run) {
 	switch r.State {
-	case Running, YourCall:
+	case Running, Finishing, YourCall:
 		e.active[r.ID] = r
 	default:
 		delete(e.active, r.ID)
@@ -520,7 +521,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 }
 
 func (r Run) ready(now time.Time) bool {
-	return r.State == Running && (r.WakeAt.IsZero() || !now.Before(r.WakeAt))
+	return (r.State == Running || r.State == Finishing) && (r.WakeAt.IsZero() || !now.Before(r.WakeAt))
 }
 
 func (e *Engine) claim(id string) bool {

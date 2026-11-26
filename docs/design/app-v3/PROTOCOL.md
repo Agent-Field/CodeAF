@@ -2075,7 +2075,7 @@ $0.10 goes out as `0.1`.
 
 | method | params | result |
 |---|---|---|
-| `agents.launch` | `{app, action, screen?, records?, query?, params?}` | `{queue}` |
+| `agents.launch` | `{app, action, screen?, records?, query?, params?, client_id?}` | `{queue}` |
 | `agents.review` | `{app, queue, decision, ids:[{id, expected_rev}]}` | `Empty` |
 | `agents.approval` | `{app, run, effect:{id, account, operation, destination, payload, payload_hash, app_version, expires_at}, answer}` | `Empty` |
 | `runs.start` | `{app, run, params?, draft?}` | `{id}` |

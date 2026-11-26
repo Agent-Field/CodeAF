@@ -90,6 +90,10 @@ func appAIRunProjection(r runs.Run) appAIProjection {
 	}
 	if r.Error != "" {
 		row.Log = append(row.Log, appAILog{At: r.UpdatedAt, Step: step, Text: r.Error})
+	} else if r.State == runs.Done {
+		row.Log = append(row.Log, appAILog{At: r.EndedAt, Step: step, Text: "Run finished"})
+	} else if r.Approval != nil {
+		row.Log = append(row.Log, appAILog{At: r.UpdatedAt, Step: step, Text: "Approval requested"})
 	}
 	if r.Cost > 0 {
 		row.Cost = &appAICost{Amount: r.Cost, Currency: "USD"}
@@ -101,7 +105,7 @@ func appAIRunProjection(r runs.Run) appAIProjection {
 	if effect := appAIPendingEffect(r); effect != nil {
 		row.Approvals = []*appwire.AppAgentPendingEffect{effect}
 	}
-	if r.State == runs.Running || r.State == runs.YourCall {
+	if r.State == runs.Running || r.State == runs.Finishing || r.State == runs.YourCall {
 		row.Allowed = map[string]bool{"stop": true, "steer": r.State == runs.Running && r.CanSteer}
 	}
 	return row
@@ -179,7 +183,7 @@ func (b *appBackend) appAIPresence(app, typ string) ([]appAIPresence, error) {
 		return nil, err
 	}
 	for _, r := range rows {
-		if (r.State == runs.Running || r.State == runs.YourCall) && r.Subject != nil && r.Subject.Type == typ && r.Harness != "" {
+		if (r.State == runs.Running || r.State == runs.Finishing || r.State == runs.YourCall) && r.Subject != nil && r.Subject.Type == typ && r.Harness != "" {
 			out = append(out, appAIPresence{Agent: appAIIdentityFor(r), Record: *r.Subject, Task: r.Title})
 		}
 	}

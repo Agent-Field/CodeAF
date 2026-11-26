@@ -44,8 +44,9 @@ func (r Run) CheckAIProposal(step *AIStep) error {
 	if len(r.Steps) != 1 || r.Steps[0].AI != step {
 		return errors.New("a proposed change must be the only step in its run")
 	}
-	if step.Output["type"] != "object" || step.Output["additionalProperties"] != false {
-		return errors.New("a proposed change needs an object output with additionalProperties set to false")
+	props, _ := step.Output["properties"].(map[string]any)
+	if step.Output["type"] != "object" || len(props) == 0 || step.Output["additionalProperties"] != false || step.Output["patternProperties"] != nil {
+		return errors.New("a proposed change needs an object output with named properties and additionalProperties set to false")
 	}
 	return nil
 }
@@ -81,9 +82,28 @@ func (c *checker) checkAIStep(file, at string, run Run, step *AIStep) {
 		c.add(file, at+"/ai/output", CodeStepKind, "The AI output schema is invalid: %v", err)
 		return
 	}
-	if step.Example != nil {
-		if err := shape.Validate(step.Example); err != nil {
-			c.add(file, at+"/ai/example", CodeStepKind, "The AI example does not match its output schema.")
+	if step.Example == nil {
+		c.add(file, at+"/ai/example", CodeStepKind, "Give Check an example response to use without a model.")
+		return
+	}
+	if err := shape.Validate(step.Example); err != nil {
+		c.add(file, at+"/ai/example", CodeStepKind, "The AI example does not match its output schema.")
+	}
+	if step.Propose == "" {
+		return
+	}
+	param, _ := strings.CutPrefix(step.Propose, "$params.")
+	typ := run.Params[param].To
+	if !c.canWrite(typ) {
+		c.add(file, at+"/ai/propose", CodeNotAllowed, "The proposal needs write access to %q.", typ)
+	}
+	fields, _ := c.typeFields(typ)
+	life, managed := c.lifecycle(typ)
+	props, _ := step.Output["properties"].(map[string]any)
+	for _, name := range sortedKeys(props) {
+		field, ok := fields[name]
+		if !ok || field.Masked || field.Computed != "" || field.Sequence != nil || managed && life.Field == name {
+			c.add(file, at+"/ai/output/properties/"+name, CodeNotAllowed, "The proposal cannot set %s.%s.", typ, name)
 		}
 	}
 }

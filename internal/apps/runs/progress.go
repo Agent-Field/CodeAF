@@ -150,7 +150,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if err := e.execute(ctx, c, step); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
 		default:
@@ -299,7 +299,7 @@ func (e *Engine) ask(c *checkpoint, kind, who string) error {
 		return e.stop(c, Incomplete, "personal app approvals go to me")
 	}
 	c.State = YourCall
-	c.Approval = c.approval(kind)
+	c.Approval = c.approval(kind, e.cfg.Now())
 	c.Approval.Tool, c.Approval.Args = c.Action.Name, c.Action.Args
 	if c.Approval.Tool == "" {
 		c.Approval.Tool = kind
@@ -307,9 +307,9 @@ func (e *Engine) ask(c *checkpoint, kind, who string) error {
 	return e.publishApproval(c)
 }
 
-func (c *checkpoint) approval(kind string) *Approval {
+func (c *checkpoint) approval(kind string, now time.Time) *Approval {
 	c.ApprovalSeq++
-	return &Approval{ID: fmt.Sprintf("%s-%d-%s", c.Action.Key, c.ApprovalSeq, kind), Kind: kind, Who: "me"}
+	return &Approval{ID: fmt.Sprintf("%s-%d-%s", c.Action.Key, c.ApprovalSeq, kind), Kind: kind, Who: "me", AskedAt: now}
 }
 
 func (e *Engine) publishApproval(c *checkpoint) error {
@@ -370,7 +370,7 @@ func (e *Engine) askBudget(c *checkpoint) error {
 	c.Prepared = false
 	c.State = YourCall
 	c.Error = ErrBudget.Error()
-	c.Approval = c.approval("budget")
+	c.Approval = c.approval("budget", e.cfg.Now())
 	c.Approval.MinBudget = max(c.Cost, c.budget())
 	return e.publishApproval(c)
 }
@@ -433,6 +433,9 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		c.Cost += reply.Cost
 	} else {
 		return e.stop(c, Incomplete, "step returned an invalid cost")
+	}
+	if step.AI != nil && budget > 0 && c.Cost > budget {
+		return e.stop(c, Incomplete, ErrBudget.Error())
 	}
 	if err == nil && step.AI != nil {
 		reply.Output, err = typedAIOutput(step.AI.Output, reply.Output)
@@ -511,6 +514,8 @@ func (e *Engine) advance(c *checkpoint, target string, output any) error {
 	}
 	if f.Index < len(steps) {
 		c.Step = steps[f.Index].ID
+	} else if len(c.Frames) == 1 && c.Harness != "" {
+		c.State = Finishing
 	}
 	return e.save(c, "", nil)
 }

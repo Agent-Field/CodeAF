@@ -82,7 +82,7 @@ func (b *appBackend) LaunchAppAI(p appwire.AppAILaunch) (string, error) {
 	if engine == nil {
 		return "", appwire.Errorf(appwire.CodeEngine, "App runs are unavailable.")
 	}
-	queue, err := engine.StartFanout(p.App, command.Run, p.Screen, params, p.Records)
+	queue, err := engine.StartFanout(p.App, command.Run, p.Screen, params, p.Records, p.ClientID)
 	return queue, appRunError(err)
 }
 
@@ -172,10 +172,6 @@ func (b *appBackend) AnswerAppAI(p appwire.AppAgentEffectAnswer) error {
 	if !b.now().Before(expires) {
 		return appwire.Errorf(appwire.CodeConflict, "The pending effect expired.")
 	}
-	version, err := (runs.Files(home.Join("apps"))).Version(p.App)
-	if err != nil || strconv.Itoa(version) != effect.AppVersion {
-		return appwire.Errorf(appwire.CodeConflict, "The app changed since this approval was requested.")
-	}
 	option := appwire.OptionDeny
 	if p.Answer == "yes" {
 		option = appwire.OptionAllowOnce
@@ -203,6 +199,15 @@ func appAIPendingEffect(r runs.Run) *appwire.AppAgentPendingEffect {
 	return &appwire.AppAgentPendingEffect{
 		ID: a.ID, Account: a.Who, Operation: a.Tool, Destination: destination, Payload: string(payload),
 		PayloadHash: hex.EncodeToString(digest[:]), AppVersion: strconv.Itoa(r.AppVersion),
-		ExpiresAt: r.UpdatedAt.Add(30 * time.Minute).UTC().Format(time.RFC3339Nano),
+		ExpiresAt: appApprovalExpiry(r).UTC().Format(time.RFC3339Nano),
 	}
+}
+
+// Old run journals only recorded the checkpoint time of a pending approval.
+func appApprovalExpiry(r runs.Run) time.Time {
+	asked := r.Approval.AskedAt
+	if asked.IsZero() {
+		asked = r.UpdatedAt
+	}
+	return asked.Add(30 * time.Minute)
 }

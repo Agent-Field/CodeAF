@@ -3,9 +3,12 @@
 package evals
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +118,30 @@ func TestLiveMarketingFanout(t *testing.T) {
 	call("runs.get", appwire.RunGetParams{App: app, ID: approved.ID}, &gated)
 	if reply, _ := gated.Approval.Args["text"].(string); strings.TrimSpace(reply) == "" {
 		t.Fatalf("approval did not contain the exact reply: %+v", gated.Approval)
+	}
+	payload, err := json.Marshal(gated.Approval.Args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(payload)
+	effect := appwire.AppAgentPendingEffect{
+		ID: gated.Approval.ID, Account: "me", Operation: "send", Destination: "fixture-marketing",
+		Payload: string(payload), PayloadHash: hex.EncodeToString(hash[:]), AppVersion: strconv.Itoa(gated.AppVersion),
+		ExpiresAt: gated.Approval.AskedAt.Add(30 * time.Minute).UTC().Format(time.RFC3339Nano),
+	}
+	answer := appwire.AppAgentEffectAnswer{App: app, Run: gated.ID, Effect: effect, Answer: "no"}
+	answer.Effect.Payload += " edited"
+	if _, err := engine.wire(ctx, "agents.approval", answer); err != CodeError(appwire.CodeConflict) {
+		t.Fatalf("altered payload = %v", err)
+	}
+	answer.Effect = effect
+	call("agents.approval", answer, nil)
+	err = runSteps(ctx, engine, []Step{{
+		Method: "runs.get", Params: map[string]any{"app": app, "id": gated.ID}, Await: 20 * time.Second,
+		Expect: []Check{equal("/state", runs.Incomplete), equal("/error", "approval declined")},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	t.Logf("three codeaf harness drafts accepted at $%.6f total", cost)
 }

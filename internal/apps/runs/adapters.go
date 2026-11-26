@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
@@ -56,6 +57,7 @@ type AgentCall struct {
 
 type Approval struct {
 	ID        string         `json:"id"`
+	AskedAt   time.Time      `json:"asked_at,omitzero"`
 	Kind      string         `json:"kind"`
 	Who       string         `json:"who"`
 	Tool      string         `json:"tool,omitempty"`

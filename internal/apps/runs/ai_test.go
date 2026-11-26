@@ -114,9 +114,13 @@ steps:
 			return params, nil
 		},
 	})
-	queue, err := e.StartFanout("app", "example", "mentions", nil, []string{"first", "second", "third"})
+	queue, err := e.StartFanout("app", "example", "mentions", nil, []string{"first", "second", "third"}, "client-1")
 	if err != nil {
 		t.Fatal(err)
+	}
+	replayed, err := e.StartFanout("app", "example", "mentions", nil, []string{"first", "second", "third"}, "client-1")
+	if err != nil || replayed != queue {
+		t.Fatalf("replayed queue = %q, %v", replayed, err)
 	}
 	tick(t, e)
 	list, err := e.List("app", "example")
