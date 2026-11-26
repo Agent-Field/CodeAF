@@ -74,7 +74,7 @@ func init() {
 		}
 		if p.Path == "" {
 			if err := os.MkdirAll(kitPackagesDir(), 0700); err != nil {
-				return nil, err
+				return nil, Errorf(CodeEngine, "The Kit package folder could not be opened.")
 			}
 			p.Path = filepath.Join(kitPackagesDir(), strings.TrimPrefix(result.Manifest.Hash, "sha256:")+packageSuffix)
 			if existing, err := readPackage(p.Path); err == nil && existing.Manifest.Hash == result.Manifest.Hash {

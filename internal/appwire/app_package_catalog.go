@@ -26,8 +26,9 @@ const (
 type catalogPackage struct {
 	apppackage.Source
 	packageParams
-	Job     string `json:"job"`
-	Preview []byte `json:"preview,omitempty"`
+	Job          string `json:"job"`
+	InstalledApp string `json:"installed_app,omitempty"`
+	Preview      []byte `json:"preview,omitempty"`
 }
 
 type packageCatalog struct {
@@ -83,11 +84,21 @@ func init() {
 				}
 				key := [2]string{a.Manifest.Publisher, a.Manifest.ID}
 				old, ok := packages[key]
-				// A personal archive cannot replace an embedded publisher's entry.
-				if ok && (catalog.builtin == (old.Builtin != "")) && !apppackage.Newer(a.Manifest.Source, old.Source) {
+				// An embedded release wins over a file with the same publisher and ID.
+				if ok && ((!catalog.builtin && old.Builtin != "") ||
+					(catalog.builtin == (old.Builtin != "") && !apppackage.Newer(a.Manifest.Source, old.Source))) {
 					continue
 				}
-				packages[key] = catalogPackage{Source: a.Manifest.Source, packageParams: p, Job: packageJobLine(catalog.files, name, a)}
+				entry := catalogPackage{Source: a.Manifest.Source, packageParams: p, Job: packageJobLine(catalog.files, name, a)}
+				// Bundled apps may already be published under their stable ID.
+				if source == nil && catalog.builtin {
+					if app, err := s.Get(entry.ID); err == nil && !app.Meta.Archived && app.Meta.Lineage != nil {
+						if installed := app.Meta.Lineage.Source; installed != nil && installed.ID == entry.ID && installed.Publisher == entry.Publisher {
+							entry.InstalledApp = app.Meta.ID
+						}
+					}
+				}
+				packages[key] = entry
 			}
 		}
 		out := packageCatalog{Packages: make([]catalogPackage, 0, len(packages))}

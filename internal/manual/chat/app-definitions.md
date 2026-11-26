@@ -340,7 +340,9 @@ In a saved app's **App** menu, **Pack to Kit** puts the current definition
 in Browse. A connected desktop draws its thumbnail using sample data.
 On the engine machine, shared package files use the `.codeaf-app` suffix
 and go in `<codeaf home>/kit/apps/`. Browse's **Refresh** reads that folder
-again. An optional adjacent file ending in `.codeaf-app.txt` supplies the
+again. The command-line equivalent is `codeaf app browse`. Run
+`codeaf app start-package '{"path":"/absolute/crm.codeaf-app"}'` to seed a draft.
+An optional adjacent file ending in `.codeaf-app.txt` supplies the
 one-line description. A companion `.codeaf-app.png` supplies the preview.
 
 For a package you installed, **App** names the publisher and accepted package

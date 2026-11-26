@@ -82,6 +82,8 @@ func (s *Jobs) ForkPackage(ctx context.Context, archive apppackage.Archive) (Pro
 
 // StartPackage seeds an ordinary Builder job, so subsequent requests can edit its files.
 func (s *Jobs) StartPackage(ctx context.Context, archive apppackage.Archive) (id string, err error) {
+	s.packageMu.Lock()
+	defer s.packageMu.Unlock()
 	catalog, err := s.catalog("")
 	if err != nil {
 		return "", err
@@ -116,7 +118,10 @@ func (s *Jobs) StartPackage(ctx context.Context, archive apppackage.Archive) (id
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return j.Draft, s.save(j, Event{Stage: Ready, Line: j.LastRequest})
+	if err := s.save(j, Event{Stage: Ready, Line: j.LastRequest}); err != nil {
+		return "", err
+	}
+	return j.Draft, nil
 }
 
 func (s *Jobs) Update(ctx context.Context, app string, archive apppackage.Archive) (Proposal, error) {
