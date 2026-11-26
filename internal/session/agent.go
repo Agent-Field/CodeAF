@@ -1446,6 +1446,15 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// cause is what kind of news a session's note carries, for the notes whose
+	// wake a standing hold may keep as a record instead (team_wakedecide.go's
+	// [wakeStanding]). Zero is a note no such hold binds.
+	cause wakeKind
+	// heldReceipt is the record its sender keeps in place of this note when a
+	// standing hold keeps it from starting a turn, given the sentence that says
+	// why. It is called once the queue's lock is let go, having been decided
+	// under it ([Agent.enqueueNote]). Nil keeps the note itself as the record.
+	heldReceipt func(why string)
 	// factoryWork marks a runtime manager turn, never the person's chat.
 	factoryWork bool
 	// runner marks words the factory's runner wrote ([runnerNote]): the turn
@@ -2104,6 +2113,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.teamStopHoldOver()
+	a.teamPauseOwedOver()
 	a.takeHeldNotesLocked()
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
@@ -2281,6 +2292,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// A process the person declined to keep running ends with the turn
 			// that started it (keep_running.go).
 			a.endTurnJobs(seq)
+			// The pause the turn's end may hold news by is read now, off the
+			// lock ([Agent.turnEndHeldLocked]).
+			a.teamPauseFreshSeated()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the
@@ -2329,6 +2343,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// is told as theirs. The cause is still the stop's: the turn's own
 			// cancel(nil) is deferred first, so it runs after this.
 			door, stopped := stopCause(turnCtx)
+			pauseCut := a.teamPauseCutLocked(door, stopped)
 			a.programOutcomeUnansweredLocked(hub, completed, stopped && door == StopByPerson)
 			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
 			// IT WAS ARMED IN. It re-checks this turn's number before it touches
@@ -2356,7 +2371,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
 			var retired []Question
-			if next, ok := a.nextFollowUpLocked(completed); ok {
+			// A PAUSE IS NOT A STOP: a follow-up the person queued is their own
+			// words, which a pause never holds, so the turn it cut starts it
+			// (team_pause.go's [Agent.teamPauseCutLocked]).
+			if next, ok := a.nextFollowUpLocked(completed || pauseCut); ok {
 				// THE PERSON'S QUEUED WORDS ARE THEIR REPLY once their turn
 				// starts, as a sent message's are (said below, after the unlock).
 				retired = a.personClosesQuestionsLocked(next.message)
@@ -2366,7 +2384,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
+			} else if completed && unanswered && !a.turnEndHeldLocked(drained) && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -2647,8 +2665,14 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
+	waiting, withdrew := a.teamStopHoldLocked(door)
 	cutPass := a.cutManualPassLocked()
-	a.dropFollowUpsLocked()
+	// THE PERSON'S PAUSE KEEPS WHAT THEY QUEUED. It is not a stop of their
+	// words, which a pause never holds: the cut turn's end starts the
+	// follow-up (team_pause.go's [Agent.teamPauseCutLocked]).
+	if door != StopByPause {
+		a.dropFollowUpsLocked()
+	}
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
 	// not later by the turn's own cleanup. The cancel below is made with the
 	// lock let go of, so a watch left armed has a real interval in which the
@@ -2663,6 +2687,9 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	cutPass()
 	if cancel != nil {
 		cancel(stopAs(door, name))
+	}
+	if waiting {
+		a.teamStopHoldSaid(withdrew)
 	}
 }
 
@@ -3856,7 +3883,7 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// turn's opening and at every step after it, which is what makes a line the
 	// manager sends mid-turn land mid-turn. A conversation in no team pays one
 	// stat, and one with no profile or a task node pays nothing.
-	if news := a.teamBoundary(); news != "" {
+	if news := a.teamBoundaryFor(a.team.person.opened.Load()); news != "" {
 		a.enqueueNote(userText(news))
 	}
 	sharing := a.config.teamProfile() != "" && a.teamsSharing()
@@ -4233,13 +4260,16 @@ func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 // as [jobRegistry.settleExit] composed it. The whole log remains available
 // through `jobs output` for anything past the tail.
 func (a *Agent) enqueueJobNote(text string) {
-	a.enqueueNote(jobNote(text))
+	note := jobNote(text)
+	note.cause = wakeCommand
+	a.enqueueNote(note)
 }
 
 // enqueueJobNoteUnowed carries the registry's unowed process ending to the
 // same queue, retaining the one fact the idle wake scheduler needs.
 func (a *Agent) enqueueJobNoteUnowed(text string) {
 	note := jobNote(text)
+	note.cause = wakeCommand
 	note.deferJobWake = true
 	a.enqueueNote(note)
 }
@@ -4247,14 +4277,38 @@ func (a *Agent) enqueueJobNoteUnowed(text string) {
 // enqueueJobNoteQuiet keeps each successful process ending as context without
 // waking the model. An idle chat journals it now so a handoff can carry it.
 func (a *Agent) enqueueJobNoteQuiet(text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	note := userMessage{message: textMessage("user", text), batch: true, authored: true}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed {
+	a.quietNoteLocked(text)
+}
+
+// quietNoteLocked is [Agent.enqueueJobNoteQuiet] for a caller holding a.mu.
+func (a *Agent) quietNoteLocked(text string) {
+	a.keepNoteLocked(userMessage{message: textMessage("user", strings.TrimSpace(text)), batch: true, authored: true})
+}
+
+// heldNoteLocked keeps a note a standing hold kept from starting a turn as the
+// record it becomes, its text followed by why. The caller holds a.mu.
+//
+// IT KEEPS WHAT MAKES IT THE SAME NEWS. A task's result keeps its task's
+// identity and that it is a completion, so it is drawn and read as that task's
+// receipt, and every note keeps what settles its durable delivery, so a landing
+// held as a record is written down as announced when the record holds it.
+func (a *Agent) heldNoteLocked(note userMessage, text, why string) {
+	record := userMessage{
+		message: textMessage("user", strings.TrimSpace(text+"\n"+why)), batch: true, authored: true,
+		replyTags: note.replyTags, delivered: note.delivered,
+	}
+	if note.cause == wakeLanding {
+		record.completionOnly = note.completionOnly
+	}
+	a.keepNoteLocked(record)
+}
+
+// keepNoteLocked records a note that starts no turn: now in an idle open
+// conversation, and at the next turn's boundary otherwise. The caller holds a.mu.
+func (a *Agent) keepNoteLocked(note userMessage) {
+	if strings.TrimSpace(note.text()) == "" || a.closed {
 		return
 	}
 	if a.running || !a.opened {
@@ -4289,6 +4343,7 @@ func (a *Agent) enqueueJobNoteQuiet(text string) {
 func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
 		note := wakeNote(text)
+		note.cause = wakeWatch
 		note.otherResults = true
 		note.attention = true
 		a.enqueueNote(note)
@@ -4410,10 +4465,49 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 	if !note.steered {
 		note.authored = true
 	}
+	if wakeStanding[note.cause].pause {
+		// The pause this note may be held by is read now, off the lock: it is
+		// the person's word in a file another process writes (team_pause.go).
+		// Only a conversation with a role in a team can be paused, and every
+		// other one, a belt landing holding its run's delivery lock among them,
+		// pays nothing for it.
+		a.teamPauseFreshSeated()
+	}
+	taken, receipt, why := a.enqueueNoteLocked(note, text)
+	if receipt != nil {
+		receipt(why)
+	}
+	return taken
+}
+
+// enqueueNoteLocked is [Agent.enqueueNote] under the agent's lock, which it
+// takes and lets go. A note a standing hold keeps whose sender records its own
+// receipt answers that receipt, to be called once the lock is let go.
+func (a *Agent) enqueueNoteLocked(note userMessage, text string) (taken bool, receipt func(string), why string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed || (note.closeKey != "" && a.running) {
-		return false
+		return false, nil, ""
+	}
+	if held := a.standingHoldLocked(note.cause); held.verdict == wakeHolds {
+		// A STANDING HOLD KEEPS THE NEWS AS A RECORD AND STARTS NO TURN
+		// (team_stophold.go), and it is asked HERE, under the lock the note
+		// would be queued under. It was asked before the lock was taken, and a
+		// command that ended in the instant of a stop found no hold, waited
+		// for the stop to let the lock go and queued its ending as a wake. A
+		// worker parked on the command is released in the same step, as the
+		// waking note's own append releases it below.
+		//
+		// A SENDER THAT KEEPS ITS OWN RECEIPT WRITES IT once the lock is let
+		// go, because composing it takes this lock: a background task's landing
+		// ([Agent.admitBeltLanding]). Decided here, it is a record whenever it is
+		// written, and no stop can land between the decision and a wake.
+		a.releaseTaskWaitLocked()
+		if note.heldReceipt != nil {
+			return true, note.heldReceipt, held.why
+		}
+		a.heldNoteLocked(note, text, held.why)
+		return true, nil, ""
 	}
 	a.steering = append(a.steering, note)
 	if note.steered || note.ending {
@@ -4442,7 +4536,7 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 			a.wakeAnsweringLocked(false, "", note.answer)
 		}
 	}
-	return true
+	return true, nil, ""
 }
 
 // holdSettledLocked keeps the acknowledgements this message earned until they
@@ -4769,7 +4863,12 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", fals
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
-	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+	switch gate, _ := a.wakeRefusalLocked(answersPerson, answer); gate {
+	case wakeGateOpen:
+	case wakeGateFactory:
+		// Automatic work a stopped job refuses is not kept for the person's
+		// next question to carry: they may still ask its manager something
+		// without granting it the work (factory_person_stop.go).
 		kept := a.steering[:0]
 		for _, note := range a.steering {
 			if !note.wake {
@@ -4778,23 +4877,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, a
 		}
 		a.steering = kept
 		return false
-	}
-	if !answer {
-		if err := a.CheckWork(); err != nil {
-			return false
-		}
-	}
-	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
-	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
-	// different decision in [Steward.Decide], while the wall's budget ending is
-	// the one stop allowed to win over work still moving. [wallIsUp] reads the
-	// Steward's own wall and clock without asking its spend closure while this
-	// function holds a.mu.
-	wallGone := wallIsUp(a.steward())
-	if a.stageSettled || a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
-		return false
-	}
-	if err := a.railBlockLocked(); err != nil {
+	default:
 		return false
 	}
 
@@ -4843,6 +4926,87 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, a
 	}
 	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage, answer: answer}, sink, watchers...)
 	return true
+}
+
+// wakeGate is which of the engine's own gates refuses a turn nobody typed.
+type wakeGate int
+
+const (
+	// wakeGateOpen is no gate refusing: the turn may start.
+	wakeGateOpen wakeGate = iota
+	// wakeGateFactory is a factory job refusing automatic work.
+	wakeGateFactory
+	// wakeGateSeat is a seat that may not work now ([Agent.CheckWork]).
+	wakeGateSeat
+	// wakeGateClosed is a closed session, whose queue nothing drains again.
+	wakeGateClosed
+	// wakeGateRunning is a turn in flight: the news is steering, not a second
+	// turn.
+	wakeGateRunning
+	// wakeGateStopped is work the person stopped.
+	wakeGateStopped
+	// wakeGateWall is a time limit that has passed.
+	wakeGateWall
+	// wakeGateElsewhere is a conversation whose turns are somebody else's to
+	// start: a task node's runner, a settled stage, one not open yet.
+	wakeGateElsewhere
+	// wakeGateRail is the spending limit.
+	wakeGateRail
+)
+
+// wakeRefusalLocked is the gate a turn nobody typed stops at, and why in the
+// words a team's traffic gives its manager; [wakeGateOpen] and "" when it may
+// start. A turn in flight has no reason: it is not a refusal, the news rides
+// that turn. The caller holds a.mu.
+//
+// THE GATE AND ITS REASON ARE ONE PIECE OF CODE. They were two: the wake
+// refused in one condition, and the team's wake then worked out afterwards
+// which part of it must have refused, in an order of its own
+// (team_wakewatch.go's ladder). A gate added to one was not added to the
+// other, and the traffic named a reason the gate had not used. Now the wake
+// asks here and the traffic says what this answered.
+//
+// ── WHAT REFUSES ──
+//
+//   - a factory job refusing automatic work, unless the turn answers the
+//     person or a question (factory_person_stop.go).
+//   - a seat that may not work now, unless the turn answers a question.
+//   - the session is closed: nothing drains after Close.
+//   - a turn is already running.
+//   - the person stopped the work.
+//   - A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
+//     on the Steward's own clock rather than a stopped flag: a stopped flag is
+//     a different decision in [Steward.Decide], while the wall's budget ending
+//     is the one stop allowed to win over work still moving. [wallIsUp] reads
+//     the Steward's own wall and clock without asking its spend closure while
+//     this function holds a.mu.
+//   - the turns are somebody else's to start ([Agent.wakeLocked] says whose).
+//   - the spend rail, asked last because it is the one gate that reads.
+func (a *Agent) wakeRefusalLocked(answersPerson, answer bool) (wakeGate, string) {
+	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+		return wakeGateFactory, why
+	}
+	if !answer {
+		if err := a.CheckWork(); err != nil {
+			return wakeGateSeat, err.Error()
+		}
+	}
+	switch {
+	case a.closed:
+		return wakeGateClosed, "its conversation has closed"
+	case a.running:
+		return wakeGateRunning, ""
+	case a.workStopped:
+		return wakeGateStopped, "its work was stopped; it reads this at its next turn"
+	case wallIsUp(a.steward()):
+		return wakeGateWall, "its time limit has passed; it reads this at its next turn"
+	case a.stageSettled || (a.config.InTask && !a.config.roomThread) || !a.opened:
+		return wakeGateElsewhere, "it cannot start a turn on its own here; it reads this at its next turn"
+	}
+	if err := a.railBlockLocked(); err != nil {
+		return wakeGateRail, "its spending limit is reached; it reads this at its next turn"
+	}
+	return wakeGateOpen, ""
 }
 
 // wokenTurnContext is what a turn nobody submitted starts under: the plain

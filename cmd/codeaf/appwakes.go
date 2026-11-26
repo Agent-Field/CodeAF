@@ -20,9 +20,21 @@ import (
 // message gets back, and the terminal draws it as any other turn. The app does the same: a woken turn is a turn on
 // the wire, with no message of the person's in front of it.
 //
-// A MEMBER THE PERSON PAUSED does not take one. The crew's app layer keeps the
-// pause (appcrewlayer.go), and a turn woken while it holds is stopped at once;
-// what woke it is still waiting on the crew's log for its next turn.
+// A MEMBER THE PERSON PAUSED does not take one. The pause is the team's record
+// (teamstore's Member.Paused) and the member's session holds team traffic
+// before a turn starts; a turn woken some other way while it holds is stopped
+// here at once. A turn the person's own words opened is not.
+
+// appInterruptFor ends a conversation's turn through a named door, for a stop
+// that is the app's own doing and not the person's stop key. A conversation
+// that cannot name a door is stopped the plain way.
+func appInterruptFor(conv appConversation, door session.StopDoor) {
+	if doored, ok := conv.(interface{ InterruptFor(session.StopDoor) }); ok {
+		doored.InterruptFor(door)
+		return
+	}
+	conv.Interrupt()
+}
 
 // appWakeDoor is a conversation held in this process that hands over the
 // turns it starts itself.
@@ -159,10 +171,16 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 			live.msgBase, live.noteBase = msgs, notes
 		})
 	}
-	if b.crewPaused(id) {
-		// The person paused this member: the turn ends before it does anything,
-		// and the line that woke it stays on the crew's log.
-		live.conn.Conv.Interrupt()
+	if elsewhere.said == "" && b.crewPaused(id) {
+		// The person paused this member, and nothing they said opened this
+		// turn. The engine holds team traffic for a paused member before a
+		// turn starts (internal/session's team_pause.go), so what reaches here
+		// is another wake: a background process ending, a task landing. It ends
+		// before it does anything. A turn the person's own words opened, from
+		// any window, is theirs and runs. The stop is the app's and says so:
+		// through the person's door it would be told to the member's manager
+		// as work the person had stopped.
+		appInterruptFor(live.conn.Conv, session.StopByWorkStopped)
 	}
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})

@@ -315,7 +315,7 @@ func (b *appBackend) servedModel() func(model, provider string) (string, bool) {
 		return nil
 	}
 	listed := sync.OnceValue(func() []appwire.Model {
-		models, _ := b.ListModels()
+		models, _ := b.offeredModels()
 		return models
 	})
 	return func(model, provider string) (string, bool) {

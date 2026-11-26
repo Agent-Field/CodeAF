@@ -449,6 +449,8 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		return refusedStream(err)
 	}
 	a.running = true
+	a.teamStopHoldOver()
+	a.teamPauseOwedOver()
 	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
@@ -481,6 +483,9 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		defer cancel(nil)
 		defer hub.close()
 		defer func() {
+			// The pause the turn's end may hold news by is read now, off the
+			// lock ([Agent.turnEndHeldLocked]).
+			a.teamPauseFreshSeated()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING, by the same law and for the same
 			// reason as an ordinary turn's cleanup (agent.go's startTurnLocked):
@@ -506,14 +511,17 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			a.abandon = nil
 			close(done)
 			var retired []Question
-			if next, ok := a.nextFollowUpLocked(completed); ok {
+			// A turn the person's Pause cut is owed to Resume, and a follow-up
+			// they queued still starts, as for an ordinary turn (agent.go).
+			pauseCut := a.teamPauseCutLocked(stopCause(turnCtx))
+			if next, ok := a.nextFollowUpLocked(completed || pauseCut); ok {
 				// The person's queued words are their reply once their turn
 				// starts, as a sent message's are.
 				retired = a.personClosesQuestionsLocked(next.message)
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && drained.owed {
+			} else if completed && drained.owed && !a.turnEndHeldLocked(drained) {
 				// Vision reads only the image message. News recorded at its end
 				// still needs an ordinary turn, even if its wake clock fired.
 				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)

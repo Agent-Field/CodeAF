@@ -8,8 +8,8 @@ package main
 // has to make a field true it does so through doors the engine already has:
 // a role's instructions are a message in the member's own conversation, its
 // model the conversation's model, a member's budget the agent's own spending
-// limit, and a pause the crew's own stop with every turn the conversation
-// starts by itself stopped until the person resumes it (appwakes.go).
+// limit, and a pause the team's own record with the running turn ended
+// through the pause's door, which Resume takes up again (pauseStop).
 //
 // A PROPOSAL is the agent's own: the app asks its model, beside its chat and
 // never in it, for complete JSON lines naming the crew and the helpers it would
@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -57,11 +58,47 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 		case "stop":
 			err = b.memberStop(t, m, agent, ask.Reason)
 		case "pause":
-			if err = b.memberStop(t, m, agent, "paused"); err == nil {
-				err = b.layerMember(crew, agent, func(x *appMemberExtra) { x.Paused = true })
+			// THE PAUSE IS THE TEAM'S RECORD (teamstore's Member.Paused), written
+			// before the running turn is stopped: the member's own session reads
+			// it and starts nothing on the crew's traffic until the person
+			// resumes it, the manager's view of its crew says "paused", and a
+			// directive sent meanwhile waits on the log. The turn is ended
+			// through the pause's own door ([appBackend.pauseStop]).
+			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) }); err == nil {
+				err = b.memberStop(t, m, agent, teamstore.PausedStopText)
 			}
 		case "resume":
-			err = b.layerMember(crew, agent, func(x *appMemberExtra) { x.Paused = false })
+			// THE RESUME IS SAID WHEREVER THE PAUSE HELD. A pause holds the
+			// member in every crew it is in, whichever one it was pressed in
+			// (teamstore's PausedAnywhere), so any of their logs may carry a
+			// "held" line for a directive sent meanwhile, and each is told the
+			// hold is over. What waited there starts the member's turn on its
+			// session's next look.
+			type seat struct{ crew, handle string }
+			var held []seat
+			err = b.crewEdit(func(f *teamstore.File) error {
+				held = nil
+				if _, paused := f.PausedAnywhere(m.Key); paused {
+					for _, other := range f.Teams {
+						if other.Closed() || other.Manager == m.Key {
+							continue
+						}
+						if in, ok := other.Member(m.Key); ok {
+							held = append(held, seat{other.ID, in.Handle})
+						}
+					}
+				}
+				return f.SetPaused(crew, m.Key, false)
+			})
+			for _, in := range held {
+				if err != nil {
+					break
+				}
+				err = appEngineErrorOrNil(teamstore.AppendTraffic(b.crewProfile(), in.crew, teamstore.Entry{
+					Kind: teamstore.KindEvent, From: teamstore.FromYou, To: in.handle, ToKey: m.Key, Member: m.Key,
+					State: teamstore.StateIdle, Text: appResumedText,
+				}))
+			}
 		case "remove":
 			if m.Key == t.Manager {
 				return appwire.CrewMember{}, appwire.Errorf(appwire.CodeBadParams, "the manager is not removed; make another member manager first")
@@ -89,6 +126,18 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 		return appwire.CrewMember{}, err
 	}
 	return b.memberNow(crew, agent)
+}
+
+// appResumedText is the crew log's word for the person lifting a pause, beside
+// the "paused" a pause writes.
+const appResumedText = "resumed"
+
+// appEngineErrorOrNil is [appEngineError] that leaves no error alone.
+func appEngineErrorOrNil(err error) error {
+	if err == nil {
+		return nil
+	}
+	return appEngineError(err)
 }
 
 // memberNow is a member as its crew shows it now.
@@ -215,9 +264,54 @@ func (b *appBackend) memberStop(t teamstore.Team, m teamstore.Member, agent, rea
 		return appEngineError(err)
 	}
 	if b.isHeld(agent) {
+		if reason == teamstore.PausedStopText {
+			return b.pauseStop(agent)
+		}
 		return b.Stop(agent)
 	}
 	return nil
+}
+
+// pauseStop ends the running turn of a member the person paused, through the
+// pause's own door ([session.StopByPause]).
+//
+// A PAUSE IS NOT A STOP. Through the person's Stop it began the stop hold: a
+// command's ending was kept with the stop's words, the manager was told the
+// work was "stopped by the person" and not to hand it out again, and Resume
+// started nothing. A pause is temporary, so the turn it ends is taken up again
+// when the person resumes the member. A conversation still being opened is
+// left to its engine, which starts nothing on its own for a paused member.
+func (b *appBackend) pauseStop(id string) error {
+	a, endRead, err := b.findCrewOwner(id)
+	if err != nil {
+		return err
+	}
+	defer endRead()
+	starting := false
+	b.locked(func() { starting = a.starting })
+	if starting {
+		return nil
+	}
+	if live := b.liveOf(a); live != nil {
+		b.locked(func() { live.stopping = live.running })
+		appPauseInterrupt(live.conn.Conv)
+	}
+	return nil
+}
+
+// appPauseInterrupt ends the turn through the pause's door WITH THE BOUND THE
+// PERSON'S STOP CARRIES ([appStopByPerson]): a turn parked on a wait that
+// ignores its context stayed "working" after Pause, which has no second key
+// either. A conversation that cannot bound a named door is stopped through the
+// door unbounded.
+func appPauseInterrupt(conv appConversation) {
+	if bounded, ok := conv.(interface {
+		InterruptWithinFor(session.StopDoor, time.Duration)
+	}); ok {
+		bounded.InterruptWithinFor(session.StopByPause, session.StopGrace)
+		return
+	}
+	appInterruptFor(conv, session.StopByPause)
 }
 
 // memberCap is a member's budget: the agent's own spending limit.
@@ -240,6 +334,9 @@ func (b *appBackend) memberMove(t teamstore.Team, m teamstore.Member, agent, to 
 	err := b.crewEdit(func(f *teamstore.File) error {
 		moved := m
 		moved.Home, moved.Started = false, false
+		// Its start line stays on the crew it leaves, so it is not waiting on
+		// one here. A pause goes with it: the person paused the member.
+		moved.Standby = false
 		if err := f.AddMember(to, moved); err != nil {
 			return err
 		}
@@ -254,7 +351,7 @@ func (b *appBackend) memberMove(t teamstore.Team, m teamstore.Member, agent, to 
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		old := f.member(t.ID, agent)
 		next := f.member(to, agent)
-		next.Role, next.Paused = old.Role, old.Paused
+		next.Role = old.Role
 		next.Was = &appwire.MemberWas{Crew: t.ID, Role: old.Role, At: b.now()}
 		delete(f.Members, appMemberKey(t.ID, agent))
 		return nil
@@ -321,6 +418,17 @@ func (b *appBackend) memberRole(crew, agent, role, instructions, model string) e
 	})
 	if err != nil {
 		return appEngineError(err)
+	}
+	// THE ROLE'S NAME IS THE TEAM'S RECORD TOO (teamstore's Member.Role), which
+	// is where the member's own session and its manager read it: the member is
+	// told its role in its team note, and the manager sees it beside the handle
+	// when it chooses whom to hand work to.
+	if t, _, err := b.crewTeam(crew); err == nil {
+		if m, ok := b.crewMemberOf(t, agent); ok && m.Role != given.Name {
+			if err := b.crewEdit(func(f *teamstore.File) error { return f.SetRole(crew, m.Key, given.Name) }); err != nil {
+				return appEngineError(err)
+			}
+		}
 	}
 	return b.tellRole(agent, crew, given)
 }
@@ -423,6 +531,15 @@ func (b *appBackend) RoleUpdate(id string, name, instructions, model *string) (a
 		return appwire.Role{}, appEngineError(err)
 	}
 	for _, c := range copies {
+		// A renamed role is renamed on each member's team record too, where
+		// the member's session and its manager read it.
+		if name != nil {
+			if t, _, err := b.crewTeam(c.Crew); err == nil {
+				if m, ok := b.crewMemberOf(t, c.Agent); ok && m.Role != role.Name {
+					_ = b.crewEdit(func(f *teamstore.File) error { return f.SetRole(c.Crew, m.Key, role.Name) })
+				}
+			}
+		}
 		send := role
 		if !told {
 			send.Instructions = ""
@@ -461,8 +578,10 @@ var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversati
 	`{"t":"shape","size":3,"teams":1,"why":"why this shape"}`+" (size counts helpers).\n"+
 	`{"t":"name","name":"the crew's name","goal":"one line"}`+"\n"+
 	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
-	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
+	`{"t":"member","handle":"role-word","role":"short role name","brief":"what this helper is responsible for","team":"stream-id","reports_to":"manager"}`+"\n"+
 	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
+	"Write each brief as the helper's standing responsibility, not as a task under way: an accepted crew joins on standby, nobody starts on the brief, "+
+	"and you hand out the first work with team_send when the person asks for it. "+
 	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleWordMax, teamstore.HandleWordMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
@@ -905,9 +1024,11 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	}
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		for _, h := range p.Helpers {
-			if h.Role == "" && h.Model == "" && h.ReportsTo == "" {
-				continue
-			}
+			// EVERY HELPER OF AN ACCEPTED PROPOSAL IS MADE ON STANDBY: it joins
+			// with its role and starts nothing. The proposal was written for a
+			// crew to exist, and starting each helper on its line of the
+			// proposal began work the person had not asked for; the manager
+			// hands out the first work when they do.
 			role := ""
 			if h.Role != "" {
 				var found *appwire.Role
@@ -928,7 +1049,7 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 			if f.Pending == nil {
 				f.Pending = map[string]appPendingStart{}
 			}
-			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, Model: h.Model, ReportsTo: h.ReportsTo}
+			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, RoleName: h.Role, Model: h.Model, ReportsTo: h.ReportsTo, Standby: true}
 		}
 		return nil
 	})
@@ -970,7 +1091,9 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 		if seated != "" {
 			if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 				pending := f.Pending[appPendingKey(id, helper.Handle)]
-				f.member(id, seated).Role = pending.Role
+				if pending.Role != "" {
+					f.member(id, seated).Role = pending.Role
+				}
 				b.roleCopyLocked(f, pending.Role)
 				delete(f.Pending, appPendingKey(id, helper.Handle))
 				return nil

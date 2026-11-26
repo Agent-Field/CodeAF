@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -481,6 +482,9 @@ func (a *app) trafficAct(teamID string, e teamstore.Entry) tea.Cmd {
 			return nil
 		}
 		a.traffic.done[done] = true
+		if e.PauseStop() {
+			return a.trafficPause(key)
+		}
 		a.trafficStop(key)
 		return nil
 	case teamstore.KindStart:
@@ -520,6 +524,33 @@ func (a *app) trafficStop(key string) {
 	if held := a.behind[key]; held != nil && held.conv.Agent != nil {
 		held.conv.Agent.Interrupt()
 	}
+}
+
+// trafficPause ends the turn of a member the person paused (the stop line the
+// desktop app's Pause writes) through the pause's own door. The person's Stop
+// would end the work itself: the engine would hold what the member waits on
+// as stopped and tell its manager not to hand the work out again, where a
+// pause keeps that work for Resume (internal/session's team_pause.go). The
+// door is asked off the update loop (offloop.go); the screen ends the turn in
+// front at once, as the person's own stop does.
+func (a *app) trafficPause(key string) tea.Cmd {
+	var agent Agent
+	if key == a.frontTabKey() {
+		if a.state != stateWorking || a.agent == nil {
+			return nil
+		}
+		agent = a.agent
+		a.turnInterrupted()
+	} else if held := a.behind[key]; held != nil && held.conv.Agent != nil {
+		agent = held.conv.Agent
+	}
+	if agent == nil {
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		agent.InterruptFor(session.StopByPause)
+		return nil
+	})
 }
 
 // trafficStart is the manager's start: a new conversation in the team's

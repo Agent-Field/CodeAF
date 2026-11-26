@@ -62,6 +62,17 @@ const (
 	ToSeveral = "several"
 )
 
+// PausedStopText is the text of the stop line the person's Pause writes, from
+// you, beside the pause on the team's record ([File.SetPaused]).
+const PausedStopText = "paused"
+
+// PauseStop reports whether e is the stop line a Pause wrote. An interface
+// holding the member ends its turn through the pause's own door, which keeps
+// the work for Resume, and not through the person's Stop, which ends it.
+func (e Entry) PauseStop() bool {
+	return e.Kind == KindStop && e.From == FromYou && e.Text == PausedStopText
+}
+
 var kinds = map[string]bool{
 	KindEvent: true, KindNote: true, KindDirective: true, KindStop: true, KindStart: true, KindYou: true,
 	KindQuestion: true, KindAnswer: true, KindPacket: true, KindClose: true, KindReopen: true,

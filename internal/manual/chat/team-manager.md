@@ -333,8 +333,10 @@ A deliberate message jump opens the activity and tool-call groups that contain t
 A member of a team that has a manager tells the manager, through the traffic, three things it
 would never write in a message:
 
-- `finished` when a turn ends, `stopped` when somebody stopped it, and `failed: ` with the
-  error's first line when a turn ends on one;
+- `finished` when a turn ends, `stopped by the person` when you stopped a member that was on
+  its manager's work (a directive, or the brief it was started on), `stopped` for every
+  other stop (its manager's, codeaf ending it, your pause, or your stop when none of the
+  manager's work was under way), and `failed: ` with the error's first line when a turn ends on one;
 - when it starts waiting on you: the permission line for a permission prompt (`needs your ok
   to run bash`), or `asks: ` and the question for anything else;
 - `no longer waiting` when the last of those questions comes down.
@@ -343,6 +345,39 @@ Each is one line of traffic per change, never one per step. They are the session
 nothing you type is ever written to the traffic. `team_status` reads them too, so a member held
 on a permission prompt shows as `asking` rather than `running`, for as long as some process
 holds that conversation's transcript and the wait is under 30 minutes.
+
+When you stop a member that is on the manager's work, its manager is woken once and told
+the work is not done, that you chose to stop it, and not to hand it out again unless you ask.
+The work is under way from the hand-off until a turn finishes with no background command
+left that the member waits on. So a turn such a command's ending starts is still on it, and
+so is a turn you opened by typing to the member while it waits on one. Stopping a member
+with none of the manager's work under way tells the manager nothing, and neither does pausing
+a member, codeaf quitting or a paused member's stray wake being ended. The global
+manager is not woken by a member of `All teams` being stopped (see **The global manager**).
+
+## A stopped member's command is still running — why it did not start again when the command ended
+
+Stopping a turn leaves a command it started in the background running, as it does in any
+conversation. In a crew, that command's ending does not start the conversation again. From
+a stop of a running turn (yours, or the manager's `team_stop`, with or without a window on
+the member) until a turn next begins, the
+ending of a background command, a watch firing, or a background task landing is written into
+the conversation as a record and starts no turn. This holds for a member and for the manager.
+
+A member often starts a long command, ends its turn and waits to be told how it ended. It
+reads idle, and a stop still reaches it: **Stop** on a crew's row stops such a member too,
+the command's ending starts no turn, and its manager is told the work it handed out was
+stopped, as for a stopped turn. That is said only for a command the member asked to hear the
+end of, or a watch that has not fired. A command left running for its own sake, such as a dev
+server, is held the same way and the manager is told nothing: the work before it was finished.
+The manager's `team_stop` holds such a member the same way, and the manager is told nothing.
+
+Your own message to the conversation and the manager's next hand-off still start it. That
+turn ends the hold and reads the record, which says it arrived after the stop and is no reason
+to take the stopped work up again.
+
+To end the command itself, use **Stop all** on the conversation's Processes tab. A
+conversation in no crew is unchanged: there a command's ending still starts its turn.
 
 ## Why a member stays asking after it crashed
 
@@ -376,9 +411,9 @@ on one waits for you.
 
 | Verb | What it does | Asks you first |
 |---|---|---|
-| `team_status` | every member's handle, title and state (running, asking, idle, failed), the question waiting, the files touched, and recent traffic | no |
+| `team_status` | every member's handle, role, title and state (running, asking, idle, failed, paused by the person, on standby), a directive it has not started on, the question waiting, the files touched, and recent traffic | no |
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
-| `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
+| `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member). The answer to a directive says for each member whether it started, is already in a turn, or did not start and why | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_add` | list saved conversations (optional query), then add an existing conversation by its returned id or transcript path; context and existing reporting authority remain | under the approval posture |
 | `team_remove` | release one membership by its handle; preserve the session, work and other teams. Removing the reporting membership leaves it independent. Replace the manager before removing it | under the approval posture |
@@ -389,6 +424,11 @@ on one waits for you.
 | `team_dissolve` | takes back a team that has never held anyone but its manager, when you decline it; the team is forgotten and the conversation goes on alone. Only offered while the team is that empty (see **Cancel a team nobody joined**) | no |
 | `team_link` | records a file, pull request, issue or job the crew made as the crew's work, so the desktop app lists it with the crew (see **Link what the crew made**) | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
+
+A manager hands work to members. It is told a task (`propose_task`) is not a member: a task
+is for work no member is there for, or for when you ask for one, and never a way round a
+member that did not start. When a member did not start, `team_send` says why, and the
+manager is to tell you that.
 
 ## Link what the crew made — team_link, add a file or pull request to the crew
 
@@ -505,6 +545,20 @@ report to it, so their questions and conflicts between teams come to it before t
 you. It can start a new top-level team with `team_start` of kind `team`. Without a global
 manager, nothing here changes: each top-level manager reports to you.
 
+No turn in `All teams` that finishes or is stopped starts the global manager's turn. You talk
+to the top-level managers directly and each answer ends a turn, so the endings stay in
+`All teams`' traffic, where `team_status` reads them. The global manager is woken by what a
+member posts to it with `team_post`, by a member's question or a permission it is held on, and
+by a member's turn failing. So a directive the global manager sent, and the brief it started
+a team on, are answered with `team_post`: each top-level manager is told so, and apart from
+those answers to post only what the global manager should act on or tell you. A manager that
+finishes a turn without posting has told it nothing, the first turn of a team it started
+included: `team_start` says so, and `team_status` is where it finds out. The global manager
+is told never to send a manager your own request to that manager back as a directive.
+`All teams` can also hold a conversation that manages no team now, such as a manager you
+replaced. The global manager neither lists nor directs it, its turn ending is as quiet, and
+it is told what a member of any team is told.
+
 ## Conflicts between members and teams
 
 When two or more conversations need incompatible things (the form posts JSON, the endpoint
@@ -556,17 +610,27 @@ A message reaches a conversation at the start of its next step. When the convers
 working, that is straight away. When it is idle, it depends on the kind of message:
 
 - A **directive** starts an idle member's turn. The member is handed the directive, marked
-  `◆ directive from manager`, never as if you had typed it.
+  `◆ directive from manager`, never as if you had typed it. A member you paused does not
+  start (see **Pausing a crew member**).
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
 - A member's **reply to the manager** (`team_post` to the manager), and a member finishing
-  without a reply, failing or starting to wait on you, start an idle manager's turn. A reply
+  without a reply, failing, starting to wait on you, or being stopped by you while on the
+  manager's work, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
-  already ran. Replies arriving within a few seconds are gathered into one turn.
+  already ran. Replies arriving within a few seconds are gathered into one turn. The global
+  manager is the exception: a member of `All teams` finishing or being stopped does not
+  start its turn (see **The global manager**).
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
 that opens it later joins the running conversation. A manager that moved to another window, and
 whose window has since closed, is woken the same way: in the desktop app it is brought back to
 the app and run there.
+
+The manager is told what became of each directive in `team_send`'s answer, which waits up to
+four seconds to see it: `@web started a turn on it`, `@web is in a turn and reads it at the
+next step`, `@web is waiting on the person and reads it once they answer`, `@web did NOT
+start:` with the reason, or `@web has shown no sign of starting yet`. A manager reports work
+as under way only where the answer says a member started.
 
 ## could not wake ◆ — a wake that cannot be delivered is kept, not dropped
 
@@ -590,6 +654,87 @@ more bound it: one conversation is woken at most 20 times an hour, and a manager
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in
 the traffic. It is woken again after you next say something to it.
 The ten wakes count ten replies when each member turn replies and then finishes.
+
+A member already in a turn when a directive reaches it was not woken and gets no `woke` line:
+it reads the directive at its next step. A wake the member's own limits refuse says why once
+(`could not wake @web: its spending limit is reached; it reads this at its next turn`) and
+leaves the directive unread in the traffic for that turn.
+
+## Pausing a crew member — pause, resume, why a directive did not start, held
+
+You can pause a member of a crew in the desktop app: **Pause** on its row in the Members tab
+or in the member's menu, and **Resume** to lift it. A pause ends the member's current turn,
+bounded as the app's Stop is (a turn that has not let go ten seconds later is let go of),
+which ends `stopped` and wakes nobody: a pause is not a stop, so the manager is not told
+`stopped by the person` and the work is kept for Resume. The pause is kept on the team's own
+record, so the member's session, its manager and every window read the same answer. A
+crew's manager, and a member that manages a crew of its own, cannot be paused; stop its turn
+instead.
+
+While a member is paused, team traffic starts no turn for it, in any crew it belongs to, and
+Resume from any of those crews lifts it:
+
+- A directive waits on the crew's log, unread. The traffic says
+  `held @web: the person paused it; it starts on this when they resume it`, once per directive.
+  A member paused before its first turn says it once for the brief it was started with.
+- `team_send` tells the manager `@web did NOT start` with the same reason, and that only you
+  can resume it. The manager cannot lift a pause.
+- `team_status` shows the member as `paused by the person; it starts nothing until they
+  resume it`, with `has not started on #22` when a directive is waiting.
+- codeaf does not open the member's conversation for traffic it would only hold.
+- A command ending, a watch firing, a task landing and news at its last turn's end start no
+  turn either: each is written into the conversation as a record that says it arrived while
+  the conversation was paused.
+
+## Resume after a pause — what starts again, the paused work carried on, a stop while paused
+
+**Resume** writes `resumed` to the log of each crew the member is in, and a directive that
+waited starts the member's turn within a second or two, including after codeaf was closed in
+between. With the team's auto-wake off, a resumed member reads it at its next turn like any
+other message.
+
+With no directive waiting, Resume starts one turn when the pause ended a turn, whatever
+started it, or held a record. That turn opens with "The person paused this conversation
+and has now resumed it, which started this turn. Carry on with the work you were on. The pause
+cut off whatever was in progress (a command it ended did not finish), so do that step again and
+then finish the work; anything above that arrived while it was paused is a record of what
+happened meanwhile." A member
+paused while it waited on a command for that work starts again when the command ends, or at
+Resume if it ended meanwhile. The crew's hourly wake limit and daily cap hold that turn as
+they hold a directive, and it starts once they allow. That turn is kept in memory only: if
+codeaf is closed while the member is paused, Resume starts only a directive that waited.
+
+A pause is temporary and a stop is final. **Stop** on a paused member that is in a turn, or
+whose pause cut a turn or waits on a command, ends the work as any stop does: its manager is
+told `stopped by the person` when the work was the manager's, and Resume starts nothing, not
+even on a directive that waited; that directive is read at the member's next turn. A
+directive sent after the Stop still starts the member at Resume. A Stop that finds nothing
+to end changes nothing about Resume.
+
+Not held: your own words, including one queued behind the turn Pause ended (that turn reads
+what was waiting, so Resume starts nothing more), your answer to its question, a decision you
+hand it, and codeaf continuing a reply it was
+closed in the middle of. An earlier app's pause moves onto the team's record when the
+updated app first opens.
+
+## A new crew's members wait on standby — why nobody started after Make the crew
+
+A crew made from a proposal (**Bring in helpers**, then **Make the crew**) joins on standby.
+Each helper is created with its handle and role, and nobody begins work: the proposal
+describes who the crew is, and accepting it is not a request to start.
+
+- The traffic says `opened @web on standby; it starts on its manager's first directive`.
+- `team_status` shows `on standby; no work handed out yet` until the member's first turn.
+- The line the member was made with is handed to it at its first turn marked
+  `◆ your standing role from manager`, together with the directive that started that turn.
+- A member's role name is told to it in its team note (`Your role in this team: …`) and shown
+  to the manager beside the handle, `@web (Frontend developer)`.
+- Standby lasts across restarts: however much later the first directive comes, the member is
+  still handed its role line with it.
+
+The first work starts when you ask the manager for it and it sends a directive. A member the
+manager starts itself with `team_start`, or one you add with a brief from the crew's page,
+still starts on its brief at once.
 
 ## How do I turn team message wakes off?
 

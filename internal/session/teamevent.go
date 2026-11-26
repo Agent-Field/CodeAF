@@ -76,6 +76,12 @@ type teamEvent struct {
 	// and another has begun, so it reads this copy and nothing about the
 	// agent's current turn (turn_origin.go).
 	origin turnOrigin
+	// byPerson is the teams in which this ending is the person stopping work
+	// that team's manager had handed out ([Agent.teamStoppedByPerson]): there
+	// the text is [teams.StoppedByPerson] and the manager is woken.
+	byPerson map[string]bool
+	// only writes the event in the byPerson teams and no other.
+	only bool
 }
 
 // eventfulRoles reports whether roles make this conversation one whose events
@@ -91,13 +97,30 @@ func eventfulRoles(roles []teamRole) bool {
 
 // teamEventOwed queues one event, and starts the writer when none is running.
 func (a *Agent) teamEventOwed(origin turnOrigin, state, text string) {
+	a.teamEventOwedFor(origin, state, text, nil)
+}
+
+// teamEventOwedFor is [Agent.teamEventOwed] for a stopped turn, with the teams
+// in which the stop is the person's stop of handed-out work.
+func (a *Agent) teamEventOwedFor(origin turnOrigin, state, text string, byPerson map[string]bool) {
+	a.teamEventQueued(teamEvent{state: state, text: text, origin: origin, byPerson: byPerson})
+}
+
+// teamEventOwedOnly is [Agent.teamEventOwedFor] written in those teams alone:
+// a stop that found no turn running ended nothing in the others.
+func (a *Agent) teamEventOwedOnly(origin turnOrigin, state, text string, byPerson map[string]bool) {
+	a.teamEventQueued(teamEvent{state: state, text: text, origin: origin, byPerson: byPerson, only: true})
+}
+
+func (a *Agent) teamEventQueued(event teamEvent) {
 	if !a.team.events.member.Load() || a.config.teamProfile() == "" {
 		return
 	}
+	event.text, event.at = cutRunesTeam(oneLineTeam(event.text), teamEventText), time.Now()
 	lane := &a.team.events
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
-	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now(), origin: origin})
+	lane.queue = append(lane.queue, event)
 	if lane.done == nil {
 		done := make(chan struct{})
 		lane.done = done
@@ -136,6 +159,13 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if !role.managed || role.manager || role.handle == "" {
 			continue
 		}
+		if event.only && !event.byPerson[role.id] {
+			continue
+		}
+		text := event.text
+		if event.byPerson[role.id] {
+			text = teams.StoppedByPerson
+		}
 		// The event answers what the member was last told by its manager, so
 		// the rail folds it into that thread's reply (internal/teams' thread.go).
 		err := teams.AppendTraffic(profile, role.id, teams.Entry{
@@ -144,7 +174,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 			From:    role.handle,
 			To:      teams.ToManager,
 			Member:  role.key,
-			Text:    event.text,
+			Text:    text,
 			State:   event.state,
 			Answers: a.teamAnswering(role.id),
 			// The run is the one that was current when the event was QUEUED;
@@ -154,8 +184,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if err != nil || !role.wakes {
 			continue
 		}
-		switch event.state {
-		case teams.StateFinished, teams.StateFailed, teams.StateAsking:
+		if teamEventWakesManagerOf(role.root, event.state, text) {
 			// These wake the manager, so a manager nobody has open is opened
 			// (team_wakewatch.go).
 			a.rouseManager(profile, role, event.origin.provenance(role.key))
@@ -204,10 +233,26 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 	a.dropOwedResume()
 	origin := turnOriginFrom(ctx)
 	if err := hub.turnError(); err != nil {
+		a.teamHandedCarried(origin)
 		a.teamEventOwed(origin, teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
 		return
 	}
-	if ctx.Err() != nil {
+	door, stopped := stopCause(ctx)
+	if stopped && (door == StopByPerson || door == StopByManager) {
+		// The handed work ends here: its manager is told, or stopped it itself.
+		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, a.teamHandedTake()))
+		return
+	}
+	if stopped && door == StopByPause {
+		// A PAUSE IS TEMPORARY: the handed work is not over, only waiting on
+		// the person (team_pause.go). Its ending is the plain "stopped", which
+		// wakes nobody, and Resume takes the work up again.
+		a.teamPauseCut(origin)
+		a.teamEventOwed(origin, teams.StateIdle, "stopped")
+		return
+	}
+	a.teamHandedCarried(origin)
+	if stopped {
 		a.teamEventOwed(origin, teams.StateIdle, "stopped")
 		return
 	}
@@ -378,19 +423,33 @@ const teamBriefText = teams.BriefTextMax
 // manager wrote; every other reader is told nothing, because the interface
 // performs a start and the manager already knows what it asked for.
 func teamBriefLine(role teamRole, entry teams.Entry) string {
-	if role.manager || role.handle == "" || entry.From != teams.FromManager || entry.To != role.handle {
+	// The start that made this membership is its own by identity, whatever
+	// the member has been renamed to since; one written before that was kept
+	// is its own by the handle it was addressed to.
+	own := entry.To == role.handle || (role.startID != "" && entry.ID == role.startID)
+	if role.manager || role.handle == "" || entry.From != teams.FromManager || !own {
 		return ""
 	}
 	text := strings.TrimSpace(entry.Text)
 	if text == "" {
 		return ""
 	}
-	return teamBriefWord + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
+	word := teamBriefWord
+	if role.standby {
+		word = teamStandbyBriefWord
+	}
+	return word + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
 }
 
 // teamBriefWord opens the brief's line, beside "◆ from manager" and
 // "◆ directive from manager".
 const teamBriefWord = "◆ brief from manager"
+
+// teamStandbyBriefWord opens the start line of a member made on standby
+// ([teams.Member.Standby]). The same text that is an assignment to a started
+// member is a description of the role to this one, and a member told it under
+// "brief" began the work nobody had asked for yet, so the line says which it is.
+const teamStandbyBriefWord = "◆ your standing role from manager (what you are here for, not work to begin; work arrives as a directive)"
 
 // teamBriefChangedLine is a member's brief replaced in place (teams' brief.go),
 // told to that member only: "◆ brief changed by the person #12: …". It is the

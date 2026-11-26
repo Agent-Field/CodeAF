@@ -4336,6 +4336,10 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, settle settleMark, mark func()) deliveryReceipt {
 	message := wakeNote(note)
 	message.completionOnly = true
+	// A RESULT IS A LANDING, and a conversation the person paused, or one in a
+	// team whose turn was stopped, keeps it as a record that starts no turn
+	// ([wakeStanding]). A node's own worker is in no team and holds nothing.
+	message.cause = wakeLanding
 	// AND A LANDING THAT HANDS THE MODEL THE DECISION MARKS ITS WAKE A SETTLE ONE,
 	// so the turn it starts runs under the checker's own bound rather than the
 	// run's wall ([settleWake], agent.go's [Agent.wakeLocked]).

@@ -722,6 +722,37 @@ type Model struct {
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.
 	Default bool `json:"default,omitempty"`
+	// Limits says where this model falls short of what the app asks of a model. Absent when nothing is known to.
+	Limits []ModelLimit `json:"limits,omitempty"`
+}
+
+// The kinds of [ModelLimit], and the ways a small window's size is known.
+const (
+	LimitSmallWindow = "small_window"
+	LimitNoTools     = "no_tools"
+
+	WindowLoaded     = "loaded"
+	WindowModelfile  = "modelfile"
+	WindowLastLoaded = "last_loaded"
+)
+
+// ModelLimit is one way a model falls short, as its server reports it.
+//
+// IT IS A FACT AND NEVER A SENTENCE. The engine says what the server answered
+// and the app words the warning, so a limit carries figures and no text; and a
+// limit is sent only where the server said something, because a warning about
+// a model nobody asked about is a guess.
+type ModelLimit struct {
+	// Kind is "small_window" or "no_tools".
+	Kind string `json:"kind" enum:"small_window,no_tools"`
+	// Window is the tokens the model has, as Source says it is known. Always sent with small_window: a window nobody measured is no limit.
+	Window int `json:"window,omitempty"`
+	// Needs is the window the app's prompts ask for (the lean threshold, 32000). Only with small_window.
+	Needs int `json:"needs,omitempty"`
+	// Most is the most the model itself can hold, when the server says. Only with small_window.
+	Most int `json:"most,omitempty"`
+	// Source says how Window is known: "loaded" (the server is running it with this window and its Modelfile sets no num_ctx), "modelfile" (its Modelfile sets num_ctx, which overrides the server's own setting and is what the app's next turn loads it with; Window is the Modelfile's figure, loaded or not, and the limit is sent when that figure, clamped to Most, is under Needs) or "last_loaded" (not loaded, nothing sets it, and this window is what this engine last saw the server running it with in /api/ps, at a list). Only with small_window. Engines before last_loaded could send "default", with no window; an app reads that as nothing measured.
+	Source string `json:"source,omitempty" enum:"loaded,modelfile,last_loaded"`
 }
 
 // FeatureAgentEffortRungs announces the terminal's full conversation effort dial.

@@ -610,3 +610,18 @@ func TestTrafficStartedRecordsTheStartLineOnTheMembership(t *testing.T) {
 		t.Fatalf("StartFor = %+v %v %v", got, ok, err)
 	}
 }
+
+// A PAUSE'S STOP LINE ENDS THE TURN THROUGH THE PAUSE'S DOOR. The desktop app's
+// Pause writes a stop line from you saying "paused"; a window holding the member
+// ends its turn as a pause, which keeps the work for Resume, and not as the
+// person's Stop, which would end it and tell its manager so.
+func TestTrafficPauseStopEndsTheTurnAsAPause(t *testing.T) {
+	a, harbor, older, _ := trafficApp(t)
+	price, _ := trafficHandle(t, a, harbor, "openrouter")
+	trafficReadNow(t, a)
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindStop, From: teamstore.FromYou, To: price, Text: teamstore.PausedStopText})
+	trafficReadNow(t, a)
+	if older.stops != 1 || older.stopDoor != session.StopByPause {
+		t.Fatalf("the pause stopped the member %d times through %q, want once through %q", older.stops, older.stopDoor, session.StopByPause)
+	}
+}

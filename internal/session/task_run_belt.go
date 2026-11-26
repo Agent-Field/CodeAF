@@ -347,9 +347,10 @@ type RunLanding struct {
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
 	// landing, which commits on the copy's branch and merges nothing.
 	Home string
-	// Line is a landing that says itself: a program's run, whose folder's
-	// ending ([ProgramFolderEnd.Sentence]) is the whole account of where its
-	// work is ([beltLandingLine]). Empty for every other run.
+	// Line is a landing that says itself ([beltLandingLine]): a program's run,
+	// whose folder's ending ([ProgramFolderEnd.Sentence]) is the whole account
+	// of where its work is, and a run that only read its ground
+	// ([referenceLandingLine]). Empty for every other run.
 	Line string
 }
 
@@ -590,7 +591,7 @@ func (e standsElsewhereError) Error() string {
 
 // An approved hand-off under the bash belt belongs to the run store and never to the session tree.
 func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string) error {
-	_, err := a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, nil)
+	_, _, err := a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, nil)
 	return err
 }
 
@@ -606,7 +607,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 // asked is the models the person asked the program to work with, resolved;
 // none means the conversation's crew ([Agent.delegateCrew]).
 func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) error {
-	_, err := a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, via, asked...)
+	_, _, err := a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, via, asked...)
 	return err
 }
 
@@ -615,34 +616,36 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 // this door can know: a batch of hand-offs is one run, and which of them opened
 // it is decided here, under the start lock, and nowhere before.
 func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string) (bool, error) {
-	return a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, nil)
+	_, joined, err := a.startOrJoinTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, nil)
+	return joined, err
 }
 
 // startOrJoinTaskRunVia is the one body behind every door above: the start
-// lock, the join, the folder or the copy, the store and the first row.
-func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) (bool, error) {
+// lock, the join, the folder or the copy, the store and the first row. A
+// hand-off that joined answers the mode the run it joined stands in, which is
+// the mode its own work now has whatever its stand asked for.
+func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) (TaskMode, bool, error) {
 	a.taskStarting.Add(1)
 	defer a.taskStarting.Add(-1)
 	epoch, err := a.beltAdmissionEpoch()
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
-		return false, errRunRoadUnavailable
+		return "", false, errRunRoadUnavailable
 	}
 	if via == nil {
 		stand, err = a.ownedRunPlacement(ctx, stand)
 		if err != nil {
-			return false, err
+			return "", false, err
 		}
 	}
-	brief = withHomeReadingNote(a.config.Place, brief, stand)
 	ctx, engine, err = a.placeTaskRunEngine(ctx, engine, stand, via != nil)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
@@ -686,11 +689,11 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	a.lockBeltStart()
 	defer a.beltStartMu.Unlock()
 	if err := a.checkBeltAdmission(epoch); err != nil {
-		return false, err
+		return "", false, err
 	}
 	live, err := a.joinOrWait(ctx, stand, id, title, brief, dependencies, via)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if live != nil {
 		a.publishRunRow(g, TaskNotice{
@@ -708,7 +711,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			PlanTask: planStoreID(storeID),
 		})
 		a.publishJoinedRunRows(g, live)
-		return true, nil
+		// The stand is fixed when the run is made; the run's ground is written
+		// again under beltMu once a held run's copy is ready.
+		return preparedTaskMode(a.config.Place, canonicalPath(strings.TrimSpace(live.stand.dir)), live.stand.mode), true, nil
 	}
 
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
@@ -717,10 +722,12 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	admission := newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	held := admission != nil && !admission.MayStart()
 	if held || taskPlacementOf(ctx).computer != nil {
-		return a.startDeferredBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission, held)
+		joined, err := a.startDeferredBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission, held)
+		return "", joined, err
 	}
 
-	return a.startAdmittedBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+	joined, err := a.startAdmittedBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+	return "", joined, err
 }
 
 // startAdmittedBeltRun is the original synchronous road after admission: route
@@ -731,7 +738,15 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	if err != nil {
 		return false, err
 	}
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	// THE READ-ONLY NOTE IS IN WHAT THE WORKERS ARE GIVEN AND NEVER IN THE
+	// CONTRACT. The crew above keeps the brief it was routed on, and a rerun
+	// reads that brief again as a contract (taskcrew.go, taskrouting.go): the
+	// note names the ground by full path, so a rerun that found it there stood
+	// as a writing task on the folder its own words called read-only. It is a
+	// run's own, added once no live run took the work: a hand-off that joined
+	// was told what is true of the run it joined ([Agent.joinOrWait]).
+	given := withTaskReadsNote(a.config.Place, brief, stand)
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, given, false)
 	if err != nil {
 		folder.abandon()
 		return false, err
@@ -798,7 +813,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		Crew:     run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(),
 	})
-	spec := a.beltRunSpec(run, brief)
+	spec := a.beltRunSpec(run, given)
 	a.holdProgramCeilings(run, spec)
 	go a.driveBeltRun(runCtx, engine, run, spec)
 	return false, nil
@@ -816,7 +831,10 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 			return false, err
 		}
 	}
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	// The workers' words, and never the crew's kept brief
+	// ([Agent.startAdmittedBeltRun] has why).
+	given := withTaskReadsNote(a.config.Place, brief, stand)
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, given, false)
 	if err != nil {
 		return false, err
 	}
@@ -839,7 +857,7 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 		machineHeld = map[string]bool{planStoreID(storeID): true}
 	}
 	run := &beltRun{
-		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
+		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: given,
 		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
 		machineHeld: machineHeld,
 		cut:         cut, born: born, over: make(chan struct{}),
@@ -855,7 +873,7 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 		ID: id, Title: title, State: TaskQueued, Program: programName(via), Remote: cloneTaskRemote(run.remote), Computer: run.taskComputerName(),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(), Waiting: waiting,
-		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
+		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: given, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
 	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
@@ -990,8 +1008,12 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 				a.beltMu.Unlock()
 				return nil, refusal
 			}
+			// THE JOINED WORKER IS TOLD WHAT IS TRUE OF THE RUN IT JOINED. It works
+			// in that run's copy, so whether the ground is only read is the run's
+			// stand to say and never the hand-off's own: a reference that joined a
+			// worktree was told nothing it made reached a ground its work landed in.
 			_, err := addJoinedTasks(ctx, live.store, []plandb.TaskSpec{{
-				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies, Model: crewWishOf(ctx).worker,
+				ID: storeID, ParentID: live.root, Title: title, Description: withTaskReadsNote(a.config.Place, brief, live.stand), Dependencies: dependencies, Model: crewWishOf(ctx).worker,
 			}})
 			if err == nil {
 				live.joined = append(live.joined, id)
@@ -2331,6 +2353,9 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 	if run.tree.workspaceSet != nil {
 		return a.landWorkspaceSet(ctx, engine, run)
 	}
+	if line := referenceLandingLine(run.tree); line != "" {
+		return a.landReferenceRun(run, line)
+	}
 	landing, err := engine.Land(ctx, run.store, run.workspace, run.tree.checkBase, run.root)
 	if err != nil {
 		if stopped, _ := a.beltRunStopped(run); stopped {
@@ -2342,6 +2367,37 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 		return RunLanding{}
 	}
 	return a.bringBeltRunHome(run, landing)
+}
+
+// landReferenceRun is the landing of a run that only read its ground, and it
+// asks the engine for nothing. Its folder is no repository, so the engine's
+// landing failed with git's `fatal: not a git repository`, a failure note was
+// filed for every such run, and the conversation was handed the worker's own
+// account of the work with nothing saying the ground was untouched
+// (task_brief.go's [copyOnto] has the run). There is no branch to merge and no
+// copy to give back: the homecoming is the one line. It is not written twice:
+// the landing carries it and the run's one outcome note is where its page
+// reads it ([beltRunOutcomeNote]), as a merge that did not go in is read
+// ([Agent.bringBeltRunHome]).
+//
+// A RUN THAT FAILED IS GIVEN THE SAME LINE, and it is as true of it: the ground
+// was not its to change, and whatever it made before it ended is in its folder.
+func (a *Agent) landReferenceRun(run *beltRun, line string) RunLanding {
+	if !a.beginBeltHomecoming(run) {
+		return RunLanding{}
+	}
+	return RunLanding{Line: line}
+}
+
+// referenceLandingLine is the landing of a tree that only read its ground:
+// where what it made is, and that the ground did not change. Empty for every
+// other tree.
+func referenceLandingLine(tree taskTree) string {
+	if tree.mode != TaskModeReference || tree.workspaceSet != nil || tree.dir == "" || tree.ground == "" ||
+		canonicalPath(cleanFolder(tree.dir)) == canonicalPath(cleanFolder(tree.ground)) {
+		return ""
+	}
+	return "it changed nothing in " + cleanFolder(tree.ground) + ": what it made is in " + cleanFolder(tree.dir)
 }
 
 // bringBeltRunHome is the second half of a run's landing: the copy's branch
@@ -2393,17 +2449,22 @@ var beltLandingAdmissionWaits func()
 
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := run.outcomeNote(summary, landing, a.beltRunSpan(run))
+	// A PROGRAM'S LIMIT IS SAID ONCE, here, whatever becomes of the landing: a
+	// quiet receipt, a wake, or a receipt a hold keeps. Each of those used to
+	// say it again, and a landing a hold kept was told twice with two notices.
+	if run.delegate != nil {
+		if limit := programLimitLine(run, summary, landing); limit != "" {
+			a.recordProgramLimit(limit)
+		}
+	}
 	if a.beltRunQuiet(run) {
-		a.recordQuietBeltLanding(run, summary, line, landing)
+		a.recordQuietBeltLanding(run, summary, line, "")
 		return
 	}
 	if beltLandingAdmissionWaits != nil {
 		beltLandingAdmissionWaits()
 	}
 	if run.delegate != nil {
-		if limit := programLimitLine(run, summary, landing); limit != "" {
-			a.recordProgramLimit(limit)
-		}
 		a.admitBeltLanding(run, summary, line, landing, a.programLandingNote(run, summary, line))
 		return
 	}
@@ -2433,26 +2494,47 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 
 // admitBeltLanding makes the last quiet check and wake admission one step
 // against page Stop. Receipt construction and persistence happen outside it.
+//
+// A CONVERSATION THE PERSON PAUSED IS NOT STARTED BY A LANDING, NOR IS ONE IN A
+// TEAM WHOSE TURN WAS STOPPED, until a turn next begins. The result is kept as
+// the quiet record a late stop of the task keeps, with the sentence that says
+// why it started no turn, and the next turn reads it (team_pause.go,
+// team_stophold.go). The hold is decided under the lock the landing would be
+// queued under ([Agent.enqueueNote]), so a stop that lands in the same instant
+// either holds it or comes after its turn began.
 func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding, note userMessage) {
 	run.deliveryMu.Lock()
 	if a.beltRunQuiet(run) {
 		run.deliveryMu.Unlock()
-		a.recordQuietBeltLanding(run, summary, line, landing)
+		a.recordQuietBeltLanding(run, summary, line, "")
 		return
 	}
+	// The receipt is written under deliveryMu, which is the order page Stop
+	// takes its locks in (stoprun.go): deliveryMu, then beltMu and a.mu.
+	//
+	// A LANDING THE PERSON STILL OWED AN ANSWER LOSES ITS BOUNDED SETTLE TURN
+	// when a hold keeps it: the turn that later reads the receipt is the
+	// person's own, a manager's hand-off, or the one Resume starts on whatever
+	// else the pause cut and held, and the settle's ceiling and model would cut
+	// any of those short. It reads the receipt as an ordinary turn does.
+	note.cause = wakeLanding
+	note.heldReceipt = func(why string) { a.recordQuietBeltLanding(run, summary, line, why) }
 	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 	run.deliveryMu.Unlock()
 }
 
 // recordQuietBeltLanding preserves the actual result and its operational
-// attribution after a late stop, without admitting another model turn.
-func (a *Agent) recordQuietBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding) {
+// attribution after a late stop, without admitting another model turn. why is
+// the sentence a standing hold gives for keeping it, "" for a late stop: it
+// follows the whole receipt, a program's outcome note included, and is never
+// read as part of the program's account.
+func (a *Agent) recordQuietBeltLanding(run *beltRun, summary RunSummary, line, why string) {
 	note := userText(line)
 	if run.delegate != nil {
-		if limit := programLimitLine(run, summary, landing); limit != "" {
-			a.recordProgramLimit(limit)
-		}
 		note = a.programLandingNote(run, summary, line)
+	}
+	if why = strings.TrimSpace(why); why != "" {
+		note.message = textMessage("user", strings.TrimSpace(note.text())+"\n"+why)
 	}
 	note.wake = false
 	note.completionOnly = true
@@ -2829,7 +2911,9 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 // go back to their own branch and bring the work in. This line is the one
 // account of a landing the conversation's model is given, and a model told
 // only `landed on task/x: 2 files` would tell the person a thing about their
-// folder that nobody checked.
+// folder that nobody checked. A run that only read its ground says itself the
+// same way ([referenceLandingLine]): it has no branch, and its ground did not
+// change.
 func beltLandingLine(landing RunLanding) string {
 	if landing.Line != "" {
 		return landing.Line

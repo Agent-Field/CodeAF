@@ -74,7 +74,7 @@ func (b *appBackend) Errand(ctx context.Context, id string, ask session.ErrandAs
 // errandModelServed refuses a model no connected provider offers, by the
 // same list models.list answers: the engine's existing model policy.
 func (b *appBackend) errandModelServed(model string) error {
-	models, err := b.ListModels()
+	models, err := b.offeredModels()
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (b *appBackend) errandModelServed(model string) error {
 // the real configuration: the held agent's own routes when one is named, else
 // the profile's with the default model as floor.
 func (b *appBackend) ErrandModels(p appwire.ErrandModelsParams) (appwire.ErrandModels, error) {
-	listed, err := b.ListModels()
+	listed, err := b.offeredModels()
 	if err != nil {
 		return appwire.ErrandModels{}, err
 	}

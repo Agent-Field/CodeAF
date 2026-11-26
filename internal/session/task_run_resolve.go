@@ -94,11 +94,33 @@ func (a *Agent) completedRunPlan(id uint64) (string, *plandb.Task, error) {
 	return "", nil, fmt.Errorf("task %d has no completed plan in this conversation; its saved work has not been changed", id)
 }
 
+// acceptReferenceRun accepts a recovered run that only read its ground, with
+// the landing it would have had ([Agent.landReferenceRun]). Its folder is no
+// repository, so the git landing failed in it with `fatal: not a git
+// repository` and the run could never be accepted; there is no branch to
+// restore, commit or merge, and the homecoming is the one line.
+func (a *Agent) acceptReferenceRun(ctx context.Context, g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, epoch uint64, why string, by TaskAskOwner, line string) (string, bool, error) {
+	if err := a.admitCompletedRunHomecoming(ctx, epoch); err != nil {
+		return "", true, err
+	}
+	kept.State = TaskDone
+	kept.Report = withReport(acceptedLine(strings.TrimSpace(why), by), withReport(root.Result, line))
+	return a.saveCompletedRunOutcome(g, kept, path, root.ID)
+}
+
 func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, epoch uint64, why string, by TaskAskOwner) (string, bool, error) {
 	tree, err := runCopyTree(kept.Copy, a.config.Place)
 	if err != nil {
 		return "", true, err
 	}
+	if line := referenceLandingLine(tree); line != "" && kept.WorkspaceSet == nil {
+		return a.acceptReferenceRun(ctx, g, kept, path, root, epoch, why, by, line)
+	}
+	return a.acceptCompletedRunTree(ctx, g, kept, path, root, epoch, why, by, tree)
+}
+
+// acceptCompletedRunTree is the git landing of a recovered run's saved copy.
+func (a *Agent) acceptCompletedRunTree(ctx context.Context, g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, epoch uint64, why string, by TaskAskOwner, tree taskTree) (string, bool, error) {
 	// A refused landing releases Git's registration while retaining its files.
 	// Restore that registration before checking or committing the saved branch.
 	if reopened, back, problem := tree.reopenReleased(); problem != "" {
