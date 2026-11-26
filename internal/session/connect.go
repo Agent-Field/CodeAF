@@ -560,7 +560,7 @@ func (a *Agent) beltDefinitions() []ai.ToolDefinition {
 //
 // An empty answer means everything asked for was already there.
 func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
-	if a.config.scopedCommand != nil {
+	if a.config.AppScope != nil || a.config.scopedCommand != nil {
 		return nil, nil
 	}
 	a.armMu.Lock()

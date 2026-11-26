@@ -609,6 +609,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	appAssistantMu   sync.Mutex
 	builds           appBuildState
 	intake           appIntakeState
 	appRuns          atomic.Pointer[runs.Engine]
@@ -2007,7 +2008,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 			a.openDone = make(chan struct{})
 		}
 	})
-	conn, err := b.open(ask)
+	conn, err := b.openAssistantOrChat(ask)
 	if err != nil {
 		var wire *appwire.Error
 		if errors.As(err, &wire) && wire.Code == appwire.CodeUnreachable {

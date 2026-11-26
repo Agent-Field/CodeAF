@@ -73,6 +73,14 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			c.Action = &act
 		}
 		outbound := c.Action.Outbound
+		if c.AgentOrigin != nil {
+			if e.cfg.CheckAgentAction == nil {
+				return e.stop(c, Incomplete, "the agent action grant is unavailable")
+			}
+			if err := e.cfg.CheckAgentAction(c.App, *c.AgentOrigin); err != nil {
+				return e.stop(c, Incomplete, err.Error())
+			}
+		}
 		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "") {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
@@ -371,7 +379,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")
 		} else {
-			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, ai: c.IntakeAI}
+			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, agentOrigin: c.AgentOrigin, ai: c.IntakeAI}
 			if c.TriggerReceipt != nil {
 				causes := c.TriggerReceipt.CauseChain
 				start := max(0, len(causes)-(maxRunCauseChain-1))

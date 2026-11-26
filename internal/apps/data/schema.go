@@ -163,10 +163,14 @@ func (s *schema) typeNamed(name string) *Type {
 // filled, a flow forwarding what a model said); Flow says a run or rule is
 // writing on its own grant. Cause names what led to the write (a run step,
 // a transition, a timer), kept on every history row.
+// A Principal supplies the history actor and needs the named Action grant
+// in the app's write transaction.
 type Scope struct {
 	App        string
 	Actor      string
 	Agent      bool
+	Principal  AgentPrincipal
+	Action     string
 	AI         bool
 	Flow       bool
 	Cause      string
@@ -178,12 +182,16 @@ type Scope struct {
 	sourceKey   ExternalKey
 }
 
+func (sc Scope) isAgent() bool {
+	return sc.Agent || sc.Principal.ID != "" || strings.HasPrefix(sc.Actor, AgentAssigneePrefix)
+}
+
 // kind is the writer kind a write of op by sc is recorded as.
 func (sc Scope) kind(op string) string {
 	switch {
 	case sc.sync:
 		return BySync
-	case sc.AI || sc.Agent:
+	case sc.AI || sc.isAgent():
 		return ByAI
 	case sc.Flow:
 		return ByFlow
@@ -195,11 +203,14 @@ func (sc Scope) kind(op string) string {
 
 // below says sc's writes sit below a person's: a value a person set is
 // left as it is.
-func (sc Scope) below() bool { return sc.AI || sc.Agent }
+func (sc Scope) below() bool { return sc.AI || sc.isAgent() }
 
 // actor is who a history row names: the caller's own name for itself, an
 // app's agent, or the person's id.
 func (s *schema) actor(sc Scope) string {
+	if sc.Principal.ID != "" {
+		return AgentAssigneePrefix + sc.Principal.ID
+	}
 	if sc.Actor != "" {
 		return sc.Actor
 	}
@@ -769,6 +780,7 @@ func forgetApp(w *writeTx, app string) (*schema, error) {
 	for _, stmt := range []string{
 		`DELETE FROM app_types WHERE app = ?`,
 		`DELETE FROM app_type_bindings WHERE app = ?`,
+		`DELETE FROM agent_grants WHERE app = ?`,
 		`UPDATE type_fields SET hidden = 1 WHERE app = ?`,
 		`DELETE FROM apps WHERE app = ?`,
 	} {

@@ -723,6 +723,10 @@ func v3EmptySession(dir string) bool {
 // v3EmptyUnassignedSession reads only content. References decide whether a blank
 // is kept, never whether it is a conversation somebody has spoken in.
 func v3EmptyUnassignedSession(dir string) bool {
+	// The app keeps its assistant's conversation ID even before its first message.
+	if meta, err := session.LoadMeta(dir); err != nil || meta.AppID != "" {
+		return false
+	}
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
 	if spoken || !sure || session.HasSavedTasks(dir) {

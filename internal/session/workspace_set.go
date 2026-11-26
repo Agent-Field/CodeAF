@@ -67,6 +67,9 @@ type WorkspaceSet struct {
 
 // StartTaskInWorkspaceSet admits an explicitly declared private task layout.
 func (a *Agent) StartTaskInWorkspaceSet(ctx context.Context, brief string, request WorkspaceSetRequest) (uint64, string, string, error) {
+	if a.config.AppScope != nil {
+		return 0, "", "", errAppTask
+	}
 	if !WorkspaceOwnershipEnabled(a.config.Place) || !bashBeltAsked() {
 		return 0, "", "", errors.New("workspace sets require private task placement and the Bash task engine")
 	}

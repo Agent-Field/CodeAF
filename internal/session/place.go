@@ -238,6 +238,8 @@ type Meta struct {
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
 	ID string `json:"id"`
+	// AppID binds a conversation to the tool scope it must open with.
+	AppID string `json:"app_id,omitempty"`
 	// ChatURI is stable conversation identity carried in the sealed truth.
 	ChatURI string `json:"chat_uri,omitempty"`
 	// AgentIdentity is the agent's DID (agent_identity.go): written with the
@@ -510,6 +512,12 @@ func saveMetaLocked(dir string, meta Meta) error {
 			return fmt.Errorf("save session meta: workspace policy cannot be replaced")
 		}
 		meta.WorkspacePolicy = current.WorkspacePolicy
+	}
+	if current.AppID != "" {
+		if meta.AppID != "" && meta.AppID != current.AppID {
+			return fmt.Errorf("save session meta: app cannot be replaced")
+		}
+		meta.AppID = current.AppID
 	}
 	if current.ChatURI != "" {
 		if meta.ChatURI != "" && meta.ChatURI != current.ChatURI {

@@ -66,7 +66,7 @@ var errDryRun = errors.New("dry run")
 // be a way to read any file on the machine into records it can see. So a call
 // with an app is refused before the path is so much as looked at.
 func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResult, error) {
-	if sc.App != "" || sc.Agent {
+	if sc.App != "" || sc.isAgent() {
 		return nil, &Error{Code: CodeNotAllowed, Need: "import", Message: "importing a file is done in the Data place, not by an app"}
 	}
 	sch := s.schema.Load()
@@ -83,7 +83,7 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 		return nil, err
 	}
 	res := &ImportResult{DryRun: opts.DryRun, Columns: header, Mapping: mapping, Rows: []Row{}, Problems: []ImportProblem{}}
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		res.Rows, res.Problems, res.Created, res.Failed, res.Batch = []Row{}, []ImportProblem{}, 0, 0, ""
 		t, err := w.schema.allow(sc, typ, true)
 		if err != nil {

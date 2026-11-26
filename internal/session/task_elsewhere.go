@@ -235,6 +235,9 @@ func eligibleTaskComputer(p taskPlacement, computer TaskComputer, stand taskStan
 // Model proposals reach the same resolver through their normal admission road.
 // The optional effort belongs to this task and leaves the standing crew alone.
 func (a *Agent) StartTaskOn(ctx context.Context, brief string, solo bool, computer string, namedEffort ...string) (uint64, string, string, error) {
+	if a.config.AppScope != nil {
+		return 0, "", "", errAppTask
+	}
 	wish := crewWishOf(ctx)
 	if len(namedEffort) > 0 {
 		wish.effort, _ = crewroute.ParseEffort(namedEffort[0])
