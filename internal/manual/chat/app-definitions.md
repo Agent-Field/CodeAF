@@ -269,6 +269,9 @@ each Button an ID, a label and one or more `on.click` Actions. Leave its
 `items` list empty when using children. A Menu with an `items` list
 continues to emit `on.pick` with the selected ID.
 
+Set `agent.dock` to `"closed"` in app.json to keep the agent panel folded
+when the app opens. The agent button in the header opens it.
+
 `codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
 into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
 session uses `codeaf app use-kit-part` with the part's ID and version, then

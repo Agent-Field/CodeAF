@@ -2,7 +2,7 @@
 
 ## First-party apps and where to find templates
 
-Docs, Sheets, Slides and Canvas are signed codeaf packages. They install on the first visit to Desk's Apps place or the first `codeaf app list` in a new profile. Each editor opens a list of your records and starts with an editable example. Use Details → Delete… to remove an example. A package update preserves the person's records, including their earlier deletions.
+Docs, Sheets, Slides and Canvas are signed codeaf packages. They install on the first visit to Desk's Apps place or the first `codeaf app list` in a new profile. Each editor opens a list of your records. A fresh installation includes an editable example. Use Details → Delete… to remove it. A package update preserves the existing records and earlier deletions.
 
 Kit lists the codeaf publisher templates. Use the package preview to try its examples. Older canvas files still open from Canvases with their assets, versions and marks. New app from Canvases opens the same Builder as New app in Apps.
 
