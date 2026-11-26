@@ -10,6 +10,7 @@ walkthrough for running one yourself.
 - [Start it](#start-it)
 - [Claim the organization, invite a second person](#claim-the-organization-invite-a-second-person) (and [HTTPS for other people](#other-people-https))
 - [Real work](#real-work)
+- [The organization's relay](#the-organizations-relay): [what members do](#what-members-do), [turning it on for other people](#turning-it-on-for-other-people), [who can reach it](#who-can-reach-it)
 - [The keyless smoke test](#the-keyless-smoke-test)
 - [Hosted chats (optional)](#hosted-chats-optional): [keys, spend and git](#keys-spend-and-git-p1), [sharing, guests and bots](#sharing-guests-and-bots-p2), [turning it on](#turning-it-on)
 - [State, backups and upgrades](#state-backups-and-upgrades)
@@ -23,12 +24,14 @@ walkthrough for running one yourself.
 One `docker compose up` brings up everything an organization needs, on your own machine or
 server: the **organization server** people join with their codeaf desktop app, the **AgentField**
 control plane that routes work, and the reasoner nodes the factory sends work to, **SWE-AF** (builds an
-issue into a pull request) and **PR-AF** (reviews one). Hosted chats (the **sessionhost**, below) are an
+issue into a pull request) and **PR-AF** (reviews one), and the organization's own **relay**, so its members' computers
+pair, see each other and open each other's chats live without the public relay. Hosted chats (the **sessionhost**, below) are an
 opt-in profile of the same file. Nothing in an image is a secret; model keys come from your environment.
 
 | Service | What it is | Published port | State (volume) | Runs as |
 | --- | --- | --- | --- | --- |
 | `codeaf` | the organization server, `codeaf factory serve` in team mode | `127.0.0.1:8787` | `codeaf-data` | uid 10001 |
+| `relay` | the organization's relay, `codeaf relay` from the same image: where members' computers pair, see each other and open each other's chats live; see "The organization's relay" | `127.0.0.1:8788` | `relay-data` | uid 10001 |
 | `agentfield` | the AgentField control plane (published image, pinned by digest) | `127.0.0.1:8080` | `agentfield-data` | uid 65532 |
 | `runner` | the factory runner: a codeaf engine that registers the factory on AgentField as the node `codeaf-factory` | none | `runner-data` | uid 10001 |
 | `swe-af` | SWE-AF, node `swe-planner`, dials AgentField over its node link | none | `swe-af-workspaces` | uid 10002 |
@@ -37,22 +40,22 @@ opt-in profile of the same file. Nothing in an image is a secret; model keys com
 | `modelstub` | a scripted model, only with `--profile stub` (the keyless smoke test) | none | none | nonroot |
 | `gitstub` | a scripted git host, only with `--profile gitstub`; `smoke.sh` turns it on with the hosted part and makes the token it will not start without | none | none | root (a test stub) |
 
-A plain `docker compose up` starts the first five; the other three need their profile.
+A plain `docker compose up` starts the first six; the other three need their profile.
 Apart from the `sessionhost` and the `gitstub` test stub, every container starts as root only long enough to hand a
 freshly mounted volume to its user, then drops to that user (`scripts/drop-root.sh`, or the control plane's own
 entrypoint); the `sessionhost` stays root on purpose, because it has to become a different Linux user for every chat
 (see "Hosted chats"). Published ports listen on 127.0.0.1 until you change `CODEAF_BIND` / `AGENTFIELD_BIND` in `.env`.
-Ports 8787 (`codeaf`) and 8080 (`agentfield`) must be free on the host: if one is taken, `docker compose up` stops with
-`port is already allocated` and leaves the services it had not reached created but not started. Set `CODEAF_PORT` or
-`AGENTFIELD_PORT` in `.env` (the template lists both) and run it again; the services reach each other over Compose's own
+Ports 8787 (`codeaf`), 8788 (`relay`) and 8080 (`agentfield`) must be free on the host: if one is taken, `docker compose up` stops with
+`port is already allocated` and leaves the services it had not reached created but not started. Set `CODEAF_PORT`, `CODEAF_RELAY_PORT` or
+`AGENTFIELD_PORT` in `.env` (the template lists all three) and run it again; the services reach each other over Compose's own
 network, so AgentField's host port is only for you to look at it.
-State is in six named volumes, one per row that names one. There are two networks: `default`, which every service
+State is in seven named volumes, one per row that names one. There are two networks: `default`, which every service
 but the `sessionhost` is on, and `hosted`, which only `codeaf` and the `sessionhost` share.
 
 ## What you need
 
 - Docker with Compose v2.24 or newer (`docker compose version`), `git`, about 4 GB of free memory and 5 GB of disk, and
-  ports 8787 and 8080 free on the host (see "What it runs").
+  ports 8787, 8788 and 8080 free on the host (see "What it runs").
 - For anyone to sign in with a password, **you on the machine running Compose included**: **HTTPS**. An organization server
   takes a password only over HTTPS or from its own machine, and a request through Docker's published port does not count as
   its own machine, so put a proxy that serves HTTPS in front of port 8787 (see "Other people", and "Trying it on one machine").
@@ -205,6 +208,90 @@ models; the defaults are inexpensive. A factory job runs on the pipeline a repos
 `.codeaf/factory.yaml` (a step of `kind: agentfield` with `target: swe-planner.build_issue` sends it to SWE-AF),
 and SWE-AF pauses at its plan so the owner can approve it or ask for changes.
 
+## The organization's relay
+
+A **relay** is the small server a person's computers go through to find each other: it carries the pairing of a new computer, tells
+each computer which of the person's others are online, and carries the live view and drive of a chat that runs on another of their
+computers. The public one is run by the codeaf project. The `relay` service of this stack is a copy of it that **your organization
+runs**, so none of that depends on anything outside it, and a member who is told its address needs nothing else.
+
+It is the same program, `codeaf relay`, in the same image (role `relay`, `scripts/relay.sh`). It keeps each member's **device list** (the
+computers they have paired and their names) in the `relay-data` volume, so a restart does not make every computer forget the others. It
+keeps **no chat content**: with `CODEAF_RELAY_STORAGE=off`, the default, it says so, and members' computers keep their chats where they
+are and stop asking it to store them. A second copy of every chat would be a duplicate, because this server already keeps the hosted ones.
+`CODEAF_RELAY_STORAGE=on` makes it keep encrypted copies of the chats of members' own computers, which is what the public relay does for an
+account that has asked for it.
+
+### What members do
+
+Nothing about the relay needs to be set by hand. A member who has the organization's sign-in for the command line (`CODEAF_ORG_TOKEN`,
+or `codeaf attach <address> --token <token>`: the same one `codeaf chat --org` uses) pairs a computer with:
+
+```sh
+laptop$  codeaf pair --org https://org.example.com --code     # shows a code and the line to type on the other computer
+desktop$ codeaf pair <code> --via <the address the laptop printed>
+```
+
+`--org` asks the organization server which relay it runs (`GET /v1/org`, answered only to someone signed in) and then pairs exactly as
+`--via <that address>` does: both computers remember the relay, and from then on every start of them uses it. Presence, Move, and the live
+view of a chat another computer is running all go through it. A few rules keep it from surprising anyone:
+
+- **An explicit `CODEAF_SYNC_URL` always wins**, a relay's address or `off`; `off` stops a pairing even with `--org`.
+- **Bring your own relay** still works: `codeaf pair --via https://relay.mine.example` pairs through that one, and nothing asks the
+  organization anything. A computer that never says `--org` asks no organization anything, so nobody's relay moves unless they typed it.
+- **Personal use is unchanged.** Someone who is not pairing through this organization keeps the public relay exactly as before.
+- `--org` and `--via` together are refused: each names the relay, so use one. An organization that names no relay says so and pairs
+  nothing; an address that is not a web address, or is plain `http` when the organization was reached over `https`, is refused too.
+
+`codeaf devices` on a paired computer says which relay it is using (`relay: <host> (your own)`).
+
+### Turning it on for other people
+
+The relay starts with the rest of the stack and answers `http://127.0.0.1:8788/p/health` (its page for a pairing link, the same for every
+code, so it tells no one who is connected). For members' computers it needs a **name of its own with HTTPS**, the way the organization
+server does, and a **different name from the server's**: a relay's requests are signed with their path, so it cannot sit under a prefix of
+another address. With Caddy on the same host:
+
+```
+relay.example.com { reverse_proxy 127.0.0.1:8788 }
+```
+
+```sh
+# .env
+CODEAF_ORG_RELAY_URL=https://relay.example.com
+CODEAF_RELAY_TRUST_PROXY=on          # only behind a proxy that sets X-Forwarded-For, as this one does
+```
+
+`CODEAF_ORG_RELAY_URL` is the address members' computers reach the relay on, with its scheme. The organization server writes it into its
+config as `relay_url` and tells it to everyone signed in. Left empty, the relay still runs and nobody is told about it, so people can
+still pair through it with `--via`. The other settings, all in `.env.example`:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `CODEAF_RELAY_BIND`, `CODEAF_RELAY_PORT` | `127.0.0.1`, `8788` | where the host publishes the relay, like `CODEAF_BIND` and `CODEAF_PORT` for the server |
+| `CODEAF_ORG_RELAY_URL` | empty | the address the organization server tells its signed-in people |
+| `CODEAF_RELAY_STORAGE` | `off` | `on` keeps members' own computers' chats, encrypted, in `relay-data` |
+| `CODEAF_RELAY_STATUS` | `off` | `on` publishes `GET /status`, which lists the computers connected right now: leave it off on an open network |
+| `CODEAF_RELAY_TRUST_PROXY` | `off` | `on` counts the address a proxy forwards, for the relay's limits |
+
+### Who can reach it
+
+**The relay has no list of who may use it.** It does not know your organization's people: a computer that makes a valid signature may make
+an identity of its own and use the relay's pairing, device list and live road, as it may on the public one. What it sees is machine names,
+times and sealed bytes it cannot read, and a stranger gets exactly as much from it as their own computers. If that is not acceptable for
+the organization, keep the relay on a private network (a VPN, a firewall allow list or an address only the office can reach) and give that
+address as `CODEAF_ORG_RELAY_URL`; the stack publishes it on `127.0.0.1` until you change `CODEAF_RELAY_BIND`.
+
+**When members see "cannot agree on changes right now".** The relay keeps its device list in a small database, and if that database's
+disk stalls or fails, the relay stops answering for it (HTTP 503) until it is restarted: `docker compose restart relay`. The health page
+`/p/health` still answers, because it asks nothing of the database, so it tells you the process is up and not that the list is. This was
+seen once on a disk that was starved of IO and not reproduced on three clean ones; the relay's log says `relay unavailable` with the cause.
+
+**What is not covered.** A relay that is lost takes the device lists with it: members would pair their computers again (back up
+`relay-data` with the other volumes if that matters). The release that `CODEAF_BINARY_FROM=fetch` downloads has neither `codeaf relay
+--storage` nor `relay_url`, so with it the `relay` service stops with a sentence saying so, and an organization server that is given
+`CODEAF_ORG_RELAY_URL` refuses to start; use the default build (`source`), or published images from after this change.
+
 ## The keyless smoke test
 
 ```sh
@@ -219,12 +306,22 @@ that is already claimed it stops at that step. To go from a smoke run to a real 
 
 - every service is healthy; AgentField, SWE-AF, PR-AF and the factory are registered; PR-AF answers a call;
 - the operator link claims the organization once, a second person joins by invite, roles are enforced;
+- the organization's relay answers its health page and does not list who is connected, the organization tells a signed-in person its
+  address and a stranger nothing, two throwaway computers pair through it with `codeaf pair --org` and see each other in
+  `codeaf devices`, the relay says it keeps no chats and its volume holds the device list and no chat content;
 - a factory job reaches SWE-AF through AgentField with **strict run-owner proofs on**, its plan question reaches
   the owner, "ask for changes" resumes the run, and rejecting the plan ends it; AgentField's proof counters agree;
-- after `docker compose restart`, the nodes register again and AgentField, the runs and the people are all still there.
+- after `docker compose restart`, the nodes register again and AgentField, the runs and the people are all still there, and the two
+  computers still see each other through the relay.
 
 The stub's answers are minimal schema-valid text, so the "work" is not real. `docker compose up -d` afterwards
 puts your own keys back.
+
+Opening a chat live needs a terminal, which no container here has, so that part is a Go test that runs **on your machine** against the
+stack's relay: `SMOKE_RELAY_LIVE=1 ./smoke.sh` (needs Go, `tmux` and a built `bin/codeaf`, `make build` at the repository root) runs
+`go test -tags e2e -run TestOrgRelayE2E ./internal/e2e/` with `CODEAF_E2E_ORG_RELAY` set to the relay's published address. Two throwaway
+computers pair through the relay with `--via`, one runs a chat, the other opens it live and types into it, and the test checks that the
+relay stored none of it. Run without that variable the same test starts its own relay from `scripts/relay.sh`.
 
 ## Hosted chats (optional)
 
@@ -518,8 +615,8 @@ Landlock (`"mode": "uid+fence"`, `"fence_mode": "landlock"`).
 
 ## State, backups and upgrades
 
-State lives in six named volumes (`docker volume ls`; each name is the Compose project's name, `codeaf-org` unless you set `-p` or
-`COMPOSE_PROJECT_NAME`, then `_` and the volume, as below): `agentfield-data`, `codeaf-data`,
+State lives in seven named volumes (`docker volume ls`; each name is the Compose project's name, `codeaf-org` unless you set `-p` or
+`COMPOSE_PROJECT_NAME`, then `_` and the volume, as below): `agentfield-data`, `codeaf-data`, `relay-data` (the relay's device list),
 `runner-data`, `swe-af-workspaces`, `pr-af-workspaces`, and `sessions-data` (the hosted chats' folders, used only with
 the `hosted` profile). `docker compose down` keeps them, `docker compose down -v` deletes them. The organization server's own
 state (its people, access links, spend and sealed keys) is in `codeaf-data` and the hosted chats' folders are in
@@ -695,7 +792,7 @@ tag and digest together.
 
 ## Railway
 
-The same Dockerfiles run on Railway as one project: six services (seven with the keyless model stub), a volume on each but
+The same Dockerfiles run on Railway as one project: seven services (eight with the keyless model stub), a volume on each but
 the model stub, private networking between them, and a public domain on `codeaf` only. Nothing needs Compose there; each
 service builds from this repository's source, on Railway's builders. The table below is the configuration by hand. It was followed from
 an empty project, with the keyless stub, and every service came up: see "Check it" below. (A Railway template needs images, not a
@@ -727,7 +824,7 @@ Pick one; the table's Root Directory and Dockerfile Path are the same for all th
 1. Create the project in the workspace, then every service empty, `modelstub` too if you will use it (a variable that names another service needs that service to exist, and a service deployed before its target existed can be left with an empty host name: see "Looking inside").
 2. On each service: its variables, Root Directory, Dockerfile Path, a volume of the size in the row, and (`codeaf`) the health check path and
    the public domain. Give the domain first (`CODEAF_PUBLIC_DOMAIN` is read at start), target port 8787.
-3. Connect or upload the source of each service. The three codeaf-image services compile codeaf (about four minutes each); the other
+3. Connect or upload the source of each service. The four codeaf-image services (`codeaf`, `runner`, `sessionhost` and `relay`) compile codeaf (about four minutes each); the other
    four take about a minute. A service reads **SUCCESS** when it started (and, where the row sets a health check, answered it).
 4. "Check it", then "Claim the organization" below. Nothing else is needed to bring the stack up: `runner` waits up to five minutes for
    AgentField, so the order of the deploys does not matter.
@@ -738,6 +835,7 @@ Pick one; the table's Root Directory and Dockerfile Path are the same for all th
 | `codeaf` | `/` (the repository root) | `deploy/org/codeaf.Dockerfile` | `/data` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=server`, `PORT=8787`, `CODEAF_ORG_NAME=...`, `CODEAF_PUBLIC_DOMAIN=${{RAILWAY_PUBLIC_DOMAIN}}`, `CODEAF_TRUSTED_PROXIES=100.64.0.0/10`, `CODEAF_SERVER_KEY=${{secret(64, "abcdef0123456789")}}`. Hosted chats: `CODEAF_HOSTED_SECRET=${{secret(64, "abcdef0123456789")}}`, `CODEAF_HOSTED_URL=http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790`, `CODEAF_HOSTED_MODEL_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8787/v1/model`. **The model door's key: `CODEAF_HOSTED_MODEL_KEY=<your OpenRouter key>`** (or an organization key an operator saves in Settings, Organizations); `CODEAF_HOSTED_MODEL_UPSTREAM` only for a provider other than OpenRouter. The door does not read `OPENROUTER_API_KEY`. Health check path `/v1/about` (answers 200 with no sign-in; `/` answers 401). Generate a public domain for this service only, target port 8787, **before its first deploy**. |
 | `runner` | `/` | `deploy/org/codeaf.Dockerfile` | `/data` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=runner`, `AGENTFIELD_URL=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `ORG_MODEL=...`, `OPENROUTER_API_KEY=...`. No health check path: it serves no HTTP. |
 | `sessionhost` | `/` | `deploy/org/codeaf.Dockerfile` | `/chats` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=sessionhost`, `CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}`, `CODEAF_SESSIONHOST_DATA=/chats`, `CODEAF_SESSIONHOST_MODEL=...` (the model chats use), and the limits you want (`CODEAF_SESSIONHOST_MAX_RUNNING`, `CODEAF_SESSIONHOST_MAX_PER_PERSON`). No public domain and no health check path (every request to it needs the shared secret). Give it resource limits (1 vCPU and 1 GB is plenty for a few chats). |
+| `relay` | `/` | `deploy/org/codeaf.Dockerfile` | `/data` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=relay`, `PORT=8788`, `CODEAF_RELAY_STORAGE=off`, `CODEAF_RELAY_STATUS=off`, `CODEAF_RELAY_TRUST_PROXY=on` (Railway's edge sets `X-Forwarded-For`). Health check path `/p/health`. Generate a public domain for this service, target port 8788, then set **`CODEAF_ORG_RELAY_URL=https://${{relay.RAILWAY_PUBLIC_DOMAIN}}` on `codeaf`**, which is what tells signed-in members where it is. It needs its own domain and cannot share `codeaf`'s: a relay's requests are signed with their path. See "The organization's relay". |
 | `swe-af` | `/deploy/org` | `swe-af.Dockerfile` | `/workspaces` | `NODE_ID=swe-planner`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `SWE_HITL_NATIVE=1`, `SWE_FENCE=off`, `SWE_PRO_ENGINE=0`, `SWE_DEFAULT_MODEL=openrouter/...`, `OPENROUTER_API_KEY=...`. |
 | `pr-af` | `/deploy/org` | `pr-af.Dockerfile` | `/workspaces` | `NODE_ID=pr-af`, `PORT=8007`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `AGENT_CALLBACK_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8007`, `PR_AF_MODEL=...`, `OPENROUTER_API_KEY=...`. |
 | `modelstub` (keyless only) | `/deploy/org` | `modelstub.Dockerfile` | none | `STUB_DELAY=2s`; then on `runner`, `swe-af`, `pr-af` and `codeaf` set `CODEAF_BASE_URL=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1` and `OPENROUTER_API_KEY=stub-key`, on `runner`, `pr-af` and `sessionhost` the model variables to `stub/scripted` (`ORG_MODEL`, `PR_AF_MODEL`, `CODEAF_SESSIONHOST_MODEL`; SWE-AF: `SWE_DEFAULT_MODEL=openrouter/stub/scripted`), on `codeaf` also `CODEAF_HOSTED_MODEL_UPSTREAM=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1` and `CODEAF_HOSTED_MODEL_KEY=stub-key`. For the self-test below, `swe-af` also takes `SMOKE_FIXTURE_REPO=/workspaces/smoke-fixture`. |
@@ -747,9 +845,9 @@ requests, as in "What you need"; the keyless test needs none). People's own GitH
 person stores theirs on the server (see "Keys, spend and git").
 
 Volumes: **Railway makes every volume 50 GB unless it is sized, and the CLI cannot size one.** `railway volume add` takes a mount
-path and nothing else, and `railway volume update` takes only a mount path and a name, so six volumes made with the CLI (which is
-what `make-template.sh` does) are 300 GB of billed storage. **A volume can grow but never shrink**, so start small: 1 GB is plenty for
-`codeaf`, `agentfield`, `sessionhost` and `swe-af`, 512 MB for `runner` and `pr-af` (the sizes the production run used).
+path and nothing else, and `railway volume update` takes only a mount path and a name, so seven volumes made with the CLI (which is
+what `make-template.sh` does) are 350 GB of billed storage. **A volume can grow but never shrink**, so start small: 1 GB is plenty for
+`codeaf`, `agentfield`, `sessionhost` and `swe-af`, 512 MB for `runner`, `relay` and `pr-af` (the sizes the production run used).
 
 The resize step, for a volume that is still empty: delete it (`railway volume delete --volume <volume> --yes`) and make it again
 with a size through Railway's API, which takes `sizeMB`. The production run did exactly that, with Railway's MCP server
@@ -828,19 +926,22 @@ railway ssh -s runner -- 'curl -s -o /dev/null -w "%{http_code}\n" $AGENTFIELD_U
 railway ssh -s sessionhost -- codeaf sessionhost probe </dev/null                                            # "ok": true, "mode": "uid+fence"
 curl -s -o /dev/null -w '%{http_code}\n' "https://<the codeaf domain>/access"                                # 200: the sign-in page, over HTTPS
 curl -s "https://<the codeaf domain>/v1/about"                                                               # "scheme": "https", the commit it was built from
+curl -s -o /dev/null -w '%{http_code}\n' "https://<the relay domain>/p/health"                                 # 200: the relay's page for a pairing link
 ```
 
 The first three answer for the whole stack's wiring: AgentField refuses an anonymous call, the sessionhost can keep chats apart on this
-kernel, and the public name serves over HTTPS. None of them makes a model call or a chat; those start once the organization is claimed.
+kernel, and the public name serves over HTTPS (the last line is the relay's own domain answering, with the relay's address, not the server's). None of them makes a model call or a chat; those start once the organization is claimed.
 
 ### The template script, and the draft it makes
 
-`railway/make-template.sh` builds the same six services from the published images (it checks that they exist first) and turns the
+`railway/make-template.sh` builds the same seven services from the published images (it checks that they exist first) and turns the
 project into a Railway template draft. With no argument it is a dry run that prints every Railway call; `--apply`, with
 `RAILWAY_WORKSPACE` set to the workspace's id or name, makes them. Run `--apply` from a terminal: with no terminal on stdin the
 Railway CLI reads a JSON patch from stdin and ignores the flags the script passes. `--apply` ran end to end on 2026-11-25 against
 Railway CLI 5.71.0, except for its last call, `railway templates create`, which that run skipped on purpose. `railway/railway_scripts_test.sh`
-runs it against a stub CLI that records its arguments, so the volume and environment calls are pinned.
+runs it against a stub CLI that records its arguments, so the volume and environment calls are pinned. The relay service, its domain and
+the `CODEAF_ORG_RELAY_URL` variable on `codeaf` were added to the script after that run and are pinned by the same offline tests
+only: **no Railway call for the relay has been made**.
 
 What it leaves for you:
 

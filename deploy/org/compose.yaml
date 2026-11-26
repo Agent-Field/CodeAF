@@ -21,6 +21,9 @@ x-defaults: &defaults
 # that build needs). The first build compiles codeaf and takes several minutes; later ones reuse Docker's layer cache.
 #   CODEAF_BINARY_FROM=fetch   downloads the pinned, checksummed release named in codeaf.Dockerfile: quick, but a release
 #                              without `codeaf sessionhost` cannot run hosted chats, so use it only when you leave them off.
+#                              The same release has no `codeaf relay --storage` either, so the `relay` service below stops with a
+#                              sentence saying so (CODEAF_RELAY_STORAGE=on starts it, and keeps chats), and the organization server of
+#                              a release without `relay_url` refuses to start while CODEAF_ORG_RELAY_URL is set.
 #   CODEAF_BINARY_FROM=local   takes a codeaf you built yourself and put beside this file as `codeaf-local`.
 # FLIP THE DEFAULT BACK TO `fetch` when the release pinned in codeaf.Dockerfile (CODEAF_RELEASE) ships the sessionhost. The
 # check that tells you is that release's own binary: `codeaf sessionhost --help` says "there is no `codeaf sessionhost`" while
@@ -98,6 +101,10 @@ services:
       CODEAF_SERVER_KEY: ${CODEAF_SERVER_KEY:-}
       # The git hosts a chat's clone and push may reach through this server, comma separated origins (default https://github.com).
       CODEAF_HOSTED_GIT_HOSTS: ${CODEAF_HOSTED_GIT_HOSTS:-}
+      # The address of THIS organization's relay (the `relay` service below) as its members' computers reach it, with its scheme:
+      # https://relay.example.com. The server tells every sign-in page and `codeaf pair --org` about it. Empty advertises none,
+      # and the relay still runs. It is only an address people are told, never a secret.
+      CODEAF_ORG_RELAY_URL: ${CODEAF_ORG_RELAY_URL:-}
     volumes: [codeaf-data:/data]
     # The default network reaches every service; `hosted` is the one the hosted chats' machine is on.
     networks: [default, hosted]
@@ -134,6 +141,36 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 10
+
+  # --- The relay: where members' computers pair, see each other and open each other's chats live -------------------
+  # `codeaf relay`, the program the public relay is a copy of, so the organization's people need nothing outside it. It has no
+  # secret and no account list (any computer with a valid signature may make an identity: README.md "The organization's relay"
+  # says what that means for who may reach it). It keeps each member's device list in its volume, and NO chat content unless
+  # CODEAF_RELAY_STORAGE=on: the hosted chats are already kept by `codeaf`, and a second copy here would be a duplicate. It
+  # listens on its own port, and wants its own host name behind a proxy: its requests are signed with their path, so it cannot
+  # sit under a prefix of the organization server's address.
+  relay:
+    <<: *defaults
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: *codeaf-build
+    command: ["relay"]
+    environment:
+      CODEAF_RELAY_STORAGE: ${CODEAF_RELAY_STORAGE:-off}
+      # on publishes GET /status, which says which computers are connected right now: leave it off on an open network.
+      CODEAF_RELAY_STATUS: ${CODEAF_RELAY_STATUS:-off}
+      # on only behind a proxy that sets X-Forwarded-For (Caddy, Railway, a load balancer): the relay then limits callers by their
+      # real address. Anywhere else a caller could name any address it liked.
+      CODEAF_RELAY_TRUST_PROXY: ${CODEAF_RELAY_TRUST_PROXY:-off}
+    volumes: [relay-data:/data]
+    ports: ["${CODEAF_RELAY_BIND:-127.0.0.1}:${CODEAF_RELAY_PORT:-8788}:8788"]
+    healthcheck:
+      # The relay's own page for a pairing link answers 200 to any code and holds nothing, so it is a health path that tells no one
+      # who is connected.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8788/p/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
 
   # --- Reasoner nodes ---------------------------------------------------------------------------
   swe-af:
@@ -255,6 +292,7 @@ volumes:
   agentfield-data:
   codeaf-data:
   runner-data:
+  relay-data:
   swe-af-workspaces:
   pr-af-workspaces:
   sessions-data:

@@ -3959,6 +3959,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// The organization's own relay (organization-relay.md): the team stack runs
+		// one, `codeaf pair --org` looks it up, and a relay named outright still wins.
+		{"does my organization run its own relay", "organization-relay"},
+		{"what is a self-hosted team relay", "organization-relay"},
+		{"how do I pair my computers through my company's relay", "organization-relay"},
+		{"what does codeaf pair --org do", "organization-relay"},
+		{"pair --org says my organization does not run a relay for my computers", "organization-relay"},
+		{"how do I make my team's hosted stack run a relay for everyone in it", "organization-relay"},
+		{"what is CODEAF_ORG_RELAY_URL", "organization-relay"},
+		{"does my organization's relay keep my chats", "organization-relay"},
+		{"can a stranger use my team's relay", "organization-relay"},
+		{"can I still use my own relay if my organization has one", "organization-relay"},
 		// Remote control (internal/manual/chat/remote-control.md): working in a chat
 		// another of the person's computers is running, without moving it.
 		{"how do I see my chat from my other computer", "remote-control"},
@@ -3980,6 +3992,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"remote control says restart codeaf on the other computer", "remote-control"},
 		{"do I need to restart codeaf after I turn remote control on", "remote-control"},
 		{"I turned remote control on in settings but enter still asks to move the chat", "remote-control"},
+		{"does remote control work for the chats in my organization", "remote-control"},
+		{"my organization's chat is open on two of my computers and I cannot tell which one has the keyboard", "remote-control"},
+		{"my codeaf chat --org window lost its connection when my laptop went to sleep", "organization-hosted-sessions"},
+		{"in a shared hosted chat who is typing right now", "organization-hosted-sessions"},
 		{"after I open a chat live from my other computer Home's project is a folder that does not exist on this computer", "remote-control"},
 		{"does opening a chat live change the project on home", "remote-control"},
 		{"is remote control the same as codeaf serve and --at", "remote-control"},

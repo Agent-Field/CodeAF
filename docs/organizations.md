@@ -49,6 +49,7 @@ Two readers:
 | organization server | `codeaf factory serve` in team mode. Signs people in, keeps the access rules, mints each chat's model access, meters spend, and adds a person's own GitHub access to a chat's git. |
 | sessionhost | The machine hosted chats run on. Gives every chat its own Linux user and folder and fences its commands. Optional: only with hosted chats on. |
 | AgentField control plane | Routes factory work to the nodes. |
+| relay | The organization's own relay, `codeaf relay`: where members' computers pair, see each other, Move chats and open each other's chats live, so none of that needs the public one. It keeps each member's list of computers and no chat content. `codeaf pair --org <url>` pairs through it; an explicit `CODEAF_SYNC_URL` or `--via` still wins. |
 | factory runner, SWE-AF, PR-AF | The factory's nodes: the runner hosts the codeaf factory, SWE-AF builds an issue into a pull request, PR-AF reviews one. |
 | modelstub, gitstub | A scripted model and git host for the keyless smoke test only. |
 
@@ -160,7 +161,7 @@ Compose stack cannot turn it on.
 
 ## The ten minutes
 
-You need `git`, Docker with Compose v2.24 or newer, 4 GB of free memory, ports 8787 and 8080 free on the host, and a
+You need `git`, Docker with Compose v2.24 or newer, 4 GB of free memory, ports 8787, 8788 and 8080 free on the host, and a
 Linux host (Linux 6.12 or newer for the full sandbox; see the sandbox note below). For real work add an OpenRouter key; to
 try it first, the scripted model needs none. For anyone to sign in with a password, **including you on the same machine**,
 you need an HTTPS name in front of port 8787: the server takes a password only over HTTPS, and Docker does not hand it a

@@ -8,12 +8,12 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire.
 
-Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request (one started with `--storage off` keeps no chats at all, and has nothing to approve).
 
 - **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
 
-Either way the relay sees only ciphertext and the short list on "What can the relay see".
+Either way it sees only ciphertext and the short list on "What can the relay see".
 
 ## Where sync goes by default — stable, staging and dev relay addresses
 
@@ -45,12 +45,13 @@ codeaf relay --listen :8787 --store /var/lib/codeaf
 
 - `--listen` is the address to listen on. The default is `:8787`.
 - `--store <directory>` is where the relay keeps the directory and the chunks. **Without `--store` the relay only passes pairing and remote-access traffic. It keeps no chats, and sync does not work through it.** The directory is made if it is not there.
+- `--storage off` keeps the directory (the list of your computers) and refuses chat content: computers are told storing is off, so they keep their chats where they are and stop asking. The default is `on`. An organization's stack starts it this way.
 - `--quiet` turns the log off. `--status=false` turns off `GET /status`.
 - `--trust-proxy` makes registration, dial and pairing limits count the first address in `X-Forwarded-For`, falling back to the socket address when absent or blank. without it, forwarding headers are ignored. a relay behind Railway, a load balancer or nginx must pass this flag or every caller shares the proxy's allowance. use it only behind a proxy that sets that header.
 
 Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has no TLS of its own.** Put a proxy that ends TLS in front of it if any computer reaches it over a network you do not own.
 
-There is no Docker image for the relay. The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
+There is no Docker image of the relay by itself; an organization's stack runs one (*Your organization's own relay*). The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
 
 ## Why does my native relay answer leadership unavailable or HTTP 503
 
