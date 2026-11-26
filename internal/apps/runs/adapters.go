@@ -54,13 +54,15 @@ type RecordCall struct {
 	// Trigger provenance goes only to the trusted data adapter.
 	causeChain  []string
 	agentOrigin *AgentActionOrigin
+	ai          bool
 }
 
 type AgentCall struct {
 	Call
-	Prompt    string
-	Steps     map[string]any
-	Remaining float64
+	Prompt                   string
+	Steps                    map[string]any
+	Remaining                float64
+	IntakeType, IntakeRecord string
 }
 
 type Approval struct {

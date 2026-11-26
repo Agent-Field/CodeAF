@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/outputs"
@@ -22,7 +23,7 @@ import (
 
 // An app run supplies the principal and kept version before the model sees
 // any records or command arguments. The executor has one literal app verb.
-func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, call runs.AgentCall, model, system, prompt string, client session.Completer, spend *session.SpendGuard) (runs.Reply, error) {
+func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, call runs.AgentCall, model, system, prompt string, client session.Completer, spend *session.SpendGuard, attachments ...ai.ContentPart) (runs.Reply, error) {
 	workspace, err := os.MkdirTemp("", "codeaf-app-output-")
 	if err != nil {
 		return runs.Reply{}, err
@@ -66,6 +67,6 @@ func (b *appBackend) completeOutputAgent(ctx context.Context, app schema.App, ca
 		}
 		receipt, err := json.Marshal(file)
 		return string(receipt), err
-	})
+	}, attachments...)
 	return runs.Reply{Output: answer, Cost: spend.Task.Total()}, err
 }

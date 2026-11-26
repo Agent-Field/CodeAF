@@ -284,16 +284,20 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			}
 			return runs.Reply{Output: answer, Cost: spend.Task.Total()}, err
 		}
+		attachments, err := b.appRunIntakeParts(call)
+		if err != nil {
+			return runs.Reply{}, err
+		}
 		app, err := b.outputApp(call.App)
 		if err != nil {
 			return runs.Reply{}, err
 		}
 		var result runs.Reply
 		if app.Kit == 2 && len(app.Outputs) > 0 {
-			result, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, client, spend)
+			result, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, client, spend, attachments...)
 		} else {
 			ctx, recorded := factoryAIAccounting(ctx, settings, model, name, nil)
-			reply, callErr := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt)
+			reply, callErr := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt, attachments...)
 			err = callErr
 			result.Cost = recorded(reply)
 			if reply != nil {

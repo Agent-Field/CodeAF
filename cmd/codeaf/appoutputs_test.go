@@ -314,8 +314,19 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 	}
 	var calls int
 	var expectGrantRefusal bool
+	const pdfData = "data:application/pdf;base64,JVBERi0xLjQK"
+	attachment := ai.ContentPart{Type: "file", InputFile: &ai.InputFileData{FileData: pdfData}}
 	client := pricingCompleter(func(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 		calls++
+		var attached bool
+		for _, previous := range messages {
+			for _, part := range previous.Content {
+				attached = attached || previous.Role == "user" && part.Type == "file" && part.InputFile != nil && part.InputFile.FileData == pdfData
+			}
+		}
+		if !attached {
+			return nil, errors.New("intake PDF did not reach the output agent")
+		}
 		message := ai.Message{Role: "assistant"}
 		if calls == 1 {
 			for i, text := range []string{command, command, `codeaf app render {"app":"another-app","output":"contact-card"}`} {
@@ -348,7 +359,7 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 		}, nil
 	})
 	call := runs.AgentCall{Call: runs.Call{App: id, ID: "run-for-contact", Step: "draft", Key: "run-for-contact-1"}}
-	result, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{})
+	result, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{}, attachment)
 	if err != nil || result.Output != "Saved the contact card." || result.Cost != 0.04 {
 		t.Fatalf("scoped agent answer: %+v, %v", result, err)
 	}
@@ -379,7 +390,7 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls, expectGrantRefusal = 0, true
-	if _, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{}); err != nil {
+	if _, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client, &session.SpendGuard{}, attachment); err != nil {
 		t.Fatalf("revoked grant on replay: %v", err)
 	}
 }
