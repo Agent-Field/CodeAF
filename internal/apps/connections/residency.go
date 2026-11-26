@@ -15,6 +15,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
+const maxSyncRows = 10_000
+
 type CutoverRequest struct {
 	App            string             `json:"app"`
 	Type           string             `json:"type"`
@@ -60,24 +62,33 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 		return route, err
 	}
 	route.store, route.typ, route.state = store, typ, state
+	if typ.Common == "" {
+		return route, nil
+	}
 	if state.Binding.App != "" && state.Binding.App != app {
 		return route, errors.New("the source binding is outside this app's scope")
 	}
-	summaries, err := s.List(app)
+	definitions, err := s.vault().Definitions()
 	if err != nil {
 		return route, err
 	}
-	for _, entry := range summaries {
-		if state.Binding.App != "" && state.Binding.Connection != entry.ID {
+	for _, id := range slices.Sorted(maps.Keys(definitions)) {
+		if state.Binding.App != "" && state.Binding.Connection != id {
 			continue
 		}
-		cfg, err := s.scoped(app, entry.ID)
-		if err != nil {
+		var cfg registration
+		if decodeJSON(definitions[id], &cfg) != nil || cfg.App != app || cfg.ID != id {
+			continue
+		}
+		if err := cfg.validate(); err != nil {
 			return route, err
 		}
 		for name, read := range cfg.Reads {
-			if read.Residency == nil || read.Type != alias && read.Type != typ.Name ||
-				state.Binding.App != "" && state.Binding.Read != name {
+			if read.Residency == nil || state.Binding.App != "" && state.Binding.Read != name {
+				continue
+			}
+			bound, err := store.Type(scope, read.Type)
+			if err != nil || bound.ID != typ.ID {
 				continue
 			}
 			if route.read.Residency != nil {
@@ -159,19 +170,23 @@ func (s Service) cutover(ctx context.Context, req CutoverRequest, confirmation s
 	if err != nil {
 		return empty, err
 	}
-	return r.store.Cutover(r.binding, req.Type, req.To, req.SourceQuiesced, snapshot, confirmation, func(records []data.ResidencyReplay) error {
+	return r.store.Cutover(r.binding, req.Type, req.To, req.SourceQuiesced, snapshot, confirmation, func(records []data.ResidencyReplay) (data.ResidencySnapshot, error) {
 		if len(records) == 0 {
-			return nil
+			return snapshot, nil
 		}
 		for _, record := range records {
 			if err := replaySQLRow(ctx, tx, r.read, record); err != nil {
-				return err
+				return snapshot, err
 			}
 		}
-		if err := tx.Commit(); err != nil {
-			return ErrUncertain
+		refreshed, err := readResidencySnapshot(ctx, tx, r, "")
+		if err != nil {
+			return snapshot, err
 		}
-		return nil
+		if err := tx.Commit(); err != nil {
+			return snapshot, ErrUncertain
+		}
+		return refreshed, nil
 	})
 }
 
@@ -222,16 +237,20 @@ func (s Service) openSnapshot(ctx context.Context, r residencyRoute, fence bool)
 func readResidencySnapshot(ctx context.Context, tx *sql.Tx, r residencyRoute, checkpoint string) (data.ResidencySnapshot, error) {
 	snapshot := data.ResidencySnapshot{ObservedAt: time.Now().UTC()}
 	var sourceTime time.Time
-	if err := tx.QueryRowContext(ctx, "SELECT transaction_timestamp()").Scan(&sourceTime); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&sourceTime); err != nil {
 		return snapshot, ErrUnavailable
 	}
 	snapshot.Checkpoint = sourceTime.UTC().Format(time.RFC3339Nano)
-	raw, err := scanSQLRows(ctx, tx, Postgres, r.read, nil, maxRows+1, checkpoint, true, snapshot.Checkpoint)
+	upper := snapshot.Checkpoint
+	if checkpoint == "" {
+		upper = ""
+	}
+	raw, err := scanSQLRows(ctx, tx, Postgres, r.read, nil, maxSyncRows+1, checkpoint, true, upper)
 	if err != nil {
 		return snapshot, err
 	}
-	if len(raw) > maxRows {
-		return snapshot, fmt.Errorf("a residency snapshot or poll may cover at most %d rows", maxRows)
+	if len(raw) > maxSyncRows {
+		return snapshot, fmt.Errorf("a residency snapshot or poll may cover at most %d rows", maxSyncRows)
 	}
 	seen := map[string]bool{}
 	for _, item := range raw {
@@ -344,6 +363,25 @@ func (r residencyRoute) checkEpoch() error {
 // Refresh polls configured mirrors under the engine lifecycle. It also
 // invalidates live watches periodically because N1 source reads are uncached.
 func (s Service) Refresh(ctx context.Context) {
+	s.refresh(ctx, make(map[string]time.Time))
+}
+
+// WatchResidency owns the runtime's polling cadence for both routes.
+func (s Service) WatchResidency(ctx context.Context) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	lastLive := make(map[string]time.Time)
+	for {
+		s.refresh(ctx, lastLive)
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 	defs, err := s.vault().Definitions()
 	if err != nil {
 		return
@@ -369,7 +407,12 @@ func (s Service) Refresh(ctx context.Context) {
 					_ = s.SyncResidency(ctx, cfg.App, read.Type)
 				}
 			} else if r.state.Mode == data.ResidencyLive && r.store.HasSourceWatch(r.typ.ID, r.binding.Key.Binding) {
-				_ = r.store.InvalidateSource(r.typ.ID, r.binding.Key.Binding)
+				key := r.typ.ID
+				if time.Since(lastLive[key]) >= time.Duration(read.Residency.FreshForSeconds)*time.Second {
+					if r.store.InvalidateSource(r.typ.ID, r.binding.Key.Binding) == nil {
+						lastLive[key] = time.Now()
+					}
+				}
 			}
 		}
 	}
@@ -382,21 +425,78 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 	if err != nil {
 		return ir, Source{}, nil, err
 	}
-	if r.read.Residency == nil {
-		return ir, NativeSource(), nil, nil
-	}
-	if r.state.Mode != data.ResidencyLive {
-		return ir, r.source(), nil, nil
-	}
-	page, err := s.Read(ctx, Query{App: app, Connection: r.config.ID, Read: r.name, Limit: maxRows})
+	scop := data.Scope{App: app}
+	dependencies, err := r.store.QueryDependencies(scop, &ir)
 	if err != nil {
 		return ir, Source{}, nil, err
 	}
-	if page.HasMore {
-		return ir, Source{}, nil, ErrTooLarge
+	source := NativeSource()
+	var scans []data.SourceScan
+	var versions map[string]string
+	if r.read.Residency != nil {
+		source = r.source()
 	}
-	sourceIR, err := r.store.WithSourceRows(data.Scope{App: app}, ir, page.Rows, page.Source)
-	return sourceIR, page.Source, sourceVersions(page.Rows), err
+	if r.state.Mode == data.ResidencyLive {
+		scan, err := s.liveScan(ctx, r, ir.Type, textFilters(r, ir))
+		if err != nil {
+			return ir, Source{}, nil, err
+		}
+		scans = append(scans, scan)
+		source, versions = scan.Source, sourceVersions(scan.Rows)
+	}
+	for _, id := range dependencies {
+		relation, err := s.route(app, id)
+		if err != nil {
+			return ir, Source{}, nil, err
+		}
+		if relation.read.Residency == nil {
+			continue
+		}
+		relatedSource := relation.source()
+		if relation.state.Mode == data.ResidencyLive {
+			scan, err := s.liveScan(ctx, relation, id, nil)
+			if err != nil {
+				return ir, Source{}, nil, err
+			}
+			scans = append(scans, scan)
+			relatedSource = scan.Source
+		}
+		source.Contributors = append(source.Contributors, relatedSource)
+	}
+	planned, err := r.store.WithSourceScans(scop, ir, scans)
+	return planned, source, versions, err
+}
+
+func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, filters map[string]any) (data.SourceScan, error) {
+	page, err := s.Read(ctx, Query{App: r.config.App, Connection: r.config.ID, Read: r.name, Limit: maxRows, filters: filters})
+	if err != nil {
+		return data.SourceScan{}, err
+	}
+	if page.HasMore {
+		return data.SourceScan{}, ErrTooLarge
+	}
+	return data.SourceScan{Type: typ, Rows: page.Rows, Source: page.Source}, nil
+}
+
+// Effective text equality matches SQLite's ASCII-only case folding. Any
+// condition with additional syntax stays in the shared evaluator.
+func textFilters(r residencyRoute, ir data.QueryIR) map[string]any {
+	out := make(map[string]any)
+	for _, cond := range ir.Where {
+		col := r.read.Fields[cond.Field]
+		field := r.typ.Fields[cond.Field]
+		value := cond.Value
+		if !cond.Literal {
+			value = strings.TrimSpace(value)
+		}
+		if col == "" || field == nil || field.Masked || (field.Type != data.TypeText && field.Type != data.TypeLongtext) ||
+			(cond.Op != ":" && cond.Op != "=") || cond.Neg || value == "" || strings.TrimSpace(value) == "" ||
+			strings.ContainsAny(value, "*%_\\,\"\x00") || (!cond.Literal && strings.HasPrefix(value, "-")) {
+			continue
+		}
+		out[col] = sqlTextMatch(value)
+	}
+	return out
 }
 
 func sourceVersions(rows []data.Row) map[string]string {
@@ -448,7 +548,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 // AttachVersions adds the broker's expected source token separately from the
 // SQLite record revision. A native update has no source write token.
 func (s Service) AttachVersions(app, alias string, source Source, rows []data.Row) error {
-	if source.Connection == "" || source.Residency == string(data.ResidencyLive) {
+	if source.Connection == "" {
 		return nil
 	}
 	r, err := s.route(app, alias)
@@ -501,4 +601,31 @@ func mappedSourceValue(store *data.Store, app string, read Read, field *data.Fie
 		return nil, errors.New("a source reference has no permitted canonical record")
 	}
 	return row.ID(), nil
+}
+
+// WatchBindings names the bindings whose rows must be refetched rather than
+// delivered. Native queries without distributed inputs use native snapshots.
+func (s Service) WatchBindings(app string, ir data.QueryIR) ([]string, error) {
+	root, err := s.route(app, ir.Type)
+	if err != nil {
+		return nil, err
+	}
+	depends, err := root.store.QueryDependencies(data.Scope{App: app}, &ir)
+	if err != nil {
+		return nil, err
+	}
+	var bindings []string
+	if root.state.Mode != data.ResidencyNative {
+		bindings = append(bindings, root.binding.Key.Binding)
+	}
+	for _, id := range depends {
+		r, err := s.route(app, id)
+		if err != nil {
+			return nil, err
+		}
+		if r.state.Mode != data.ResidencyNative {
+			bindings = append(bindings, r.binding.Key.Binding)
+		}
+	}
+	return bindings, nil
 }

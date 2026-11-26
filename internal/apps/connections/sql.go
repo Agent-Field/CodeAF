@@ -82,6 +82,8 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	return scanSQLRows(ctx, tx, kind, read, match, limit, "", false, "")
 }
 
+type sqlTextMatch string
+
 func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match map[string]any, limit int, checkpoint string, includeDeleted bool, upper string) ([]map[string]any, error) {
 	wanted := append(columnNames(read.Fields), read.Key)
 	if read.Version != "" {
@@ -106,8 +108,16 @@ func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match ma
 	var predicates []string
 	var args []any
 	for _, name := range slices.Sorted(maps.Keys(match)) {
-		args = append(args, sqlValue(match[name]))
-		predicates = append(predicates, kind.quote(name)+" = "+kind.placeholder(len(args)))
+		arg, col := sqlValue(match[name]), kind.quote(name)
+		param := kind.placeholder(len(args) + 1)
+		if text, ok := arg.(sqlTextMatch); ok {
+			const ascii = ",'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') COLLATE \"C\""
+			col = "translate(CAST(" + col + " AS TEXT)" + ascii
+			param = "translate(" + param + "::text" + ascii
+			arg = string(text)
+		}
+		args = append(args, arg)
+		predicates = append(predicates, col+" = "+param)
 	}
 	if r := read.Residency; r != nil {
 		if !includeDeleted {

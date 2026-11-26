@@ -57,6 +57,7 @@ type Query struct {
 	Args       Arguments `json:"args,omitempty"`
 	Limit      int       `json:"limit,omitempty"`
 	id         string
+	filters    map[string]any
 }
 
 // Arguments preserves JSON numbers until the source interprets them.
@@ -247,6 +248,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	maps.Copy(args, q.filters)
 	if q.id != "" {
 		key, err := effectKey(store, c, read, binding, q.id)
 		if err != nil {

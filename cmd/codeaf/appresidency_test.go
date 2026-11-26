@@ -78,6 +78,10 @@ func TestAppResidencyCLIAndWireParity(t *testing.T) {
 		return page
 	}
 	live := query("live")
+	rawHistory, wireErr := wire.call("data.history", map[string]any{"app": "crm", "type": "contact", "id": live.Rows[0]["id"]})
+	if wireErr != nil || string(bytes.TrimSpace(rawHistory)) != `{"history":[]}` {
+		t.Fatalf("live history: %s %v", rawHistory, wireErr)
+	}
 	watch := appwire.DataSubscribeParams{DataScope: appwire.DataScope{App: "crm"}, Sub: "contacts", Type: "contact", Query: "sort:name"}
 	initial, err := b.DataSubscribe(watch)
 	if err != nil || initial.Snapshot != nil {

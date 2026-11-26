@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -139,10 +140,13 @@ func TestPostgresCRMResidencyRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%s → %s rows=%d conflicts=%d epochs=%+v", preview.From, mode, preview.Rows, preview.Conflicts, result.Epochs)
+		t.Logf("%s → %s rows=%d conflicts=%d replay_rows=%d epochs=%+v", preview.From, mode, preview.Rows, preview.Conflicts, preview.ReplayRows, result.Epochs)
 	}
 	cut(data.ResidencyMirror, false)
 	read("mirror", 2, "Ada")
+	if _, err := store.Create(scope, "deal", []map[string]any{{"name": "Sale", "company": companyID, "contacts": []any{id}}}); err != nil {
+		t.Fatal(err)
+	}
 	execSQL(`UPDATE contacts SET name='Ada Byron',version=2,updated_at=clock_timestamp() WHERE id=42`)
 	if err := svc.SyncResidency(ctx, "crm", "contact"); err != nil {
 		t.Fatal(err)
@@ -196,6 +200,25 @@ func TestPostgresCRMResidencyRoundTrip(t *testing.T) {
 	final := read("live", 2, "Ada King")
 	if final.Rows[0].ID() != id || final.Rows[1].ID() != live.Rows[1].ID() {
 		t.Fatal("Person IDs changed on rollback")
+	}
+	linked := data.QueryIR{Type: "deal", Select: []string{"contacts.name"}, Where: []data.Cond{{Field: "contacts.name", Op: ":", Value: "Ada King"}}}
+	planned, source, _, err := svc.PlanQuery(ctx, "crm", linked)
+	if err != nil || len(source.Contributors) != 1 || source.Contributors[0].Residency != "live" {
+		t.Fatalf("federated sources: %+v %v", source, err)
+	}
+	dealt, err := store.QueryRows(scope, &planned, "", 0)
+	if err != nil || len(dealt.Rows) != 1 || !reflect.DeepEqual(dealt.Rows[0]["contacts.name"], []any{"Ada King"}) {
+		t.Fatalf("native Deal's live Contact: %+v %v", dealt, err)
+	}
+	execSQL(`INSERT INTO contacts(id,name,version) SELECT id, 'Other '||id, 1 FROM generate_series(100,700) id`)
+	narrow := data.QueryIR{Type: "contact", Where: []data.Cond{{Field: "name", Op: ":", Value: "ADA KING"}}}
+	filtered, _, _, err := svc.PlanQuery(ctx, "crm", narrow)
+	if err != nil {
+		t.Fatalf("bounded pushdown: %v", err)
+	}
+	found, err := store.QueryRows(scope, &filtered, "", 0)
+	if err != nil || found.Total != 1 || found.Rows[0].ID() != id {
+		t.Fatalf("bounded pushdown: %+v %v", found, err)
 	}
 	t.Log("live still has the native edit and both original Person IDs")
 }

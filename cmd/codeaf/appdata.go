@@ -322,6 +322,18 @@ func (b *appBackend) DataHistory(p appwire.DataRecordParams) (*appwire.DataHisto
 	if err != nil {
 		return nil, err
 	}
+	if p.App != "" && p.Draft == "" {
+		source, err := b.appConnections().Residency(p.App, p.Type)
+		if err != nil {
+			return nil, appConnectionError(err)
+		}
+		if source.TypeResidency.Mode == data.ResidencyLive {
+			if _, _, err := b.appConnections().GetRecord(context.Background(), p.App, p.Type, p.ID, false); err != nil {
+				return nil, appConnectionError(err)
+			}
+			return &appwire.DataHistoryResult{History: []appwire.DataHistoryEntry{}}, nil
+		}
+	}
 	entries, err := s.History(dataScope(p.DataScope), p.Type, p.ID)
 	if err != nil {
 		return nil, appDataError(err)
@@ -532,13 +544,17 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	p.Sub = strings.TrimSpace(p.Sub)
 	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID, Table: p.Table, InvalidateOnly: p.InvalidateOnly}
 	if p.Draft == "" && p.App != "" && p.Type != "" && p.Table == "" {
-		state, err := b.appConnections().Residency(p.App, p.Type)
+		ir, err := queryIR(p.Type, p.Query, nil)
+		if err != nil {
+			return nil, err
+		}
+		bindings, err := b.appConnections().WatchBindings(p.App, *ir)
 		if err != nil {
 			return nil, appConnectionError(err)
 		}
-		if state.Connection != "" {
+		if len(bindings) > 0 {
 			spec.InvalidateOnly = true
-			spec.Bindings = []string{state.Binding}
+			spec.Bindings = bindings
 		}
 	}
 	if p.Cursor != nil {

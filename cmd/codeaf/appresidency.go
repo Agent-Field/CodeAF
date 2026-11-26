@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -46,7 +45,7 @@ func appResidencyCommand(b *appBackend, args []string, out io.Writer) error {
 				return err
 			}
 			backend := &appBackend{}
-			backend.data.place = data.NewPlace(backend.dataRoot(), data.Options{NoRefresh: true})
+			backend.data.place = data.NewPlace(backend.dataRoot(), data.Options{NoRefresh: true, RequireAgentPrincipal: true})
 			defer backend.closeData()
 			value, err := appwire.RunAppCommand(backend, method, raw)
 			if err != nil {
@@ -81,19 +80,6 @@ func appResidencyCommand(b *appBackend, args []string, out io.Writer) error {
 		return execute("residency.preview", request)
 	}
 	return execute("residency.cutover", appwire.ApplyCutoverParams{CutoverRequest: request, Confirmation: *confirmation})
-}
-
-func (b *appBackend) watchAppResidency(ctx context.Context) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		b.appConnections().Refresh(ctx)
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-		}
-	}
 }
 
 func (b *appBackend) planAppQuery(p appwire.DataScope, ir *data.QueryIR) (*data.QueryIR, connections.Source, map[string]string, error) {

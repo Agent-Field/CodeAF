@@ -99,7 +99,7 @@ func (s *Store) QueryRows(sc Scope, ir *QueryIR, after string, limit int) (*Page
 	if err != nil {
 		return nil, err
 	}
-	sel, err := s.selection(sch, t, sc, ir.Select)
+	sel, err := s.selection(sch, t, sc, ir.Select, c)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (s *Store) QueryRows(sc Scope, ir *QueryIR, after string, limit int) (*Page
 	if err != nil || sel == nil {
 		return page, err
 	}
-	return page, sel.project(s, sch, sc, page.Rows)
+	return page, sel.project(s, sch, sc, c, page.Rows)
 }
 
 // selection is a query's select list, checked: its own fields, and per link
@@ -118,7 +118,7 @@ type selection struct {
 	links   []string
 }
 
-func (s *Store) selection(sch *schema, t *Type, sc Scope, list []string) (*selection, error) {
+func (s *Store) selection(sch *schema, t *Type, sc Scope, list []string, c *compiled) (*selection, error) {
 	if len(list) == 0 {
 		return nil, nil
 	}
@@ -143,9 +143,7 @@ func (s *Store) selection(sch *schema, t *Type, sc Scope, list []string) (*selec
 		if err != nil {
 			return nil, err
 		}
-		if err := s.checkLocalRead(target, nil); err != nil {
-			return nil, err
-		}
+		c.related[target.ID] = true
 		g := target.field(tail)
 		if g == nil {
 			return nil, fieldErr(name, "%s records have no field %q", target.Name, tail)
@@ -160,7 +158,7 @@ func (s *Store) selection(sch *schema, t *Type, sc Scope, list []string) (*selec
 
 // project cuts rows down to the selection and adds each related record's
 // fields, read in one query per link.
-func (sel *selection) project(s *Store, sch *schema, sc Scope, rows []Row) error {
+func (sel *selection) project(s *Store, sch *schema, sc Scope, c *compiled, rows []Row) error {
 	t := sch.types[firstType(rows)]
 	keep := map[string]bool{"id": true, "type": true, "created_at": true, "updated_at": true, "_rev": true, "_meta": true}
 	for _, name := range sel.own {
@@ -187,15 +185,16 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, rows []Row) error
 		}
 		related := map[string]Row{}
 		if len(ids) > 0 {
-			err := eachRow(s.rdb, `SELECT `+recordColumns+` FROM records WHERE type_id = ? AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?))`,
-				[]any{target.ID, canonicalJSON(ids)}, func(scan func(...any) error) error {
-					r, err := scanRecord(sch, scan)
-					if err != nil {
-						return err
-					}
-					related[r.ID] = s.row(target, r, sc, false)
-					return nil
-				})
+			stmt, args := c.statement(`SELECT `+recordColumns+` FROM records WHERE type_id = ? AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?))`,
+				[]any{target.ID, canonicalJSON(ids)})
+			err := eachRow(s.rdb, stmt, args, func(scan func(...any) error) error {
+				r, err := scanRecord(sch, scan)
+				if err != nil {
+					return err
+				}
+				related[r.ID] = s.row(target, r, sc, false)
+				return nil
+			})
 			if err != nil {
 				return err
 			}

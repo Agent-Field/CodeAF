@@ -129,6 +129,13 @@ func (s *Store) DeclareResidencies(bindings map[string]ResidencyBinding, registe
 			if state.Binding.App != "" {
 				return errorf(CodeInvalid, "the type already has a residency binding")
 			}
+			var existing bool
+			if err := w.tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM records WHERE type_id = ? AND deleted_at IS NULL)`, t.ID).Scan(&existing); err != nil {
+				return err
+			}
+			if existing {
+				return errorf(CodeNotAllowed, "a live binding needs an empty type; move its native records first")
+			}
 			state.Mode, state.Binding = ResidencyLive, binding
 			if err := w.saveResidency(t, state); err != nil {
 				return err
@@ -148,7 +155,7 @@ func (s *Store) DeclareResidencies(bindings map[string]ResidencyBinding, registe
 // A source transaction fences the snapshot and performs conditional reverse
 // replay while the local writer serializes record edits and epoch changes.
 func (s *Store) Cutover(binding ResidencyBinding, alias string, to ResidencyMode, quiesced bool, snapshot ResidencySnapshot,
-	confirmation string, replay func([]ResidencyReplay) error) (ResidencyPlan, error) {
+	confirmation string, replay func([]ResidencyReplay) (ResidencySnapshot, error)) (ResidencyPlan, error) {
 	var plan ResidencyPlan
 	err := s.write(func(w *writeTx) error {
 		t, err := w.schema.allow(Scope{App: binding.App}, alias, true)
@@ -201,13 +208,19 @@ func (s *Store) Cutover(binding ResidencyBinding, alias string, to ResidencyMode
 		}
 		plan.Epochs = next
 		state.Mode, state.Epochs = to, next
+		if plan.From == ResidencyNative {
+			snapshot, err = replay(reverse)
+			if err != nil {
+				return err
+			}
+		}
 		state.Checkpoint, state.CheckedAt = snapshot.Checkpoint, snapshot.ObservedAt
 		if to == ResidencyLive {
 			if err := w.retireMirrorRows(t, binding.Key); err != nil {
 				return err
 			}
 		}
-		if to != ResidencyLive && plan.From != ResidencyNative {
+		if to != ResidencyLive {
 			if err := w.applyResidencyRows(t, state, snapshot.Rows); err != nil {
 				return err
 			}
@@ -221,9 +234,6 @@ func (s *Store) Cutover(binding ResidencyBinding, alias string, to ResidencyMode
 		}
 		if err := w.invalidate(EventMappingChanged, t.ID, binding.Key.Binding); err != nil {
 			return err
-		}
-		if plan.From == ResidencyNative {
-			return replay(reverse)
 		}
 		return nil
 	})
