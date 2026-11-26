@@ -88,7 +88,7 @@ existing canonical record IDs, keyed by app field name.
 2. Run `codeaf app residency preview APP TYPE mirror` to see row counts, conflicts and a confirmation token.
 3. Apply that plan with `codeaf app residency apply APP TYPE mirror --confirm TOKEN`.
 
-The live read uses a five-second deadline and caches no rows. Live contacts have an empty local history. Mirror copies a bounded snapshot first and
+The live read uses a five-second deadline and caches no rows. Live contacts have an empty local history. Live fields stay masked when reveal is requested. Mirror copies a bounded snapshot first and
 then polls for edits with a five-minute overlap. Each snapshot or poll is limited to 10,000 rows and one
 MiB. Split a larger export into smaller bound types to bring it in. Narrow a live query if its eligible scan exceeds 500 rows. The app version, canonical record IDs and company links stay the same. Set up a live binding on an empty type. The Personal engine catches
 up when it starts. The owner wire uses `residency.show`, `residency.preview` and `residency.cutover`.

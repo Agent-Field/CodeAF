@@ -581,6 +581,11 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	}
 	b.data.subs[p.Sub] = appDataSubscription{store: s, gate: gate}
 	result := &appwire.DataSubscribeResult{Cursor: snapshot.Cursor}
+	// A source-backed watch starts with a refetch even if the first poll
+	// finds nothing new to journal.
+	if len(spec.Bindings) != 0 && !spec.Resume {
+		gate.queue(data.Diff{Sub: p.Sub, Cursor: snapshot.Cursor, Reset: true})
+	}
 	if snapshot.Rows != nil {
 		source := connections.NativeSource()
 		source.ObserveNative(snapshot.Rows)

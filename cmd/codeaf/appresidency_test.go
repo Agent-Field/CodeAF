@@ -87,6 +87,10 @@ func TestAppResidencyCLIAndWireParity(t *testing.T) {
 	if err != nil || initial.Snapshot != nil {
 		t.Fatalf("source watch leaked a snapshot: %+v %v", initial, err)
 	}
+	events.waitFor(t, 5*time.Second, func(event string, payload any) bool {
+		reset, ok := payload.(appwire.DataReset)
+		return event == appwire.EventDataReset && ok && reset.Sub == watch.Sub && reset.Cursor == initial.Cursor
+	})
 	svc.Refresh(t.Context())
 	events.waitFor(t, 5*time.Second, func(event string, payload any) bool {
 		reset, ok := payload.(appwire.DataReset)

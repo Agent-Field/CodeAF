@@ -544,7 +544,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 	}
 	if r.state.Mode == data.ResidencyLive {
 		if reveal {
-			return nil, Source{}, ErrRejected
+			return nil, Source{}, &data.Error{Code: data.CodeNotAllowed, Message: "live source fields stay masked"}
 		}
 		p, err := s.Read(ctx, Query{App: app, Connection: r.config.ID, Read: r.name, Limit: 1, id: id})
 		if err != nil {
