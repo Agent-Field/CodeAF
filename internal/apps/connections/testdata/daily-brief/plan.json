@@ -1,0 +1,18 @@
+{
+  "$schema":"https://codeaf.dev/schema/plan/1.json",
+  "ask":"Show my Outlook messages, calendar and documents in one Daily brief.",
+  "data":[
+    {"id":"message","line":"Outlook Inbox messages"},
+    {"id":"meeting","line":"Calendar meetings"},
+    {"id":"document","line":"OneDrive or SharePoint files and Teams transcripts"},
+    {"id":"person","line":"Directory people"},
+    {"id":"company","line":"Directory domains"}
+  ],
+  "screens":[{"id":"brief","line":"Daily brief with messages, meetings and files"}],
+  "automation":[
+    {"id":"brief","line":"Start when Outlook, Calendar or Teams has a matching change"},
+    {"id":"draft","line":"Create an Outlook draft after approval"},
+    {"id":"create-event","line":"Create a Calendar event after approval"},
+    {"id":"update-event","line":"Update a Calendar event after approval"}
+  ]
+}
