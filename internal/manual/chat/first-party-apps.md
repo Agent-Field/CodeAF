@@ -22,7 +22,7 @@ Ask AI can explain the selected formula. Fill column proposes values for empty c
 
 Slides lists presentations. Use the thumbnails to switch slides, Layout for title, two-column, chart and image layouts, and Notes for presenter notes. Present opens the current deck. Use the arrow keys to move between slides. Choose image accepts PNG, JPEG and WebP files.
 
-Canvas uses the Desk canvas stage. Add sticky notes, frames and shapes from the board toolbar. Select one object, choose Connector, select the destination and choose Connect to selection. The connector follows the objects when they move. Edit object changes its title and text.
+Canvas uses the Desk canvas stage. Add sticky notes, frames and shapes from Canvas's toolbar. Select one object, choose Connector, select the destination and choose Connect to selection. The connector follows the objects when they move. Edit object changes its title and text.
 
 ## Fork an editor and ask for a change
 
