@@ -114,6 +114,8 @@ func TestCheckRejectsALiteralPlaceholderInARecordPage(t *testing.T) {
 		valid   bool
 	}{
 		{"selection", false},
+		{"deals", false},
+		{"deal", false},
 		{"$selection.deals.id", true},
 		{"00000000000000000000000001", true},
 	} {
@@ -132,7 +134,8 @@ func TestCheckRejectsALiteralPlaceholderInARecordPage(t *testing.T) {
 				}
 				return
 			}
-			if len(report.Problems) != 1 || report.Problems[0].File != file || report.Problems[0].Code != "record_binding_invalid" {
+			if len(report.Problems) != 1 || report.Problems[0].File != file || report.Problems[0].Code != "record_binding_invalid" ||
+				!strings.Contains(report.Problems[0].Message, fmt.Sprintf("%q", example.binding)) {
 				t.Fatalf("Check must report only the invalid record binding: %v", report)
 			}
 		})
