@@ -148,3 +148,54 @@ func TestMicrosoftSignInPKCEAndRefreshArePersisted(t *testing.T) {
 		t.Fatalf("refresh did not preserve the grant and rotate the stored token: %v %v", err, readErr)
 	}
 }
+
+func TestMicrosoftTranscriptDenialSurvivesRestartAndFollowsTheGrant(t *testing.T) {
+	const id = "12345678-1234-1234-1234-123456789abc"
+	creds := map[string]ClientCredential{Microsoft365: {ID: id, Transcripts: true}}
+	profile := t.TempDir()
+	open := func() *Manager {
+		t.Helper()
+		manager, err := NewManager(profile, creds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return manager
+	}
+	manager := open()
+	plug, err := microsoftRegistration(creds[Microsoft365])
+	if err != nil {
+		t.Fatal(err)
+	}
+	signIn := func(grant string) {
+		t.Helper()
+		if err := manager.store.putConnected(t.Context(), Microsoft365, stored{
+			GrantID: grant, RegistrationID: plug.registrationID(), Scopes: plug.Service().Scopes,
+			Keys: &oauth2.Token{AccessToken: "fixture-access", RefreshToken: "fixture-refresh"},
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	signIn("original")
+	manager.SetMicrosoftTranscriptBlocked("original", true)
+	manager = open()
+	grant, allowed, err := manager.MicrosoftGrant()
+	if err != nil || !allowed || grant != "original" || !manager.MicrosoftTranscriptBlocked(grant) ||
+		manager.MicrosoftTranscriptBlocked("different") {
+		t.Fatalf("reopened grant did not retain its own denial: %q, eligible %t, error %v", grant, allowed, err)
+	}
+
+	signIn("replacement")
+	// A response from a request started before reconnect cannot mark the replacement.
+	manager.SetMicrosoftTranscriptBlocked("original", true)
+	manager = open()
+	grant, allowed, err = manager.MicrosoftGrant()
+	if err != nil || !allowed || grant != "replacement" || manager.MicrosoftTranscriptBlocked(grant) {
+		t.Fatalf("a replaced grant inherited a denial: %q, eligible %t, error %v", grant, allowed, err)
+	}
+	manager.SetMicrosoftTranscriptBlocked(grant, true)
+	manager.SetMicrosoftTranscriptBlocked(grant, false)
+	if open().MicrosoftTranscriptBlocked(grant) {
+		t.Fatal("restored transcript access did not clear the stored refusal")
+	}
+}
