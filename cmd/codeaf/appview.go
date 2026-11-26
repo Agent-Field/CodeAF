@@ -8,10 +8,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
+const appViewMaxPage = 500
+
 // DataViewQuery resolves the declaration before querying the same scoped data
 // store as built-in record parts. The response already reflects field policy.
 func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQueryResult, error) {
-	if p.App == "" || p.Screen == "" || p.View == "" || p.Limit < 0 || p.Limit > 500 {
+	if p.App == "" || p.Screen == "" || p.View == "" || p.Limit < 0 || p.Limit > appViewMaxPage {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose an app, screen, view and valid page size.")
 	}
 	var raw []byte
@@ -65,7 +67,7 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 			}
 			after = cursor
 		}
-		if remaining <= 500 && (limit == 0 || limit > remaining) {
+		if remaining <= appViewMaxPage && (limit == 0 || limit > remaining) {
 			limit = remaining
 		}
 	}
