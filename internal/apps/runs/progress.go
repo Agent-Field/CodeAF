@@ -170,6 +170,13 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 		"me": "me", "now": now.UTC().Format(time.RFC3339Nano), "params": c.Params,
 		"input": c.Input, "record": c.Input["record"], "steps": c.Outputs,
 	}
+	// A declared parameter may be used by its short name in templates.
+	// System words and enclosing loop bindings keep their usual meaning.
+	for name := range c.Definition.Params {
+		if value, ok := c.Params[name]; ok && celVariable(name) && !reservedVariable(name) {
+			vars[name] = value
+		}
+	}
 	steps := c.Definition.Steps
 	for i := 1; i < len(c.Frames); i++ {
 		parent := steps[c.Frames[i-1].Index]

@@ -8,7 +8,8 @@ JSON Schema, and an `example` response for Check. Use a declared `ref`
 parameter such as `mention` and set `propose: $params.mention` to stage the
 step's object output as a proposed change. This run has one step. The output
 schema names the fields the proposal may change. Check uses the example.
-Live runs use the connected model.
+Live runs use the connected model. A template can read a declared record
+parameter as `params.mention.text` or `mention.text`.
 
 Use `agents.launch` to run the declared Action on one to 50 records or on a
 query that selects them. The engine divides the run budget across that
@@ -16,7 +17,7 @@ selection. The AgentRun panel links the drafts to one queue. Review and
 Apply selected results, decline them, or accept safe proposals for empty AI
 fields. The engine checks the displayed record revision for every selected
 draft before committing the batch. Editing the record while an agent works
-lets your edit stand.
+lets your edit stand. You can steer a model step before it starts and stop a running agent.
 
 ## AI fills this field when I create or change a record
 

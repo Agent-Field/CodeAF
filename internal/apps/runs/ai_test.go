@@ -85,7 +85,7 @@ params: {mention: {type: ref, to: mention}}
 steps:
   - id: draft
     ai:
-      prompt: "Draft a reply to {{params.mention.text}}"
+      prompt: "Draft a reply to {{mention.text}}"
       propose: $params.mention
       output:
         type: object
