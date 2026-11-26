@@ -55,7 +55,7 @@ an initial value, for example
 {"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
 Leave other fields optional unless the request requires a value at creation.
 Use a plain enum for status unless the request needs guarded transitions.
-When it does, put this on the definition with a matching enum field: "lifecycle":{"field":"status","initial":"Planned",
+Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
 "transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
 recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
 compiles a collection. For ordinary collections use as "table" or "list"
@@ -72,8 +72,7 @@ inputs, agent and prompt for model steps, and records.create for saved results.
 Use the configured agent name and omit lifecycle-owned fields from record
 writes. Put a send gate on the outbound tool step with the exact text in its args.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
-Set the app's schedule and commands through configure. Use set-agent for
-instructions and configure agent to point at agent.md.
+Configure schedules, commands and agent. Write instructions with set-agent.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
@@ -99,9 +98,8 @@ Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
 If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
-Keep existing screen and node ids. For marked edits, use claim with screen
-and node and preserve the rest of that screen. Map CSV headers to fields. Say
-what to try. The person chooses when to Apply.`
+Keep screen and node ids. Claim marked nodes before editing. Map CSV headers
+to fields. Say what to try. The person chooses when to Apply.`
 
 func systemPrompt() string {
 	return skill + "\n\n" + instructions
@@ -145,6 +143,7 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
+	Headless   bool
 	Editing    bool
 	Marks      []Mark
 	Stage      string
@@ -431,6 +430,9 @@ Desk Look after this turn.`
 	}
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
+	}
+	if in.Headless {
+		prompt += "\nHeadless build: propose matching types from using. Continue to Check. Apply confirms reuse."
 	}
 	bounded := &boundedModel{model: model, limit: in.callBudget()}
 	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
