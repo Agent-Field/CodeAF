@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // Data-plane migration also removes redundant values from old outbox rows.
@@ -383,7 +385,21 @@ func (w *writeTx) resolveBindings(def *AppDef, bindings map[string]CommonTypeKey
 		} else if record.Common != "" && record.Common != key {
 			return nil, errorf(CodeInvalid, "%s declares a different common key", alias)
 		}
-		if key != "" {
+		if record.PackagePrivate {
+			if key != "" {
+				return nil, errorf(CodeInvalid, "%s is a private package type", alias)
+			}
+			t := w.schema.typeNamed(appschema.PrivateRecordName(def.ID, alias))
+			if b.TypeID != "" && (t == nil || t.ID != b.TypeID) {
+				return nil, errorf(CodeInvalid, "%s already names another record type", alias)
+			}
+			if t != nil {
+				if t.DefinedBy != def.ID {
+					return nil, errorf(CodeInvalid, "%s is already used by another app", alias)
+				}
+				b.TypeID = t.ID
+			}
+		} else if key != "" {
 			if other := claimed[key]; other != "" {
 				return nil, errorf(CodeInvalid, "%s and %s both name common type %q", other, alias, key)
 			}
@@ -413,9 +429,9 @@ func (w *writeTx) resolveBindings(def *AppDef, bindings map[string]CommonTypeKey
 	return out, nil
 }
 
-func boundField(f FieldDef, bindings map[string]TypeBinding, current *schema) FieldDef {
-	if t := current.byID[bindings[f.To].TypeID]; t != nil {
-		f.To = t.Name
+func boundField(f FieldDef, names map[string]string) FieldDef {
+	if name := names[f.To]; name != "" {
+		f.To = name
 	}
 	return f
 }
