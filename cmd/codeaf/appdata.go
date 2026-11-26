@@ -347,7 +347,9 @@ func (b *appBackend) DataUpdate(p appwire.DataUpdateParams) (*appwire.DataWriteR
 	if err != nil {
 		return nil, err
 	}
-	return wireWrite(s.Update(dataScope(p.DataScope), p.Type, p.IDs, p.Set, data.UpdateOptions{Unfreeze: p.Unfreeze, Rev: p.Rev, Reset: p.Reset}))
+	scope := dataScope(p.DataScope)
+	scope.Cause = "data.update"
+	return wireWrite(s.Update(scope, p.Type, p.IDs, p.Set, data.UpdateOptions{Unfreeze: p.Unfreeze, Rev: p.Rev, Reset: p.Reset}))
 }
 
 func (b *appBackend) DataDelete(p appwire.DataDeleteParams) (*appwire.DataWriteResult, error) {

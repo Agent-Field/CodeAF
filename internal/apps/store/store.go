@@ -70,12 +70,13 @@ type Meta struct {
 // Definition is one validated live version. Meta describes the served version
 // even when the definition has fallen back to an older snapshot.
 type Definition struct {
-	Meta    Meta            `json:"meta"`
-	App     json.RawMessage `json:"app"`
-	Plan    json.RawMessage `json:"plan"`
-	Screens []string        `json:"screens"`
-	Runs    []string        `json:"runs"`
-	AgentMD string          `json:"agent_md"`
+	Meta            Meta                         `json:"meta"`
+	App             json.RawMessage              `json:"app"`
+	Plan            json.RawMessage              `json:"plan"`
+	Screens         []string                     `json:"screens"`
+	Runs            []string                     `json:"runs"`
+	AgentMD         string                       `json:"agent_md"`
+	ResolvedRecords map[string]schema.RecordType `json:"resolved_records,omitempty"`
 
 	files files
 	types schema.TypeSet
