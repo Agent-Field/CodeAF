@@ -416,6 +416,9 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 	gate := r.Approval
 	id := appRunAskPrefix + gate.ID
 	title := "Approval needed: " + gate.Kind
+	if gate.Kind == "proof" && r.Title != "" {
+		title = "Approval needed: " + r.Title
+	}
 	detail := gate.Tool
 	if len(gate.Args) > 0 {
 		args, _ := json.Marshal(gate.Args)
