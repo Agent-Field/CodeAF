@@ -3332,6 +3332,7 @@ same notice. A structurally valid app can be applied.
 | `apps.render` | `{app,output,record?,inbox?}` | A saved file receipt. The engine uses the kept app's named output template and reads its declared record or query under the app's data grants. |
 | `apps.outputs` | `{app,inbox?,run?,before?}` | `{items,next?}`. Use `inbox:true` to list digest deliveries. Pass `next` as `before` to continue. |
 | `apps.output_file` | `{app,id}` | `{file,content}`. Content is the saved file as base64, up to 8 MiB before encoding. The ID is the saved receipt's ID. |
+| `apps.worksheet_window` | `{app,draft?,type,id,field,row,column,rows,columns,pin?}` | `{revision,total,columns,rows,columnIndexes}` for a scoped worksheet field. Offsets are zero-based. Pin includes row and column zero for ranges scrolled past them. Each cell may carry its formula, calculated value or issue. |
 
 A receipt carries `id`, `app`, `action`, `version`, `name`, `mime`, `blob`,
 `source_type`, `matched`, `actor`, `actor_kind`, and `at`. Record output receipts

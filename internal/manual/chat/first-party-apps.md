@@ -4,7 +4,7 @@
 
 Open the built-in editors or find templates in the Kit
 
-Docs, Sheets, Slides and Canvas are apps with their own record types, screens and Actions. They appear in Apps on a new profile. In Desk's Apps place, open Kit to find the codeaf publisher templates. A package uses sample records in the preview. New documents and edits in the kept app go to your records.
+Docs, Sheets, Slides and Canvas are apps with their own record types, screens and Actions. They are installed when you first open Apps or run `codeaf app list`. In Desk's Apps place, open Kit to find the codeaf publisher templates. A package uses sample records in the preview. New documents and edits in the kept app go to your records.
 
 Docs displays Markdown. Sheets supports cell edits, paste, range clear and fill, arithmetic and SUM over ranges. Each worksheet takes up to 500 rows and 32 columns. Slides opens and presents individual slides. Canvas opens a board with movable text. Existing canvas files still open in Canvases with their original assets, versions and marks. New app from Canvases opens the same Builder as New app from Apps.
 

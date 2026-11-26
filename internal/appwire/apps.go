@@ -82,6 +82,11 @@ var appMethods = map[string]method{
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
 		}
+		if installer, ok := e.(interface{ InstallDefaultApps() error }); ok {
+			if err := installer.InstallDefaultApps(); err != nil {
+				return nil, buildError(err)
+			}
+		}
 		apps, err := defs.AppDefinitions().List()
 		if err != nil {
 			return nil, buildError(err)

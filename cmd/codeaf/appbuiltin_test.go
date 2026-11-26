@@ -21,10 +21,12 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 	b := newFakeBackend(newAppRecorder(), nil)
 	t.Cleanup(func() { b.Close() })
 	defs := b.AppDefinitions()
-	if err := defs.InstallBuiltins(); err != nil {
-		t.Fatal(err)
-	}
 	wire := wireOver(t, b)
+	var shelf struct{ Apps []store.Summary }
+	wire.must("apps.list", struct{}{}, &shelf)
+	if len(shelf.Apps) != 4 {
+		t.Fatalf("default apps: %v", shelf.Apps)
+	}
 	var kit struct {
 		Templates []apppackage.Manifest `json:"app_templates"`
 	}
