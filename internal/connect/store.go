@@ -23,6 +23,9 @@ const StoreFileName = "credentials.json"
 
 // stored is one service's entry in the file.
 type stored struct {
+	Source    json.RawMessage `json:"app_source,omitempty"`
+	SecretRef string          `json:"secret_ref,omitempty"`
+
 	ConnectedAt string `json:"connected_at,omitempty"`
 	KeySavedAt  string `json:"key_saved_at,omitempty"`
 	// Account is the address the keys belong to, absent when the service

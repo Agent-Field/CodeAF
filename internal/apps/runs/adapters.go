@@ -24,6 +24,18 @@ type Call struct {
 type Reply struct {
 	Output any
 	Cost   float64
+	Effect *EffectReceipt
+}
+
+// EffectReceipt keeps the result an approved source write committed to the
+// run journal. It carries the broker key and never includes request values.
+type EffectReceipt struct {
+	Step       string `json:"step"`
+	Tool       string `json:"tool"`
+	Key        string `json:"key"`
+	Connection string `json:"connection,omitempty"`
+	Outcome    string `json:"outcome"`
+	Version    string `json:"version,omitempty"`
 }
 
 // ErrOutcomeUnknown is for operations whose transport failed after dispatch.

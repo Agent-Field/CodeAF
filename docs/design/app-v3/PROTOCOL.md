@@ -315,6 +315,18 @@ keeps the value in a private file the agent's commands read (the model's own
 | `collections.remove` | `{id, refs}` | `CollectionRemoveResult` |
 | `collections.rename` | `in.collectionNameParams` | `CollectionResult` |
 
+## connections methods
+
+Personal connections are registered in the profile. These methods use the app
+scope and return declared operations, rows and observations. Write-back goes
+through an approved run.
+
+| method | params | result |
+|---|---|---|
+| `connections.list` | `{app}` | `{connections:[{id,kind,reads,writes}]}` for the app's Personal profile scope. |
+| `connections.read` | `{app,connection,read,args?,limit?}` | `{rows,source:{connection,read,residency,freshness,observed_at},has_more?}`. Live rows carry canonical IDs and any declared `_source_version`. |
+| `connections.test` | `{app,connection}` | `{ok:true}` when the source answers. |
+
 ## data methods
 
 The person's data for fluid apps: one store of records per person, every
@@ -2099,7 +2111,7 @@ with `{line, field?, message}`.
 |---|---|---|
 | `runs.start` | `{app, run, params?, draft?}` | `{id}` |
 | `runs.list` | `{app?, run?}` | `{runs: [Run]}` |
-| `runs.get` | `{app?, id}` | `Run` |
+| `runs.get` | `{app?, id}` | `Run` with `effects:[{step,tool,key,connection,outcome,version?}]` when an approved source write has a receipt. |
 
 `run` names the saved definition and `id` names an individual execution.
 `Run` includes `{app, run, id, state, step, started_at, updated_at}` and can

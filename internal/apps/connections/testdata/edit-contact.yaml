@@ -1,0 +1,15 @@
+run: edit-contact
+title: Edit contact
+steps:
+  - id: write
+    tool: connections.directory.edit
+    gate: {approval: send}
+    args:
+      id: $params.id
+      version: $params.version
+      set:
+        name: $params.name
+params:
+  id: {type: text}
+  version: {type: text}
+  name: {type: text}

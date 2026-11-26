@@ -50,6 +50,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -133,6 +134,14 @@ func runApp(args []string) error {
 		if err := os.Setenv(home.EnvVar, abs); err != nil {
 			return err
 		}
+	}
+	if flags.Arg(0) == "connections" {
+		// Configuration and one-shot reads use the same profile and data
+		// store as the wire, without starting the resident app engine.
+		backend := &appBackend{}
+		backend.data.place = data.NewPlace(backend.dataRoot(), data.Options{NoRefresh: true})
+		defer backend.closeData()
+		return appConnectionsCommand(backend, flags.Args()[1:], os.Stdin, os.Stdout)
 	}
 	if flags.NArg() > 0 {
 		return runAppCommand(flags.Args())
