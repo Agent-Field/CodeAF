@@ -52,14 +52,14 @@ type AppContentCommand struct {
 // It resolves declared views and typed arguments, runs actions under the
 // effect broker, and starts an isolated authoring session for a proposal.
 // Invocations must preserve the person's values and use the broker's approval
-// receipt. The proposal callback reports a durable edit for the person to Apply.
+// receipt. Builder completion reports the durable edit for the person to Apply.
 type AppContentDoor interface {
-	RunAppContent(context.Context, AppContentScope, AppContentCommand, func(AppChangeProposed)) (json.RawMessage, error)
+	RunAppContent(context.Context, AppContentScope, AppContentCommand) (json.RawMessage, error)
 }
 
 // RunScopedAppCommand is the content allowlist for the app command. It accepts
 // the same engine-resolved scope for an app agent or its scoped CLI client.
-func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppContentScope, verb string, params json.RawMessage, cause string, personRequest func(context.Context) (string, bool), publish func(AppChangeProposed)) (json.RawMessage, error) {
+func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppContentScope, verb string, params json.RawMessage, cause string, personRequest func(context.Context) (string, bool)) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -67,7 +67,6 @@ func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppCont
 		return nil, Errorf(CodeEngine, "App commands are unavailable for this conversation.")
 	}
 	command := AppContentCommand{Verb: verb, Cause: cause}
-	notify := func(AppChangeProposed) {}
 	switch verb {
 	case AppContentShow:
 		if err := decodeAppContent(params, &Empty{}); err != nil {
@@ -100,25 +99,13 @@ func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppCont
 				command.Request = words
 			}
 		}
-		if strings.TrimSpace(command.Request) == "" {
+		if strings.TrimSpace(command.Request) == "" || cause == "" {
 			return nil, Errorf(CodeBadParams, "An app change needs a fresh request from the person.")
-		}
-		notify = func(card AppChangeProposed) {
-			if publish == nil || card.App != scope.App || card.Draft == "" {
-				return
-			}
-			if card.Kind != "big" && (card.Kind != "small" || card.Screen == "") {
-				return
-			}
-			if card.SummaryLines == nil {
-				card.SummaryLines = []string{}
-			}
-			publish(card)
 		}
 	default:
 		return nil, Errorf(CodeBadParams, "This app assistant cannot use that command.")
 	}
-	return door.RunAppContent(ctx, scope, command, notify)
+	return door.RunAppContent(ctx, scope, command)
 }
 
 func decodeAppContent(raw json.RawMessage, value any) error {

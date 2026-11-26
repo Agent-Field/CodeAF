@@ -275,7 +275,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 				if err != nil {
 					return "", err
 				}
-				result, err := appwire.RunScopedAppCommand(ctx, b, scope, verb, params, call.Key, nil, nil)
+				result, err := appwire.RunScopedAppCommand(ctx, b, scope, verb, params, call.Key, nil)
 				return string(result), err
 			})
 			return runs.Reply{Output: answer, Cost: recorded(nil)}, err

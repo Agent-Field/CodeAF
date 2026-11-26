@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -363,6 +364,7 @@ func (j *job) checkpoint(reply string) error {
 }
 
 func (s *Jobs) finish(j *job, event Event) error {
+	finished := j.Queue[0]
 	j.Queue = j.Queue[1:]
 	j.Presence = nil
 	if len(j.Queue) != 0 {
@@ -372,10 +374,85 @@ func (s *Jobs) finish(j *job, event Event) error {
 	if err := s.save(j, event); err != nil {
 		return err
 	}
+	if finished.Proposal != "" && s.opts.Proposed != nil {
+		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal}
+		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
+			p.Screen = s.proposalScreen(j)
+			if p.Screen != "" && len(j.Checkpoints) != 0 {
+				p.Summary = j.Checkpoints[len(j.Checkpoints)-1].Summary
+			}
+		}
+		s.opts.Proposed(p)
+	}
 	if len(j.Queue) == 0 && s.opts.Notify != nil && ((j.State.State == Ready && j.Working.Passed) || j.State.State == NeedsYou) {
 		s.opts.Notify(j.Summary)
 	}
 	return nil
+}
+
+// An in-place Apply card is limited to one existing screen, with optional
+// fields allowed alongside the screen change. Other edits open the builder.
+func (s *Jobs) proposalScreen(j *job) string {
+	kept, err := s.opts.Store.Get(j.App)
+	if err != nil || kept.Meta.Version != j.Base {
+		return ""
+	}
+	before, after := kept.Files(), j.Working.Files
+	screen := ""
+	for path, text := range before {
+		next, exists := after[path]
+		if !exists {
+			return ""
+		}
+		if text == next {
+			continue
+		}
+		switch {
+		case path == schema.AppFile:
+			if !onlyOptionalFields(text, next) {
+				return ""
+			}
+		case path == schema.PlanFile || path == schema.SampleFile:
+			// Neither file changes the behaviour of a kept app.
+		case strings.HasPrefix(path, "screens/") && screen == "":
+			screen = schema.FileID(path)
+		default:
+			return ""
+		}
+	}
+	for path := range after {
+		if _, exists := before[path]; !exists {
+			return ""
+		}
+	}
+	return screen
+}
+
+func onlyOptionalFields(before, after string) bool {
+	kept, err := schema.ParseApp([]byte(before))
+	if err != nil {
+		return false
+	}
+	draft, err := schema.ParseApp([]byte(after))
+	if err != nil {
+		return false
+	}
+	for name, record := range draft.Records {
+		prior, exists := kept.Records[name]
+		if !exists {
+			return false
+		}
+		for name, field := range record.Fields {
+			if _, exists := prior.Fields[name]; exists {
+				continue
+			}
+			if field.Required || field.Unique || field.Default != nil || field.Computed != "" || field.Sequence != nil || field.Timer != nil {
+				return false
+			}
+			delete(record.Fields, name)
+		}
+	}
+	return reflect.DeepEqual(kept, draft)
 }
 
 func (j *job) checkReuse() schema.Report {

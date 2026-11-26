@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/apps/data"
-	"github.com/Agent-Field/codeaf/internal/apps/runs"
-	"github.com/Agent-Field/codeaf/internal/appwire"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
+	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -137,7 +137,7 @@ func TestAppAssistantCLIAndToolBothEnforceActionGrant(t *testing.T) {
 	ctx := context.Background()
 	input := json.RawMessage(`{"action":"not-declared"}`)
 	scope := appwire.AppContentScope{App: meta.ID, Version: meta.Version, Profile: b.localProfile(), Conversation: "test", Actor: "CRM agent"}
-	_, err := appwire.RunScopedAppCommand(ctx, b, scope, "invoke", input, "call", nil, nil)
+	_, err := appwire.RunScopedAppCommand(ctx, b, scope, "invoke", input, "call", nil)
 	var refused *appwire.Error
 	if !errors.As(err, &refused) || refused.Code != appwire.CodeForbidden {
 		t.Fatalf("invoke error = %v", err)
@@ -181,7 +181,7 @@ func TestAppAssistantWritesWithProvenanceAndLeavesPersonValues(t *testing.T) {
 	for i, row := range result.Rows {
 		id := row["id"].(string)
 		raw, _ := json.Marshal(map[string]any{"action": "mark-won", "expected_rev": 1, "args": map[string]string{"record": id}})
-		if _, err := appwire.RunScopedAppCommand(context.Background(), b, scope, "invoke", raw, "mark-won-ask", nil, nil); err != nil {
+		if _, err := appwire.RunScopedAppCommand(context.Background(), b, scope, "invoke", raw, "mark-won-ask", nil); err != nil {
 			t.Fatal(err)
 		}
 		got, err := db.Get(person, "deal", id, false)

@@ -433,6 +433,90 @@ func TestStartingTheBuilderLeavesAnEmptyReadableAppShelf(t *testing.T) {
 	}
 }
 
+func TestAssistantProposalReportsCheckedScopeBeforeApply(t *testing.T) {
+	for _, tc := range []struct {
+		name, screen string
+		edits        []ai.ToolCall
+	}{
+		{"one screen", "deals", []ai.ToolCall{command("recipe", map[string]string{"screen": "deals"})}},
+		{"two screens", "", []ai.ToolCall{command("recipe", map[string]string{"screen": "deals"}), command("recipe", map[string]string{"screen": "companies"})}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			store := store.NewAt(home, nil)
+			fixture := "../schema/testdata/crm"
+			draft, err := store.NewDraft("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.CopyFS(draft.Dir(), os.DirFS(fixture)); err != nil {
+				t.Fatal(err)
+			}
+			live, err := store.Promote(draft, "Keep CRM")
+			if err != nil {
+				t.Fatal(err)
+			}
+			def, err := schema.Load(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{"screens/deals.json", "screens/companies.json"} {
+				var screen map[string]any
+				if err := json.Unmarshal(def.Files[path], &screen); err != nil {
+					t.Fatal(err)
+				}
+				screen["title"] = "Updated " + schema.FileID(path)
+				def.Files[path], err = json.Marshal(screen)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			cards := make(chan builder.Proposal, 1)
+			edits := append([]ai.ToolCall{command("add-field", map[string]any{
+				"type": "deal", "name": "renewal_on", "definition": map[string]string{"type": "date"},
+			})}, tc.edits...)
+			jobs, err := builder.OpenJobs(builder.Options{
+				Home: home, Store: store, Compiler: fixtureCompiler{def},
+				Proposed: func(p builder.Proposal) { cards <- p },
+				Model: func() (builder.Completer, error) {
+					called := false
+					return script(func(_ context.Context, _ []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+						if !called {
+							called = true
+							return toolCalls(edits...), nil
+						}
+						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Added a renewal date."}}}, nil
+					}), nil
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer jobs.Close()
+			id, err := jobs.ProposeAssistant(live.ID, "Add a renewal date", "proposal-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case card := <-cards:
+				if card.App != live.ID || card.Draft != id || card.ID != "proposal-1" || card.Screen != tc.screen {
+					t.Fatalf("proposal = %+v", card)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no proposal after check")
+			}
+			state, err := jobs.State(id)
+			if err != nil || state.State != builder.Ready || state.Published {
+				t.Fatalf("draft = %+v, error = %v", state, err)
+			}
+			kept, err := store.Get(live.ID)
+			if err != nil || kept.Meta.Version != live.Version {
+				t.Fatalf("live version = %d, error = %v", kept.Meta.Version, err)
+			}
+		})
+	}
+}
+
 func TestConflictingApplyLeavesTheDraftDiscardableAfterRestart(t *testing.T) {
 	home := t.TempDir()
 	opts := scriptedApp(t, home)

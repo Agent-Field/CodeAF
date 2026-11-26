@@ -14,7 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
-func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope, command appwire.AppContentCommand, proposed func(appwire.AppChangeProposed)) (json.RawMessage, error) {
+func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope, command appwire.AppContentCommand) (json.RawMessage, error) {
 	app, def, err := b.appAssistantDefinition(p.App)
 	if err != nil {
 		return nil, err
@@ -62,12 +62,9 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 		if err != nil {
 			return nil, err
 		}
-		draft, err := jobs.Propose(p.App, command.Request, nil)
+		draft, err := jobs.ProposeAssistant(p.App, command.Request, command.Cause)
 		if err != nil {
 			return nil, err
-		}
-		if proposed != nil {
-			proposed(appwire.AppChangeProposed{App: p.App, Draft: draft, Kind: "big", SummaryLines: []string{"Open the builder to review the change."}, ProposalID: command.Cause})
 		}
 		return json.Marshal(map[string]string{"draft": draft})
 	}

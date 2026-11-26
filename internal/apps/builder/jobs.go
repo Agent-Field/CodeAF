@@ -50,6 +50,12 @@ type Options struct {
 	ClosePreview func(scope string)
 	Changed      func(Event)
 	Notify       func(Summary)
+	Proposed     func(Proposal)
+}
+
+// Proposal identifies a requested change after its work is durable.
+type Proposal struct {
+	App, Draft, ID, Screen, Summary string
 }
 
 // Catalog carries shape and counts only. The model adapter projects the
@@ -157,6 +163,8 @@ type turn struct {
 	ID        string
 	Stage     string
 	Request   string
+	Proposal  string
+	Small     bool
 	Target    *Target
 	Round     int
 	Report    *schema.Report
@@ -429,7 +437,7 @@ func (s *Jobs) Plan(ctx context.Context, p PlanRequest) (PlanResult, error) {
 	}
 	var id string
 	if err == nil {
-		id, err = s.enqueue(j, Planning, request, nil)
+		id, err = s.enqueue(j, Planning, request, nil, "")
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -481,7 +489,7 @@ func (s *Jobs) Build(id string) error {
 	if !j.Dirty || j.Working.CheckComplete || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
 		return nil
 	}
-	_, err = s.enqueue(j, Writing, "", nil)
+	_, err = s.enqueue(j, Writing, "", nil, "")
 	return err
 }
 
@@ -494,6 +502,15 @@ func (s *Jobs) Change(app, request string) (string, error) {
 // Propose starts a fresh scoped turn from the request and optional node
 // address. A caller has no way to supply a conversation or its tool history.
 func (s *Jobs) Propose(app, request string, target *Target) (string, error) {
+	return s.propose(app, request, target, "")
+}
+
+// ProposeAssistant carries the assistant's card ID with the persisted turn.
+func (s *Jobs) ProposeAssistant(app, request, proposal string) (string, error) {
+	return s.propose(app, request, nil, proposal)
+}
+
+func (s *Jobs) propose(app, request string, target *Target, proposal string) (string, error) {
 	if !cell.ValidID(app) || !validTarget(target) {
 		return "", store.ErrBadInput
 	}
@@ -529,7 +546,7 @@ func (s *Jobs) Propose(app, request string, target *Target) (string, error) {
 	}
 	j.Editable = true
 	if strings.TrimSpace(request) != "" {
-		_, err = s.enqueue(j, Writing, request, target)
+		_, err = s.enqueue(j, Writing, request, target, proposal)
 	} else {
 		err = s.save(j, Event{})
 	}
@@ -561,7 +578,7 @@ func (s *Jobs) Say(id, text string, target *Target) error {
 		stage = active.Stage
 		j.Queue = j.Queue[1:]
 	}
-	newID, err := s.enqueue(j, stage, text, target)
+	newID, err := s.enqueue(j, stage, text, target, "")
 	if err != nil {
 		return err
 	}
@@ -621,7 +638,7 @@ func (s *Jobs) prioritize(j *job, id string) error {
 	return nil
 }
 
-func (s *Jobs) enqueue(j *job, stage, request string, target *Target) (string, error) {
+func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal string) (string, error) {
 	if s.ctx.Err() != nil {
 		return "", s.ctx.Err()
 	}
@@ -647,8 +664,9 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target) (string, e
 		j.State.State = stage
 		j.Problem = ""
 	}
+	small := proposal != "" && !j.Dirty && len(j.Queue) == 0
 	j.Dirty = true
-	j.Queue = append(j.Queue, turn{ID: id, Stage: stage, Request: request, Target: target})
+	j.Queue = append(j.Queue, turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small})
 	if err := s.save(j, Event{}); err != nil {
 		return "", err
 	}

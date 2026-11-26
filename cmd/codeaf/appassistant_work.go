@@ -218,7 +218,7 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 			Allowed bool   `json:"allowed"`
 		}
 		groups := map[string][]permission{"actions": {}, "data": {}}
-		raw, err := b.RunAppContent(context.Background(), appwire.AppContentScope{App: p.App, Version: def.Meta.Version}, appwire.AppContentCommand{Verb: appwire.AppContentShow}, nil)
+		raw, err := b.RunAppContent(context.Background(), appwire.AppContentScope{App: p.App, Version: def.Meta.Version}, appwire.AppContentCommand{Verb: appwire.AppContentShow})
 		if err != nil {
 			return nil, err
 		}

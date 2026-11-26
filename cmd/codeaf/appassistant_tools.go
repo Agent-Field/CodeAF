@@ -12,10 +12,6 @@ import (
 
 func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *session.AppScope {
 	scope := &session.AppScope{ID: principal.App}
-	door, ok := any(b).(appwire.AppContentDoor)
-	if !ok {
-		return scope
-	}
 	scope.Tools = []bare.Tool{{
 		Name:        "app",
 		Description: "Use codeaf app for this app. Show its declared views and actions, query a view with typed arguments, invoke a declared action, or propose an app edit the person requested.",
@@ -33,15 +29,7 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 			if command.Verb != appwire.AppContentPropose {
 				session.MarkAppContent(ctx)
 			}
-			result, err := appwire.RunScopedAppCommand(ctx, door, principal, command.Verb, command.Params, session.NewSessionID(),
-				session.AppChangeRequest, func(card appwire.AppChangeProposed) {
-					select {
-					case <-b.left:
-						return
-					default:
-						b.emit.Emit(appwire.EventAppChangeProposed, card)
-					}
-				})
+			result, err := appwire.RunScopedAppCommand(ctx, b, principal, command.Verb, command.Params, session.NewSessionID(), session.AppChangeRequest)
 			return string(result), err != nil, err
 		},
 	}}
@@ -97,8 +85,7 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 			return nil, err
 		}
 		scope := appwire.AppContentScope{App: p.App, Version: def.Meta.Version, Actor: def.Meta.Name + " agent", Profile: b.localProfile(), Conversation: "app-cli"}
-		return appwire.RunScopedAppCommand(ctx, b, scope, verb, p.Params, session.NewSessionID(), func(context.Context) (string, bool) { return p.Request, true },
-			func(card appwire.AppChangeProposed) { b.emit.Emit(appwire.EventAppChangeProposed, card) })
+		return appwire.RunScopedAppCommand(ctx, b, scope, verb, p.Params, session.NewSessionID(), func(context.Context) (string, bool) { return p.Request, true })
 	default:
 		return appwire.RunAppCommand(b, verb, raw)
 	}

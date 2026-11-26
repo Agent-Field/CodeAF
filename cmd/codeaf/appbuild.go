@@ -40,7 +40,8 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 	jobs, err := builder.OpenJobs(builder.Options{
 		Home: home.Dir(), Store: b.AppDefinitions(), Model: appBuilderModel,
 		Check: pipeline.Run, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
-		Catalog: b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
+		Proposed: b.appAssistantProposed,
+		Catalog:  b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
 		ClosePreview: b.closeBuildPreview,
 		Compiler:     b, ValidateTypes: validateAppBuilderTypes,
 		CanLook: b.builds.look.ready.Load,
@@ -54,6 +55,22 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 	}
 	door.jobs = jobs
 	return jobs, nil
+}
+
+func (b *appBackend) appAssistantProposed(proposal builder.Proposal) {
+	select {
+	case <-b.left:
+		return
+	default:
+	}
+	kind, summary := "big", "Open the builder to review the change."
+	if proposal.Screen != "" {
+		kind, summary = "small", proposal.Summary
+	}
+	b.emit.Emit(appwire.EventAppChangeProposed, appwire.AppChangeProposed{
+		App: proposal.App, Draft: proposal.Draft, Kind: kind, Screen: proposal.Screen,
+		SummaryLines: []string{summary}, ProposalID: proposal.ID,
+	})
 }
 
 func (b *appBackend) closeAppBuilds() {
