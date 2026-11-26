@@ -140,6 +140,13 @@ type Roaming struct {
 	// back for a reason that is not theirs. Left false, a road keeps the schedule
 	// it always had, a fixed first pause and then the doubling.
 	SpreadReturns bool
+	// EndsOn says an error from Dial is FINAL: the far end answered and said no,
+	// and will say it again, so the loop stops at once and the client is buried
+	// with that error's own words (a sign-in that was taken away, a chat that is
+	// gone) instead of spending the whole window repeating the question. It is
+	// opt-in because a fix keeps defaults: left nil, every dial error is a blip,
+	// as it has always been.
+	EndsOn func(error) bool
 }
 
 func (r *Roaming) window() time.Duration {
@@ -511,6 +518,9 @@ func (c *Client) redial(roam *Roaming, planned bool) (Welcome, error) {
 		first = false
 
 		conn, err := roam.Dial()
+		if err != nil && roam.EndsOn != nil && roam.EndsOn(err) {
+			return Welcome{}, spokenError{reason: err.Error()}
+		}
 		if err == nil {
 			welcome, err := c.attach(conn)
 			if err == nil {
