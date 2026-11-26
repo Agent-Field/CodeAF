@@ -42,15 +42,12 @@ Read reference {"schema":"app-2.json"} for app settings, process-2.json for life
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
 writes the outline. Use the actual type, screen and automation ids in the plan.
-Mark creatable types with "create":true and use an Add form for ordinary
-record creation, including shared types. List other actions by command or run id.
-The executor selects CSV import, lifecycle and approval for local writes.
-Keep the selected builtins on a plan edit. Supply their record or run setting
-in builtins. Describe other work in automation or actions. For lifecycle, declare the state field, initial value and planned
-transitions on the record with add-type. Use the planned transition ID. For
-approval in a plan with several runs, set the builtin's run to the run that
-saves the record. Use planned run IDs for all separately authored runs.
-Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}].
+Use "create":true for types with an Add form. Name other actions by command or run ID.
+The executor selects CSV import, lifecycle and local approval. Keep its builtins.
+Set the built-in record or run as needed. Declare lifecycle states and planned
+transition IDs with add-type. For approval, name the run that saves the record.
+Use the exact planned run IDs.
+Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show raised and flat dots"}].
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
@@ -71,7 +68,8 @@ with kit elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
-Use refs with a query default for scheduled loops. Read ids with $params.post.id.
+For scheduled loops, a refs parameter takes a query string as its default,
+for example {type: refs, to: post, default: "status:Open"}. Read ids with $params.post.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
 Agent steps return only the requested text at $steps.<id>.output. For loops
 and approvals, use the supplied run example as a syntax reference.
@@ -354,6 +352,8 @@ func briefReport(report *schema.Report) *modelReport {
 		switch {
 		case p.File == schema.SampleFile && p.Code != "sample_unavailable":
 			p.Message = "Check the example file at this location. Use synthetic records and valid sample links."
+		case p.Code == "run_failed" && strings.HasSuffix(p.Message, "a refs parameter needs record ids or a record query"):
+			p.Message = "Give the refs parameter a query string or a list of record IDs. For a scheduled run, put the query string in the parameter's default."
 		case p.Code == "run_failed":
 			p.Message = "The automation could not finish on the example data. Check the reported run and step."
 		default:
@@ -607,7 +607,7 @@ Use markup only for a composition the request needs and recipes cannot do.
 Write the sample rows and finish with a short summary. The engine runs Check,
 tries the sample data and asks Desk to draw the screens after this turn.`
 	}
-	prompt += "\nThe check command returns preliminary definition findings or a reuse question (needs_you). Only the engine's Check after this turn can confirm the result. Leave reuse decisions to the person."
+	prompt += "\nThe check command only preflights the definition and reuse choice. The engine checks after this turn. Let the person choose reuse."
 	if in.Continued {
 		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
 	}

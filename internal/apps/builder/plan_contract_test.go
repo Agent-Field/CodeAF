@@ -3,6 +3,7 @@ package builder
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -218,5 +219,15 @@ func TestRecordFormSelectionKeepsReadOnlyAndApprovalRuns(t *testing.T) {
 				t.Fatalf("expected a gate before saving: %+v", run)
 			}
 		})
+	}
+}
+
+func TestRepairGetsTheSafeReferenceParameterFinding(t *testing.T) {
+	report := briefReport(&schema.Report{Problems: []schema.Problem{
+		{Code: "run_failed", File: "runs/morning.yaml", Message: "Could not start: parameter posts: a refs parameter needs record ids or a record query"},
+		{Code: "run_failed", File: "runs/another.yaml", Message: "A sample value may be private."},
+	}})
+	if !strings.Contains(report.Problems[0].Message, "query string") || strings.Contains(report.Problems[1].Message, "private") {
+		t.Fatalf("repair report = %+v", report.Problems)
 	}
 }
