@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -240,8 +241,9 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 		model = v3TalkModel(model, settings)
 		price := config.CrewCallPriceAt(b.crewProfile())
 		if call.AI != nil {
-			if _, _, _, known := price(model); !known {
-				return runs.Reply{}, runs.ErrAIUnavailable
+			price, err = appAIModelPrice(ctx, settings, model)
+			if err != nil {
+				return runs.Reply{}, err
 			}
 		}
 		clientConfig := settings.ClientConfig(model)
@@ -299,13 +301,37 @@ func (b *appBackend) checkCodeafAI(step *schema.AIStep) error {
 	}
 	model := v3TalkModel(b.appAIModel(step), settings)
 	client := settings.ClientConfig(model)
-	if _, _, _, known := config.CrewCallPriceAt(b.crewProfile())(model); !known {
-		return runs.ErrAIUnavailable
-	}
 	if client.APIKey == "" && !client.KeyOptional {
 		return runs.ErrAIUnavailable
 	}
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	_, err = appAIModelPrice(ctx, settings, model)
+	return err
+}
+
+// A cold headless profile may have a key before its catalog has warmed.
+// Load the selected service's facts without guessing a price or changing the
+// model the person picked.
+func appAIModelPrice(ctx context.Context, settings config.Config, model string) (func(string) (float64, float64, float64, bool), error) {
+	price := config.CrewCallPriceAt(settings.ProfileDir)
+	if _, _, _, known := price(model); known {
+		return price, nil
+	}
+	service, id := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
+	options := config.CatalogOptionsFor(service, settings.ProfileDir)
+	options.NoDedicatedMedia = true
+	models := catalog.Load(ctx, options)
+	row, ok := models.Model(id)
+	if !ok || row.PriceUnknown || row.PromptPrice < 0 || row.CompletionPrice < 0 {
+		return nil, runs.ErrAIUnavailable
+	}
+	return func(requested string) (float64, float64, float64, bool) {
+		if requested == model {
+			return row.PromptPrice, row.CompletionPrice, row.CacheReadPrice, true
+		}
+		return price(requested)
+	}, nil
 }
 
 func appAISystem(step *schema.AIStep) string {

@@ -83,6 +83,19 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			// effected write from one never attempted. Never send it twice.
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
 		}
+		// A declared gate can hold its exact payload while a connection is
+		// offline. The connector is still checked before any delivery.
+		if step.Gate != nil && c.Approved == "" {
+			who := step.Gate.Who
+			if who != "" {
+				resolved, err := resolve(who, vars)
+				if err != nil {
+					return e.stop(c, Incomplete, err.Error())
+				}
+				who, _ = resolved.(string)
+			}
+			return e.ask(c, step.Gate.Approval, who)
+		}
 		if step.Tool != "" && e.cfg.CheckTool != nil {
 			needsGate, err := e.cfg.CheckTool(ctx, c.Action.Call)
 			if err != nil {
@@ -97,17 +110,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 		}
 		c.Action.Outbound = outbound
-		if step.Gate != nil && c.Approved == "" {
-			who := step.Gate.Who
-			if who != "" {
-				resolved, err := resolve(who, vars)
-				if err != nil {
-					return e.stop(c, Incomplete, err.Error())
-				}
-				who, _ = resolved.(string)
-			}
-			return e.ask(c, step.Gate.Approval, who)
-		}
+
 		if outbound && c.Approved != outboundGate(step.Tool) {
 			return e.ask(c, outboundGate(step.Tool), c.Action.As)
 		}

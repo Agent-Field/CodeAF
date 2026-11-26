@@ -134,3 +134,35 @@ steps:
 		}
 	}
 }
+
+func TestDeclaredSendApprovalPrecedesConnectorReadiness(t *testing.T) {
+	const definition = `
+run: example
+steps:
+  - id: send
+    tool: social.post
+    args: {destination: marketing, text: Exact words to approve}
+    gate: {approval: send}
+`
+	connector := runs.NewFakeConnector(nil)
+	e := newEngine(t, definition, runs.Config{
+		Connector: connector,
+		CheckTool: func(context.Context, runs.Call) (bool, error) {
+			return false, errors.New("the social connection is unavailable")
+		},
+	})
+	r := start(t, e)
+	tick(t, e)
+	waiting := state(t, e, r.ID)
+	if waiting.State != runs.YourCall || waiting.Approval == nil || waiting.Approval.Args["text"] != "Exact words to approve" {
+		t.Fatalf("pending approval = %+v", waiting)
+	}
+	if err := e.Answer(r.ID, waiting.Approval.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	final := state(t, e, r.ID)
+	if final.State != runs.Incomplete || len(connector.Calls()) != 0 {
+		t.Fatalf("run = %+v, connector calls = %v", final, connector.Calls())
+	}
+}
