@@ -48,7 +48,7 @@ func (b *appBackend) appData() (*data.Place, error) {
 		return nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	if d.place == nil {
-		d.place = data.NewPlace(b.dataRoot(), data.Options{})
+		d.place = data.NewPlace(b.dataRoot(), data.Options{RequireAgentPrincipal: true})
 		if emit := b.emit; emit != nil {
 			d.place.OnCommit(func(change data.Change) {
 				for _, item := range change.Items {

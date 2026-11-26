@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
 type contentProbe struct {
@@ -19,7 +21,7 @@ func (p *contentProbe) RunAppContent(_ context.Context, scope AppContentScope, c
 
 func TestScopedAppCommandBindsPrincipalAndProvenance(t *testing.T) {
 	p := &contentProbe{}
-	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 2, Actor: "CRM agent"}
+	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 2, Principal: data.AgentPrincipal{ID: "crm-agent"}}
 	for _, attempt := range []struct{ verb, args string }{
 		{"keep", `{}`},
 		{"edit", `{}`},
@@ -53,7 +55,7 @@ func TestScopedAppCommandBindsPrincipalAndProvenance(t *testing.T) {
 
 func TestScopedAppCommandProposesOnlyPersonText(t *testing.T) {
 	p := &contentProbe{}
-	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 2, Actor: "CRM agent"}
+	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 2, Principal: data.AgentPrincipal{ID: "crm-agent"}}
 	_, err := RunScopedAppCommand(context.Background(), p, scope, AppContentPropose, json.RawMessage(`{}`), "change",
 		func(context.Context) (string, bool) { return "add a renewal date", true })
 	if err != nil || len(p.calls) != 1 || p.calls[0].Request != "add a renewal date" || p.calls[0].Cause != "change" {
@@ -63,7 +65,7 @@ func TestScopedAppCommandProposesOnlyPersonText(t *testing.T) {
 
 func TestScopedAppCommandRejectsUnboundAndCancelledCalls(t *testing.T) {
 	p := &contentProbe{}
-	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 1, Actor: "CRM agent"}
+	scope := AppContentScope{App: "crm", Profile: "/profiles/p", Conversation: "chat", Version: 1, Principal: data.AgentPrincipal{ID: "crm-agent"}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := RunScopedAppCommand(ctx, p, scope, AppContentQuery, json.RawMessage(`{"view":"deals"}`), "read", nil); err == nil {

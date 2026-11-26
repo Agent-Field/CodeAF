@@ -3,7 +3,9 @@ package data
 import "testing"
 
 func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
-	store, err := Open(t.TempDir()+"/data.db", Options{NoRefresh: true, RequireAgentPrincipal: true})
+	path := t.TempDir() + "/data.db"
+	options := Options{NoRefresh: true, RequireAgentPrincipal: true}
+	store, err := Open(path, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,6 +22,7 @@ func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
 		return err
 	}
 	wantCode(t, update(Scope{App: "crm", Agent: true}), CodeNotAllowed)
+	wantCode(t, update(Scope{App: "crm", Actor: "agent:sales-assistant"}), CodeNotAllowed)
 	wantCode(t, update(scope), CodeNotAllowed)
 	if err := store.SetAgentGrant("crm", agent, "actions", action, true); err != nil {
 		t.Fatal(err)
@@ -41,7 +44,12 @@ func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
 	if err != nil || len(history) != 2 || history[0].Actor != "agent:"+agent.ID || history[0].ByKind != ByAI || history[0].Cause != scope.Cause {
 		t.Fatalf("history = %v, error = %v", history, err)
 	}
-	if err := store.SetAgentGrant("crm", agent, "actions", action, false); err != nil {
+	otherHandle, err := Open(path, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = otherHandle.Close() })
+	if err := otherHandle.SetAgentGrant("crm", agent, "actions", action, false); err != nil {
 		t.Fatal(err)
 	}
 	wantCode(t, update(scope), CodeNotAllowed)

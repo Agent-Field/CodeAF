@@ -54,7 +54,6 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	AppAgentGrants map[string]bool         `json:"app_agent_grants,omitempty"`
 	AppAgentDuties map[string]savedAppDuty `json:"app_agent_duties,omitempty"`
 	// AppAssistants keeps the current conversation ID for each app.
 	AppAssistants map[string]string `json:"app_assistants,omitempty"`
@@ -217,7 +216,6 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 // clone is a copy that shares nothing with the file it came from.
 func (f appStateFile) clone() appStateFile {
 	out := f
-	out.AppAgentGrants = maps.Clone(f.AppAgentGrants)
 	out.AppAgentDuties = maps.Clone(f.AppAgentDuties)
 	out.AppAssistants = maps.Clone(f.AppAssistants)
 	out.LibraryLater = make(map[string]bool, len(f.LibraryLater))

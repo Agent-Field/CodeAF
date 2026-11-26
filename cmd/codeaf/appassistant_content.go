@@ -17,7 +17,7 @@ import (
 )
 
 func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope, command appwire.AppContentCommand) (json.RawMessage, error) {
-	app, def, err := b.appAssistantDefinition(p.App)
+	app, def, err := b.appContentDefinition(p.App)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 			}
 		}
 	}
-	sc := data.Scope{App: p.App, Agent: true, Actor: data.AgentAssigneePrefix + p.App, Cause: command.Action.Cause}
+	sc := data.Scope{App: p.App, Principal: p.Principal, Action: command.Action.Action, Cause: command.Action.Cause}
 	switch command.Verb {
 	case appwire.AppContentShow:
 		actions, err := appAssistantActions(app, def)
@@ -47,14 +47,14 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 		if !ok {
 			return nil, appwire.Errorf(appwire.CodeNotFound, "That view is unavailable to the app assistant.")
 		}
-		if !b.appAgentAllowed(p.App, "data", command.Query.View) {
+		if !b.appAgentAllowed(p.App, p.Principal, "data", command.Query.View) {
 			return nil, appwire.Errorf(appwire.CodeForbidden, "The app agent needs a data grant for %q.", command.Query.View)
 		}
 		return b.queryAppAssistant(sc, declared, command.Query)
 	case appwire.AppContentInvoke:
 		return b.invokeAppAssistant(sc, app, def, command.Action)
 	case appwire.AppContentPropose:
-		if !b.appAgentAllowed(p.App, "actions", "propose_change") {
+		if !b.appAgentAllowed(p.App, p.Principal, "actions", "propose_change") {
 			return nil, appwire.Errorf(appwire.CodeForbidden, "This agent cannot propose changes.")
 		}
 		jobs, err := b.AppBuilds()
@@ -214,7 +214,7 @@ func appViewArgument(kind string, value any) bool {
 }
 
 func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store.Definition, intent appwire.AppActionIntent) (json.RawMessage, error) {
-	if !b.appAgentAllowed(sc.App, "actions", intent.Action) {
+	if !b.appAgentAllowed(sc.App, sc.Principal, "actions", intent.Action) {
 		return nil, appwire.Errorf(appwire.CodeForbidden, "The app agent needs an action grant for %q.", intent.Action)
 	}
 	if name, isTransition := strings.CutPrefix(intent.Action, "transition/"); isTransition {
@@ -278,7 +278,7 @@ func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store
 		if engine == nil {
 			return nil, appwire.Errorf(appwire.CodeEngine, "App actions are unavailable.")
 		}
-		return marshalAppContent(engine.StartAgentAction(sc.App, command.Run, args, runs.AgentActionOrigin{Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
+		return marshalAppContent(engine.StartAgentAction(sc.App, command.Run, args, runs.AgentActionOrigin{Principal: sc.Principal, Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
 	}
 	if set, ok := appAssistantRecordUpdate(command); ok {
 		id, _ := args["record"].(string)

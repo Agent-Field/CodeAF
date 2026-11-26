@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
 const (
@@ -21,7 +23,7 @@ type AppContentScope struct {
 	Profile      string
 	Conversation string
 	Version      int
-	Actor        string
+	Principal    data.AgentPrincipal
 }
 
 type AppViewQuery struct {
@@ -63,7 +65,7 @@ func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppCont
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if door == nil || scope.App == "" || scope.Profile == "" || scope.Conversation == "" || scope.Actor == "" || scope.Version < 1 {
+	if door == nil || scope.App == "" || scope.Profile == "" || scope.Conversation == "" || scope.Principal.ID == "" || scope.Version < 1 {
 		return nil, Errorf(CodeEngine, "App commands are unavailable for this conversation.")
 	}
 	command := AppContentCommand{Verb: verb, Cause: cause}

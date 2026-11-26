@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/automation"
@@ -28,18 +29,21 @@ type appAgentIdentity struct {
 	Harness string `json:"harness"`
 }
 
-func (b *appBackend) appAgentAllowed(app, group, id string) bool {
-	allowed := false
-	_ = b.state.read(func(f *appStateFile) { allowed = f.AppAgentGrants[app+"/"+group+"/"+id] })
-	return allowed
+func (b *appBackend) appAgentAllowed(app string, principal data.AgentPrincipal, group, id string) bool {
+	store, err := b.dataStore("")
+	if err != nil {
+		return false
+	}
+	allowed, err := store.AgentAllowed(app, principal, group, id)
+	return err == nil && allowed
 }
 
 func (b *appBackend) checkAppAgentAction(app string, origin runs.AgentActionOrigin) error {
-	_, def, err := b.appAssistantDefinition(app)
+	_, def, err := b.appContentDefinition(app)
 	if err != nil {
 		return err
 	}
-	if def.Meta.Version != origin.Version || !b.appAgentAllowed(app, "actions", origin.Action) {
+	if def.Meta.Version != origin.Version || !b.appAgentAllowed(app, origin.Principal, "actions", origin.Action) {
 		return appwire.Errorf(appwire.CodeForbidden, "The app or its agent grant changed.")
 	}
 	return nil
@@ -52,17 +56,15 @@ func (b *appBackend) GrantAppAgent(p appwire.AppAgentGrant) error {
 	if p.Agent != p.App || (p.Group != "actions" && p.Group != "data") || strings.TrimSpace(p.ID) == "" {
 		return appwire.Errorf(appwire.CodeBadParams, "Choose a grant for this app’s agent.")
 	}
-	err := b.state.write(func(f *appStateFile) error {
-		if f.AppAgentGrants == nil {
-			f.AppAgentGrants = map[string]bool{}
-		}
-		f.AppAgentGrants[p.App+"/"+p.Group+"/"+p.ID] = p.Allowed
-		return nil
-	})
-	if err == nil {
-		b.emit.Emit(appwire.EventAppAgentChanged, appwire.AppAgentChanged{App: p.App, Kind: "grants"})
+	db, err := b.dataStore("")
+	if err != nil {
+		return err
 	}
-	return err
+	if err := db.SetAgentGrant(p.App, data.AgentPrincipal{ID: p.Agent}, p.Group, p.ID, p.Allowed); err != nil {
+		return appDataError(err)
+	}
+	b.emit.Emit(appwire.EventAppAgentChanged, appwire.AppAgentChanged{App: p.App, Kind: "grants"})
+	return nil
 }
 
 func (b *appBackend) checkAppAgentAsk(p appwire.AppAgentAsk) error {
@@ -233,6 +235,7 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 		}
 		return rows, nil
 	case "grants":
+		principal := data.AgentPrincipal{ID: p.App}
 		type permission struct {
 			ID      string `json:"id"`
 			Label   string `json:"label"`
@@ -251,12 +254,12 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 			return nil, err
 		}
 		for _, id := range slices.Sorted(maps.Keys(shown.Views)) {
-			groups["data"] = append(groups["data"], permission{id, id, b.appAgentAllowed(p.App, "data", id)})
+			groups["data"] = append(groups["data"], permission{id, id, b.appAgentAllowed(p.App, principal, "data", id)})
 		}
 		for _, a := range shown.Actions {
-			groups["actions"] = append(groups["actions"], permission{a.ID, a.Label, b.appAgentAllowed(p.App, "actions", a.ID)})
+			groups["actions"] = append(groups["actions"], permission{a.ID, a.Label, b.appAgentAllowed(p.App, principal, "actions", a.ID)})
 		}
-		groups["actions"] = append(groups["actions"], permission{"propose_change", "Propose changes", b.appAgentAllowed(p.App, "actions", "propose_change")})
+		groups["actions"] = append(groups["actions"], permission{"propose_change", "Propose changes", b.appAgentAllowed(p.App, principal, "actions", "propose_change")})
 		return []any{map[string]any{"agent": identity, "actions": groups["actions"], "data": groups["data"]}}, nil
 	case "duties":
 		type listedDuty struct {

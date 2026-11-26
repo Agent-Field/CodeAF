@@ -174,10 +174,14 @@ func TestAgentActionKeepsItsAuthorAndGrantAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbWriter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
+	principal := data.AgentPrincipal{ID: "sales-assistant"}
+	if err := db.SetAgentGrant("crm", principal, "actions", "make-deal", true); err != nil {
+		t.Fatal(err)
+	}
 	allowed := true
 	cfg := runs.Config{Root: t.TempDir(), Records: dbWriter.Write,
 		CheckAgentAction: func(_ string, origin runs.AgentActionOrigin) error {
-			if !allowed || origin.Action != "make-deal" {
+			if !allowed || origin.Principal != principal || origin.Action != "make-deal" {
 				return errors.New("grant withdrawn")
 			}
 			return nil
@@ -190,7 +194,7 @@ func TestAgentActionKeepsItsAuthorAndGrantAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	origin := runs.AgentActionOrigin{Action: "make-deal", Cause: "request-1", Version: 1}
+	origin := runs.AgentActionOrigin{Principal: principal, Action: "make-deal", Cause: "request-1", Version: 1}
 	if _, err := engine.StartAgentAction("crm", "create", nil, origin); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +212,7 @@ func TestAgentActionKeepsItsAuthorAndGrantAcrossRestart(t *testing.T) {
 		t.Fatalf("records = %#v, %v", page, err)
 	}
 	history, err := db.History(data.Scope{}, "deal", page.Rows[0].ID())
-	if err != nil || len(history) != 1 || history[0].ByKind != data.ByAI || history[0].Actor != "agent:crm" || history[0].Cause != "request-1" {
+	if err != nil || len(history) != 1 || history[0].ByKind != data.ByAI || history[0].Actor != "agent:sales-assistant" || history[0].Cause != "request-1" {
 		t.Fatalf("history = %#v, %v", history, err)
 	}
 	run, err := engine.StartAgentAction("crm", "create", nil, origin)

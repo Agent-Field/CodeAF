@@ -64,7 +64,8 @@ func agentAllowed(q querier, app string, agent AgentPrincipal, group, id string)
 // writeAs checks the grant in the same transaction as the mutation, so a
 // revoke and a write have one order even across different store handles.
 func (s *Store) writeAs(sc Scope, write func(*writeTx) error) error {
-	if sc.Principal.ID == "" && (!s.requireAgentPrincipal || !sc.isAgent() && !(sc.AI && !sc.Flow)) {
+	legacyAgent := s.requireAgentPrincipal && (sc.isAgent() || sc.AI && !sc.Flow)
+	if sc.Principal.ID == "" && !legacyAgent {
 		return s.write(write)
 	}
 	return s.write(func(w *writeTx) error {

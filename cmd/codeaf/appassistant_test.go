@@ -187,7 +187,7 @@ func TestAppAssistantCLIAndToolBothEnforceActionGrant(t *testing.T) {
 	const action = "not-declared"
 	ctx := context.Background()
 	input := json.RawMessage(`{"action":"not-declared"}`)
-	scope := appwire.AppContentScope{App: meta.ID, Version: meta.Version, Profile: b.localProfile(), Conversation: "test", Actor: "CRM agent"}
+	scope := appwire.AppContentScope{App: meta.ID, Version: meta.Version, Profile: b.localProfile(), Conversation: "test", Principal: data.AgentPrincipal{ID: meta.ID}}
 	_, err := appwire.RunScopedAppCommand(ctx, b, scope, "invoke", input, "call", nil)
 	var refused *appwire.Error
 	if !errors.As(err, &refused) || refused.Code != appwire.CodeForbidden {
@@ -228,7 +228,7 @@ func TestAppAssistantWritesWithProvenanceAndLeavesPersonValues(t *testing.T) {
 	if err := b.GrantAppAgent(appwire.AppAgentGrant{App: meta.ID, Agent: meta.ID, Group: "actions", ID: "mark-won", Allowed: true}); err != nil {
 		t.Fatal(err)
 	}
-	scope := appwire.AppContentScope{App: meta.ID, Version: meta.Version, Profile: b.localProfile(), Conversation: "test", Actor: "CRM agent"}
+	scope := appwire.AppContentScope{App: meta.ID, Version: meta.Version, Profile: b.localProfile(), Conversation: "test", Principal: data.AgentPrincipal{ID: meta.ID}}
 	for i, row := range result.Rows {
 		id := row["id"].(string)
 		raw, _ := json.Marshal(map[string]any{"action": "mark-won", "expected_rev": 1, "args": map[string]string{"record": id}})

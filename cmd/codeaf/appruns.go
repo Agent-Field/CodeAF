@@ -269,7 +269,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 				return runs.Reply{}, err
 			}
 			defer os.RemoveAll(workspace)
-			scope := appwire.AppContentScope{App: call.App, Conversation: call.ID, Actor: def.Meta.Name + " agent", Profile: b.localProfile(), Version: def.Meta.Version}
+			scope := appwire.AppContentScope{App: call.App, Conversation: call.ID, Principal: data.AgentPrincipal{ID: call.App}, Profile: b.localProfile(), Version: def.Meta.Version}
 			answer, err := session.ScopedCommandTurn(ctx, workspace, model, system, prompt, spend.Wrap(model, client), func(ctx context.Context, line string) (string, error) {
 				verb, params, err := appcmd.Parse(line)
 				if err != nil {

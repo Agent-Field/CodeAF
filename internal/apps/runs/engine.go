@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -98,9 +99,10 @@ type Engine struct {
 
 // AgentActionOrigin is the app grant that authorized this run.
 type AgentActionOrigin struct {
-	Action  string `json:"action"`
-	Cause   string `json:"cause"`
-	Version int    `json:"version"`
+	Principal data.AgentPrincipal `json:"principal"`
+	Action    string              `json:"action"`
+	Cause     string              `json:"cause"`
+	Version   int                 `json:"version"`
 }
 
 type checkpoint struct {
@@ -270,7 +272,7 @@ func (e *Engine) Start(app, run string, params map[string]any) (Run, error) {
 
 // StartAgentAction starts a declared automation under the app agent's grant.
 func (e *Engine) StartAgentAction(app, run string, params map[string]any, origin AgentActionOrigin) (Run, error) {
-	if origin.Action == "" || origin.Cause == "" || origin.Version < 1 || e.cfg.CheckAgentAction == nil {
+	if origin.Principal.ID == "" || origin.Action == "" || origin.Cause == "" || origin.Version < 1 || e.cfg.CheckAgentAction == nil {
 		return Run{}, errors.New("the agent action grant is unavailable")
 	}
 	if err := e.cfg.CheckAgentAction(app, origin); err != nil {

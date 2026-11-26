@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -92,6 +93,17 @@ func (b *appBackend) OpenAppAssistant(id string) (string, error) {
 }
 
 func (b *appBackend) appAssistantDefinition(id string) (schema.App, store.Definition, error) {
+	app, def, err := b.appContentDefinition(id)
+	if err != nil {
+		return app, def, err
+	}
+	if app.Agent == nil || strings.TrimSpace(def.AgentMD) == "" {
+		return schema.App{}, def, appwire.Errorf(appwire.CodeNotFound, "This app has no assistant available.")
+	}
+	return app, def, nil
+}
+
+func (b *appBackend) appContentDefinition(id string) (schema.App, store.Definition, error) {
 	def, err := b.AppDefinitions().Get(id)
 	switch {
 	case errors.Is(err, store.ErrBadInput):
@@ -105,8 +117,8 @@ func (b *appBackend) appAssistantDefinition(id string) (schema.App, store.Defini
 	if err != nil {
 		return schema.App{}, def, err
 	}
-	if def.Meta.Archived || app.Agent == nil || strings.TrimSpace(def.AgentMD) == "" {
-		return schema.App{}, def, appwire.Errorf(appwire.CodeNotFound, "This app has no assistant available.")
+	if def.Meta.Archived {
+		return schema.App{}, def, appwire.Errorf(appwire.CodeNotFound, "This app is archived.")
 	}
 	return app, def, nil
 }
@@ -142,7 +154,7 @@ func (b *appBackend) openAppAssistant(ask appOpenAsk, id string) (*appConn, erro
 	}
 	profile := b.localProfile()
 	principal := func(current store.Definition) appwire.AppContentScope {
-		return appwire.AppContentScope{App: id, Profile: profile, Conversation: appAgentID(ask.Transcript), Version: current.Meta.Version, Actor: current.Meta.Name + " agent"}
+		return appwire.AppContentScope{App: id, Profile: profile, Conversation: appAgentID(ask.Transcript), Version: current.Meta.Version, Principal: data.AgentPrincipal{ID: id}}
 	}
 	scope := b.appAssistantTools(principal(def))
 	scope.Refresh = func() (string, *session.AppScope, error) {

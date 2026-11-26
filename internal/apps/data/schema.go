@@ -178,7 +178,9 @@ type Scope struct {
 	sourceEvent string
 }
 
-func (sc Scope) isAgent() bool { return sc.Agent || sc.Principal.ID != "" }
+func (sc Scope) isAgent() bool {
+	return sc.Agent || sc.Principal.ID != "" || strings.HasPrefix(sc.Actor, AgentAssigneePrefix)
+}
 
 // kind is the writer kind a write of op by sc is recorded as.
 func (sc Scope) kind(op string) string {
@@ -774,6 +776,7 @@ func forgetApp(w *writeTx, app string) (*schema, error) {
 	for _, stmt := range []string{
 		`DELETE FROM app_types WHERE app = ?`,
 		`DELETE FROM app_type_bindings WHERE app = ?`,
+		`DELETE FROM agent_grants WHERE app = ?`,
 		`UPDATE type_fields SET hidden = 1 WHERE app = ?`,
 		`DELETE FROM apps WHERE app = ?`,
 	} {

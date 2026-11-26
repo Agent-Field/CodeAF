@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -95,7 +96,7 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 		if err != nil {
 			return nil, err
 		}
-		scope := appwire.AppContentScope{App: p.App, Version: def.Meta.Version, Actor: def.Meta.Name + " agent", Profile: b.localProfile(), Conversation: "app-cli"}
+		scope := appwire.AppContentScope{App: p.App, Version: def.Meta.Version, Principal: data.AgentPrincipal{ID: p.App}, Profile: b.localProfile(), Conversation: "app-cli"}
 		return appwire.RunScopedAppCommand(ctx, b, scope, verb, p.Params, session.NewSessionID(), func(context.Context) (string, bool) { return p.Request, true })
 	default:
 		return appwire.RunAppCommand(b, verb, raw)
