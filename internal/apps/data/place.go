@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // Place is every data file one codeaf home holds: the person's own
@@ -190,7 +192,15 @@ func (p *Place) SeedSample(draft string, appJSON []byte, rows map[string][]map[s
 		if err != nil {
 			return err
 		}
-		raw, _ := json.Marshal(shapesOf(main.schema.Load(), used))
+		sch := main.schema.Load()
+		names := make([]string, 0, len(used))
+		for _, name := range used {
+			if t := sch.common[def.Records[name].Common]; t != nil {
+				name = t.Name
+			}
+			names = append(names, name)
+		}
+		raw, _ := json.Marshal(shapesOf(sch, names))
 		if err := s.RegisterApp(raw); err != nil {
 			return err
 		}
@@ -198,7 +208,18 @@ func (p *Place) SeedSample(draft string, appJSON []byte, rows map[string][]map[s
 	if err := s.RegisterApp(appJSON); err != nil {
 		return err
 	}
-	return s.seed(rows)
+	// Sample rows are keyed by the draft's app aliases. The seed writer
+	// uses the underlying draft types so cross-type references keep working.
+	resolved := map[string][]map[string]any{}
+	sch := s.schema.Load()
+	for _, name := range sortedKeys(rows) {
+		typ := name
+		if t := sch.appType(def.ID, name); t != nil {
+			typ = t.Name
+		}
+		resolved[typ] = append(resolved[typ], rows[name]...)
+	}
+	return s.seed(resolved)
 }
 
 // usedTypes is the types an app uses rather than owns.
@@ -260,6 +281,9 @@ func shapesOf(sch *schema, used []string) shapeApp {
 			if f := t.field(fname); f != nil {
 				def.Fields[fname] = f.FieldDef
 			}
+		}
+		if appschema.HasCommonType(string(t.Common)) {
+			def.Common = t.Common
 		}
 		app.Records[name] = def
 	}

@@ -50,6 +50,7 @@ type Field struct {
 // rules, lifecycle) it has now. Hidden is a type no app declares any more;
 // its records are kept and the Data place still shows them.
 type Type struct {
+	Common       CommonTypeKey
 	rules        writeRules
 	ID           string
 	Name         string
@@ -101,6 +102,7 @@ type freezeRule struct {
 // builds a new one and the writer swaps it in after the commit, so a reader
 // always sees one whole schema.
 type schema struct {
+	common   map[CommonTypeKey]*Type
 	bindings map[string]map[string]TypeBinding
 	types    map[string]*Type
 	byID     map[string]*Type
@@ -284,6 +286,21 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		return nil
 	})
 	if err != nil {
+		return nil, nil, err
+	}
+	s.common = map[CommonTypeKey]*Type{}
+	if err := eachRow(q, `SELECT key, type_id FROM common_types`, nil, func(scan func(...any) error) error {
+		var key CommonTypeKey
+		var id string
+		if err := scan(&key, &id); err != nil {
+			return err
+		}
+		if t := s.byID[id]; t != nil {
+			t.Common = key
+			s.common[key] = t
+		}
+		return nil
+	}); err != nil {
 		return nil, nil, err
 	}
 	err = eachRow(q, `SELECT a.alias, t.name FROM type_aliases a JOIN types t ON t.id = a.type_id`, nil, func(scan func(...any) error) error {
@@ -510,7 +527,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			var other string
 			err := tx.QueryRow(`SELECT app FROM app_types WHERE type_id = ? AND uses = 0 AND app != ? LIMIT 1`, existing.ID, app).Scan(&other)
 			if err == nil {
-				return nil, errorf(CodeInvalid, "%s already defines %s records; %s can use them with \"uses\": true", other, name, app)
+				return nil, errorf(CodeInvalid, "%s already defines %s records; %s can use them with \"uses\": true", other, existing.Name, app)
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
@@ -546,6 +563,11 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 		binding := resolved[name]
 		binding.TypeID = id
 		resolved[name] = binding
+		if binding.Common != "" {
+			if err := w.bindCommonType(binding.Common, id); err != nil {
+				return nil, err
+			}
+		}
 		if _, err := tx.Exec(`INSERT INTO app_types(app, type_id, uses) VALUES(?, ?, ?)`, app, id, t.Uses); err != nil {
 			return nil, err
 		}
@@ -876,6 +898,7 @@ func mustID(id string) string {
 
 // TypeInfo is one type as the Data place lists it.
 type TypeInfo struct {
+	Common       CommonTypeKey
 	ID           string
 	Name         string
 	Title        string
@@ -956,7 +979,7 @@ func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 		if !slices.Contains(t.declarers(), owner) {
 			owner = ""
 		}
-		out[name] = appschema.ExistingType{Owner: owner, Fields: fields}
+		out[name] = appschema.ExistingType{ID: t.ID, Owner: owner, Common: string(t.Common), Fields: fields}
 	}
 	return out
 }

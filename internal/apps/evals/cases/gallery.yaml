@@ -18,7 +18,7 @@
       params: {app: $app, screen: deals}
       expect: [{path: /screen, exists: true}]
 - name: hiring-reuses-contacts
-  prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible.
+  prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible. Let me add and edit those shared contacts in the hiring app.
   max_rounds: 3
   fixture: crm-contact
   plan:
@@ -175,3 +175,59 @@
     - method: data.count
       params: {app: $app, type: draft}
       expect: [{path: /total, equals: 3}]
+
+- name: support-shares-crm-identity
+  prompt: Build a CRM with Contacts and Companies. Name the type keys contact and company. Use common Person for Contacts and common Organization for Companies. Give each type just one field, a name. Let me add and edit both kinds of record in simple lists. Leave out automations.
+  max_rounds: 3
+  record:
+    type: contact
+    unique_by: name
+    value: {name: Eval Contact}
+    edit: {name: Updated Contact}
+  looks: [{screen: contacts, recipe: add-view/table}]
+  steps:
+    - method: data.types
+      params: {app: $app}
+      expect:
+        - {path: /types/0/common, equals: organization}
+        - {path: /types/1/common, equals: person}
+      capture: {organization_type: /types/0/id, person_type: /types/1/id}
+    - method: data.create
+      params: {app: $app, type: company, set: {name: Eval Company}}
+      capture: {company: /rows/0/id}
+    - method: data.create
+      params: {app: $app, type: contact, set: {name: Shared Customer}}
+      capture: {contact: /rows/0/id}
+    - method: build-app
+      params:
+        prompt: Build a simple Support app with two tables, Tickets and Contacts. Tickets have only name, contact and company. Reuse CRM Contacts as contact and Companies as company. Contacts have only name and can be created and edited here. Companies have only name and are lookup-only.
+        reuse: [contact, company]
+      capture: {support: /app}
+    - method: app.get
+      params: {app: $support}
+      expect:
+        - {path: /app/records/contact/uses, equals: true}
+        - {path: /app/records/contact/common, equals: person}
+        - {path: /app/records/company/uses, equals: true}
+        - {path: /app/records/company/common, equals: organization}
+    - method: data.types
+      params: {app: $support}
+      expect:
+        - {path: /types/0/id, equals: $organization_type}
+        - {path: /types/1/id, equals: $person_type}
+    - method: data.get
+      params: {app: $support, type: contact, id: $contact}
+      expect:
+        - {path: /row/id, equals: $contact}
+        - {path: /row/name, equals: Shared Customer}
+    - method: data.get
+      params: {app: $support, type: company, id: $company}
+      expect:
+        - {path: /row/id, equals: $company}
+        - {path: /row/name, equals: Eval Company}
+    - method: data.create
+      params: {app: $support, type: contact, set: {name: Contact Added In Support}}
+      capture: {support_contact: /rows/0/id}
+    - method: data.get
+      params: {app: $app, type: contact, id: $support_contact}
+      expect: [{path: /row/id, equals: $support_contact}]
