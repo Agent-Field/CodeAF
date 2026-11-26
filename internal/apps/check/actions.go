@@ -22,6 +22,13 @@ func missingActions(def schema.Definition) []schema.Problem {
 		registered[action.ID] = true
 	}
 	var issues []schema.Problem
+	if app.Agent != nil {
+		// A declared assistant with no instructions cannot open in the app.
+		path, _ := schema.AgentPath(app.Agent.File)
+		if strings.TrimSpace(string(def.Files[path])) == "" {
+			issues = append(issues, problem(path, "agent_instructions_missing", "Write instructions for the app assistant in its Markdown file."))
+		}
+	}
 	for _, command := range app.Commands {
 		if registered[command.ID] {
 			continue
