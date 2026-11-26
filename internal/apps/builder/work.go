@@ -75,9 +75,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
-			if !headless {
-				report = j.checkReuse(j.Working.Files, catalog, existing)
-			}
+			report = j.checkReuse(j.Working.Files, catalog, existing, !headless)
 			if report.OK() {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
@@ -178,15 +176,18 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 			}
 		}
 	}
+	reuse, err := s.pinReuse(j, t, types, using)
+	if err != nil {
+		return nil, "", BuildCalls{}, err
+	}
 	files, reply, calls, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
+		Reuse:              reuse,
 	}, types, s.author, func(files map[string]string) schema.Report {
-		if !headless {
-			if report := j.checkReuse(files, catalog, types); !report.OK() {
-				return report
-			}
+		if report := j.checkReuse(files, catalog, types, !headless); !report.OK() {
+			return report
 		}
 		return check.Definition(definition(files), types)
 	}, func(files map[string]string) error {
@@ -307,9 +308,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}
 		j.State.State = Failed
 		j.Problem = "I reached the build limit. Your draft is saved."
-		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
-			{Code: "build_failed", Message: j.Problem},
-		}}})
+		report.Problems = append(report.Problems, schema.Problem{Code: "build_failed", Message: j.Problem})
+		return s.finish(j, Event{Line: j.Problem, Report: &report})
 	}
 
 	if errors.Is(err, errCompilerUnavailable) {
@@ -326,10 +326,10 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			action = "make the plan"
 		}
 		var api *provider.APIError
-		if errors.As(err, &api) && api.Overflow {
-			j.Problem = "I couldn't " + action + " because the app instructions and conversation were too long for the model."
+		if errors.As(err, &api) && api.Overflow || strings.Contains(strings.ToLower(reason), "context window") {
+			j.Problem = "I couldn't " + action + " because the conversation was too long for the model's context window."
 		} else {
-			j.Problem = "I couldn't " + action + " because " + strings.TrimRight(reason, ".") + "."
+			j.Problem = "I couldn't " + action + ". See Build activity for details."
 		}
 		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
 			{Code: "build_failed", Message: reason},
@@ -362,19 +362,12 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		})
 		if t.Round >= maxRounds || sameFindings(t.PreviousFindings, report.Problems) || unavailable || pendingReuse || t.CheckOnly {
 			j.State.State = NeedsYou
-			j.Problem = "Check found an issue. " + report.Problems[0].Message
+			j.Problem = displayBuildIssue(j.Working.Files, report)
 			if pendingReuse {
 				j.Problem = report.Problems[reuseQuestion].Message
 				event.OK = nil
 			}
-			if unavailable {
-				for _, issue := range report.Problems {
-					if strings.HasSuffix(issue.Code, "_unavailable") {
-						j.Problem = issue.Message
-						break
-					}
-				}
-			}
+
 			event.Stage, event.Line = NeedsYou, j.Problem
 			return s.finish(j, event)
 		}
@@ -387,13 +380,11 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 	j.Working = snapshot{Files: files}
 	j.Presence = nil
 	j.describeDraft(catalog, headless, t.Stage == Planning)
-	if reply == "" {
-		reply = "I updated your app."
-	}
 	if t.Stage == Planning {
 		if len(j.Plan) == 0 || j.Working.Files[schema.AppFile] == "" {
-			j.State.State, j.Problem = NeedsYou, reply
-			return s.finish(j, Event{Line: reply})
+			j.State.State = NeedsYou
+			j.Problem = "I couldn't prepare the outline. See Build activity for details."
+			return s.finish(j, Event{Line: j.Problem})
 		}
 		if err := j.checkpoint("Here is the plan for " + displayName(j.Name, "your app") + "."); err != nil {
 			return err
@@ -537,11 +528,19 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet) schema.Report {
+func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet, needsConsent bool) schema.Report {
 	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
+		typ := app.Records[name]
+		if typ.Uses && j.keepsSeparate(name, typ.Common) {
+			report.Problems = append(report.Problems, schema.Problem{
+				File: schema.AppFile, Path: "/records/" + name, Code: "separate_reuse",
+				Message: "Keep " + displayName(typ.Label, name) + " separate as requested.",
+			})
+			continue
+		}
+		if needsConsent && typ.Uses && !j.reuseAccepted(name, typ, catalog) {
 			// An unbound common type needs repair. There are no records to share.
 			if _, ok := existing.ForRecord(name, typ); !ok {
 				continue
@@ -559,7 +558,7 @@ func (j *job) checkReuse(files map[string]string, catalog Catalog, existing sche
 	return report
 }
 
-func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catalog) []Offer {
+func reuseOffers(app schema.App, plan schema.Plan, liveID string, accepted []string, catalog Catalog) []Offer {
 	offers := []Offer{}
 	proposedCommon := map[string]schema.CommonTypeOffer{}
 	libraryOffers := map[string]bool{}
@@ -582,12 +581,28 @@ func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catal
 			continue
 		}
 		offer := Offer{Type: name, Count: catalog.Counts[name], App: source, Common: existing.Common, Line: "Use " + catalog.reuseText(name)}
+		if slices.ContainsFunc(plan.Data, func(line schema.PlanLine) bool {
+			return line.ID == name && line.Uses
+		}) {
+			offers = append(offers, offer)
+			continue
+		}
 		for proposed, shape := range app.Records {
-			if shape.Common != "" && shape.Common != existing.Common {
+			if shape.Common != "" && shape.Common != existing.Common && (proposed != name || existing.Common != "") {
 				continue
 			}
 			if proposedCommon[proposed].Existing == name || reusable(proposed, name, shape.Fields, existing.Fields) {
 				offers = append(offers, offer)
+				break
+			}
+			for _, field := range shape.Fields {
+				if (field.Type == "ref" || field.Type == "refs") && field.To == name &&
+					slices.ContainsFunc(plan.Data, func(line schema.PlanLine) bool { return line.ID == name }) {
+					offers = append(offers, offer)
+					break
+				}
+			}
+			if len(offers) > 0 && offers[len(offers)-1].Type == name {
 				break
 			}
 		}
