@@ -80,6 +80,30 @@ hosted_url_after_service() {
 row 'make-template 3: codeaf gets the hosted URL after sessionhost exists' hosted_url_after_service
 row 'make-template 4: codeaf health check uses /v1/about' \
   grep -qxF "+ railway environment edit --service-config codeaf deploy.healthcheckPath /v1/about --message 'codeaf health check'" "$plan"
+# The organization's relay: a seventh service, the same image in its relay role, with a public domain of its own, and the address
+# the organization server tells its people.
+relay=$(grep -F '+ railway add --service relay ' "$plan" || true)
+relay_variables() {
+  local pair
+  [[ $relay == *'--image agentfield/codeaf-org:dev '* ]] || return 1
+  for pair in 'CODEAF_ROLE=relay' 'PORT=8788' 'CODEAF_RELAY_STORAGE=off' 'CODEAF_RELAY_STATUS=off' 'CODEAF_RELAY_TRUST_PROXY=on'; do
+    [[ $relay == *"--variables $pair "* ]] || return 1
+  done
+}
+row 'make-template 7: relay is the codeaf image in its relay role, storage and status off, trusting the proxy' relay_variables
+row 'make-template 7: relay keeps its device list on a /data volume' \
+  grep -qxF "+ railway volume --service '<relay service id>' add --mount-path /data --json" "$plan"
+row 'make-template 7: relay health check is /p/health, which names nobody' \
+  grep -qxF "+ railway environment edit --service-config relay deploy.healthcheckPath /p/health --message 'relay health check'" "$plan"
+row 'make-template 7: relay has a public domain on its own port' \
+  grep -qxF '+ railway domain --service relay --port 8788 --json' "$plan"
+org_relay_url_after_domain() {
+  local line
+  line=$(grep -nFx "+ railway variable set 'CODEAF_ORG_RELAY_URL=https://\${{relay.RAILWAY_PUBLIC_DOMAIN}}' --service codeaf --skip-deploys" "$plan") &&
+    grep -qxF '+ railway domain --service relay --port 8788 --json' < <(head -n "$(( ${line%%:*} - 1 ))" "$plan") &&
+    [[ $codeaf != *CODEAF_ORG_RELAY_URL=* ]]
+}
+row 'make-template 7: codeaf is told the relay address after the relay has its domain' org_relay_url_after_domain
 template_excludes_smoke_switches() {
   ! grep -Eq -- '--variables (RUNNER_SELFTEST|SMOKE_FIXTURE_REPO|SWE_SMOKE_FIXTURE_REPO|CODEAF_BASE_URL|STUB_DELAY|STUB_COST_USD|GITSTUB_TOKEN)=' "$plan"
 }
@@ -156,13 +180,13 @@ row 'make-template 6: --apply runs to the end against the current CLI' apply_ok
 volumes_by_id() {
   apply_ok || return 1
   local want
-  for want in agentfield:/data codeaf:/data sessionhost:/chats runner:/data swe-af:/workspaces pr-af:/workspaces; do
+  for want in agentfield:/data codeaf:/data sessionhost:/chats relay:/data runner:/data swe-af:/workspaces pr-af:/workspaces; do
     local name=${want%%:*} mount=${want#*:} add vol
     add=$(grep -nF "[add][--service][$name][--image]" "$FAKE_RAILWAY_LOG" | head -n 1 | cut -d: -f1) &&
       vol=$(grep -nxF "[volume][--service][id-$name][add][--mount-path][$mount][--json]" "$FAKE_RAILWAY_LOG" | head -n 1 | cut -d: -f1) &&
       [ "$add" -lt "$vol" ] || return 1
   done
-  [ "$(grep '^\[volume\]' "$FAKE_RAILWAY_LOG" | grep -vc '\[--help\]')" = 6 ]
+  [ "$(grep '^\[volume\]' "$FAKE_RAILWAY_LOG" | grep -vc '\[--help\]')" = 7 ]
 }
 row 'make-template 6: each volume is added with its service ID, after the service exists, and never as volume add --service' volumes_by_id
 
@@ -177,14 +201,14 @@ every_edit_has_a_message() {
   local edits messages
   edits=$(grep -c '^\[environment\]\[edit\]' "$FAKE_RAILWAY_LOG")
   messages=$(grep '^\[environment\]\[edit\]' "$FAKE_RAILWAY_LOG" | grep -c '\[--message\]')
-  [ "$edits" = 3 ] && [ "$messages" = 3 ]
+  [ "$edits" = 4 ] && [ "$messages" = 4 ]
 }
-row 'make-template 6: all three environment edits carry --message' every_edit_has_a_message
+row 'make-template 6: all four environment edits carry --message' every_edit_has_a_message
 
 older_cli_keeps_working() {
   apply_with FAKE_RAILWAY_STYLE=old
   [ "$status" = 0 ] &&
-    [ "$(grep -c '^\[volume\]\[add\]\[--service\]' "$FAKE_RAILWAY_LOG")" = 6 ] &&
+    [ "$(grep -c '^\[volume\]\[add\]\[--service\]' "$FAKE_RAILWAY_LOG")" = 7 ] &&
     grep -qxF '[volume][add][--service][sessionhost][--mount-path][/chats][--json]' "$FAKE_RAILWAY_LOG" &&
     ! grep -q '^\[volume\]\[--service\]' "$FAKE_RAILWAY_LOG"
 }
