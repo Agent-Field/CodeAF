@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -159,7 +160,7 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 			return scratchRun(def, run)
 		},
 		Triggers:  func() ([]runs.Trigger, error) { return triggers, nil },
-		Connector: runs.NewFakeConnector(replies),
+		Connector: googleCheckConnector{sources: b.appConnections(), fallback: runs.NewFakeConnector(replies)},
 		Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
 			if call.AI == nil {
 				return runs.Reply{Output: "Example draft from this app."}, nil
@@ -249,4 +250,25 @@ func tryScratchRun(ctx context.Context, engine *runs.Engine, id string, now *tim
 		}
 	}
 	return &check.RunProblem{Detail: "The example automation ran out of steps. Check its loop and wait conditions."}
+}
+
+type googleCheckConnector struct {
+	sources  connections.Service
+	fallback runs.Connector
+}
+
+func (g googleCheckConnector) Call(ctx context.Context, call runs.Call) (runs.Reply, error) {
+	id, operation, ok := schema.ParseSourceTool(call.Name)
+	if ok {
+		receipt, err := g.sources.GoogleSampleEffect(ctx, call.App, id, operation, call.Args)
+		if !errors.Is(err, connections.ErrNoGoogleSample) {
+			if err != nil {
+				return runs.Reply{}, err
+			}
+			return runs.Reply{Output: receipt.Response, Effect: &runs.EffectReceipt{
+				Step: call.Step, Tool: call.Name, Key: call.Key, Connection: id, Outcome: "committed", Version: receipt.Version,
+			}}, nil
+		}
+	}
+	return g.fallback.Call(ctx, call)
 }

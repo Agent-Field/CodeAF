@@ -319,7 +319,7 @@ func (s Service) PersonalSourceClasses(app string) ([]schema.DataClass, error) {
 	}
 	for _, definition := range defs {
 		var c registration
-		if json.Unmarshal(definition, &c) == nil && c.App == app && c.Kind == Microsoft365 {
+		if json.Unmarshal(definition, &c) == nil && c.App == app && (c.Kind == Microsoft365 || c.Kind == Google) {
 			return []schema.DataClass{schema.ClassPII}, nil
 		}
 	}

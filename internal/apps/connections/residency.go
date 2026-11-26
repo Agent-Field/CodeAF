@@ -85,7 +85,7 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 		}
 		for name, read := range cfg.Reads {
 			graphScan := cfg.Kind == Microsoft365 && graphListSupportsType(read)
-			if read.Residency == nil && !graphScan || state.Binding.App != "" && state.Binding.Read != name {
+			if read.Residency == nil && !graphScan && cfg.Kind != Google || state.Binding.App != "" && state.Binding.Read != name {
 				continue
 			}
 			bound, err := store.Type(scope, read.Type)
@@ -334,13 +334,17 @@ func (r residencyRoute) source() Source {
 			MappingEpoch: r.state.Epochs.Mapping, ResidencyEpoch: r.state.Epochs.Residency}
 	}
 	freshness := string(r.state.Mode)
+	freshFor := 0
+	if r.read.Residency != nil {
+		freshFor = r.read.Residency.FreshForSeconds
+	}
 	if r.state.Mode == data.ResidencyMirror &&
-		time.Since(r.state.CheckedAt) > time.Duration(r.read.Residency.FreshForSeconds)*time.Second {
+		time.Since(r.state.CheckedAt) > time.Duration(freshFor)*time.Second {
 		freshness = "stale"
 	}
 	return Source{Connection: r.config.ID, Read: r.name, Residency: string(r.state.Mode), Freshness: freshness,
 		ObservedAt: r.state.CheckedAt, MappingEpoch: r.state.Epochs.Mapping, ResidencyEpoch: r.state.Epochs.Residency,
-		FreshForSeconds: r.read.Residency.FreshForSeconds}
+		FreshForSeconds: freshFor}
 }
 
 func (s Service) readResident(r residencyRoute, sc data.Scope, q Query) (Page, error) {
@@ -388,7 +392,7 @@ func (r residencyRoute) checkEpoch() error {
 // Refresh polls configured mirrors under the engine lifecycle. It also
 // invalidates live watches periodically because N1 source reads are uncached.
 func (s Service) Refresh(ctx context.Context) {
-	s.refresh(ctx, make(map[string]time.Time))
+	s.refresh(ctx, make(map[string]time.Time), false)
 }
 
 // WatchResidency owns the runtime's polling cadence for both routes.
@@ -396,8 +400,14 @@ func (s Service) WatchResidency(ctx context.Context) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	lastLive := make(map[string]time.Time)
+	nextPrune := time.Time{}
 	for {
-		s.refresh(ctx, lastLive)
+		now := time.Now()
+		prune := now.After(nextPrune)
+		if prune {
+			nextPrune = now.Add(time.Minute)
+		}
+		s.refresh(ctx, lastLive, prune)
 		select {
 		case <-ctx.Done():
 			return
@@ -406,7 +416,7 @@ func (s Service) WatchResidency(ctx context.Context) {
 	}
 }
 
-func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
+func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time, prune bool) {
 	defs, err := s.vault().Definitions()
 	if err != nil {
 		return
@@ -416,11 +426,19 @@ func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 		if decodeJSON(raw, &cfg) != nil {
 			continue
 		}
+		// An unused home must stay joinable. Only a profile with a
+		// Workspace binding can have a source index to prune.
+		if prune && cfg.Kind == Google && s.Store != nil {
+			prune = false
+			if store, err := s.Store(); err == nil {
+				_ = store.PruneSourceIndexes()
+			}
+		}
 		for _, read := range cfg.Reads {
 			if ctx.Err() != nil {
 				return
 			}
-			if read.Residency == nil {
+			if read.Residency == nil && cfg.Kind != Google {
 				continue
 			}
 			r, err := s.route(cfg.App, read.Type)
@@ -433,7 +451,11 @@ func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 				}
 			} else if r.state.Mode == data.ResidencyLive && r.store.HasSourceWatch(r.typ.ID, r.binding.Key.Binding) {
 				key := r.typ.ID
-				if time.Since(lastLive[key]) >= time.Duration(read.Residency.FreshForSeconds)*time.Second {
+				interval := googlePollInterval
+				if read.Residency != nil {
+					interval = time.Duration(read.Residency.FreshForSeconds) * time.Second
+				}
+				if time.Since(lastLive[key]) >= interval {
 					if r.store.InvalidateSource(r.typ.ID, r.binding.Key.Binding) == nil {
 						lastLive[key] = time.Now()
 					}
@@ -468,6 +490,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 		}
 		scans = append(scans, scan)
 		source, versions = scan.Source, sourceVersions(scan.Rows)
+		if scan.Source.Partial && (len(ir.Aggregate) != 0 || len(dependencies) != 0) {
+			return ir, Source{}, nil, ErrPartialWindow
+		}
 	}
 	for _, id := range dependencies {
 		relation, err := s.route(app, id)
@@ -482,6 +507,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 			scan, err := s.liveScan(ctx, relation, id, nil)
 			if err != nil {
 				return ir, Source{}, nil, err
+			}
+			if scan.Source.Partial {
+				return ir, Source{}, nil, ErrPartialWindow
 			}
 			scans = append(scans, scan)
 			relatedSource = scan.Source
@@ -500,7 +528,7 @@ func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, fil
 	if err != nil {
 		return data.SourceScan{}, err
 	}
-	if page.HasMore {
+	if page.HasMore && (r.config.Kind != Google || r.read.GoogleLimit == 0) {
 		return data.SourceScan{}, ErrTooLarge
 	}
 	return data.SourceScan{Type: typ, Rows: page.Rows, Source: page.Source}, nil
@@ -509,6 +537,10 @@ func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, fil
 // Effective text equality matches SQLite's ASCII-only case folding. Any
 // condition with additional syntax stays in the shared evaluator.
 func textFilters(r residencyRoute, ir data.QueryIR) map[string]any {
+	// Gmail search and the record evaluator have different semantics.
+	if r.config.Kind == Google {
+		return nil
+	}
 	out := make(map[string]any)
 	for _, cond := range ir.Where {
 		col := r.read.Fields[cond.Field]
