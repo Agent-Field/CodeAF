@@ -9,6 +9,11 @@ import (
 )
 
 func TestAppRunsUsesInboxApproval(t *testing.T) {
+	t.Run("Inbox", func(t *testing.T) { testAppRunApproval(t, false) })
+	t.Run("Desk card", func(t *testing.T) { testAppRunApproval(t, true) })
+}
+
+func testAppRunApproval(t *testing.T, deskCard bool) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, nil)
 	fake := runs.NewFakeConnector(map[string]runs.Reply{"gmail.send": {Output: "sent"}})
@@ -45,7 +50,18 @@ func TestAppRunsUsesInboxApproval(t *testing.T) {
 	if len(fake.Calls()) != 0 {
 		t.Fatal("a held answer released the connector before its hold ended")
 	}
-	if err := backend.answerInboxItem(item.ID, item.Ask.Agent, item.Ask.ID, appwire.AskAnswer{Option: appwire.OptionAllowOnce}); err != nil {
+	if deskCard {
+		wire := wireOver(t, backend)
+		answer := map[string]string{
+			"agent": item.Ask.Agent, "id": item.Ask.ID + "-stale", "option": appwire.OptionAllowOnce,
+		}
+		wire.mustFail("asks.answer", answer, appwire.CodeNotFound)
+		if got, err := backend.GetRun("app", r.ID); err != nil || got.State != runs.YourCall || len(fake.Calls()) != 0 {
+			t.Fatalf("stale approval changed the run: %+v, %v, calls = %v", got, err, fake.Calls())
+		}
+		answer["id"] = item.Ask.ID
+		wire.must("asks.answer", answer, nil)
+	} else if err := backend.answerInboxItem(item.ID, item.Ask.Agent, item.Ask.ID, appwire.AskAnswer{Option: appwire.OptionAllowOnce}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.Tick(context.Background()); err != nil {
