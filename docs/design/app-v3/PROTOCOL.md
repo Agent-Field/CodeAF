@@ -2329,6 +2329,8 @@ and the reply is empty.
 | event | data |
 |---|---|
 | `agent.changed` | `AgentChanged` |
+| `agents.changed` | `{app,kind}`, invalidating the app's `runs`, `grants` or `duties` projection. |
+| `apps.change_proposed` | `{app,draft,summary_lines,screen,kind?,proposal_id?}` for a durable app assistant proposal. |
 | `ask.closed` | `AskClosed` |
 | `ask.opened` | `AskOpened` |
 | `chat.changed` | `ChatChanged` |
@@ -3180,6 +3182,21 @@ Identity reviews appear in the owner's My Work with an `identity_match`
 object containing the same evidence as `apps.match_candidates`.
 `work_items.complete` takes `values:{decision:"merge"|"keep separate",survivor?}`
 for these items.
+
+### Personal app assistant
+
+| method | params | result |
+|---|---|---|
+| `apps.agent_open` | `{app}` | `{conversation}`, the app's scoped conversation ID. |
+| `agents.ask` | `{app,screen,record?:{type,id},text}` | `{id}` for the new app agent run. |
+| `agents.query` | `{app,kind,screen?,record?}` | Rows for `runs`, `grants` or `duties`. Runs can be scoped to a screen or an exact record. |
+| `agents.grant` | `{app,agent,group,id,allowed}` | `{}`. The built-in agent ID is the app ID. Groups are `actions` and `data`. |
+| `agents.duty_add` | `{app,screen,record?:{type,id},text,cron}` | `{id}` for a standing duty with a five-field cron schedule. |
+| `agents.duty_remove` | `{app,id}` | `{}`. Stops future occurrences of that duty. |
+
+An app agent reads declared, granted views by `screen/view` ID. A small change
+proposal gives the changed screen and a draft to preview. A big proposal
+opens the same draft in the builder. Apply publishes the checked draft.
 
 ### App building and Desk Look
 

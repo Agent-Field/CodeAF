@@ -22,9 +22,14 @@ func (b *appBackend) LaunchAppAI(p appwire.AppAILaunch) (string, error) {
 		return "", appwire.Errorf(appwire.CodeBadParams, "Choose an action and either records or a query.")
 	}
 	files := runs.Files(home.Join("apps"))
-	app, err := files.App(p.App)
+	app, defn, err := b.appContentDefinition(p.App)
 	if err != nil {
-		return "", appRunError(err)
+		return "", err
+	}
+	if p.Screen != "" {
+		if _, ok := defn.Screen(p.Screen); !ok {
+			return "", appwire.Errorf(appwire.CodeNotFound, "That screen is unavailable.")
+		}
 	}
 	index := slices.IndexFunc(app.Commands, func(c schema.Command) bool { return c.ID == p.Action && c.Run != "" })
 	if index < 0 {
@@ -124,7 +129,11 @@ func (b *appBackend) ReviewAppAI(p appwire.AppAIReview) error {
 	if err != nil {
 		return err
 	}
-	return appDataError(db.ReviewAI(data.Scope{App: p.App}, p.Queue, typ, p.Decision, effects))
+	if err := db.ReviewAI(data.Scope{App: p.App}, p.Queue, typ, p.Decision, effects); err != nil {
+		return appDataError(err)
+	}
+	b.emit.Emit(appwire.EventAppAgentChanged, appwire.AppAgentChanged{App: p.App, Kind: "review"})
+	return nil
 }
 
 func appAIUnavailableError(err error) error {

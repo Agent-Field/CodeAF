@@ -13,19 +13,32 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
-type appAIIdentity struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Harness string `json:"harness"`
+func appAIMatches(p appwire.AppAgentQuery, r runs.Run) bool {
+	if p.Screen != "" && p.Screen != r.Screen {
+		return false
+	}
+	return p.Record == nil || r.Subject != nil && p.Record.Type == r.Subject.Type && p.Record.ID == r.Subject.ID
 }
 
-func appAIIdentityFor(r runs.Run) appAIIdentity {
+func appAIIdentityFor(r runs.Run) appAgentIdentity {
 	harness := r.Harness
 	if harness == "" {
 		harness = "codeaf"
 	}
-	names := map[string]string{"codeaf": "codeaf", "claude_code": "Claude Code", "codex": "Codex", "agentfield": "AgentField"}
-	return appAIIdentity{ID: r.App, Name: names[harness], Harness: harness}
+	name := harness
+	switch harness {
+	case runs.HarnessClaudeCode:
+		name = "Claude Code"
+	case runs.HarnessCodex:
+		name = "Codex"
+	case runs.HarnessAgentField:
+		name = "AgentField"
+	}
+	result := appAgentIdentity{ID: r.App, Name: name, Harness: harness}
+	if r.Principal != "" && r.Principal != r.App {
+		result.ID, result.Name = r.Principal, r.Principal
+	}
+	return result
 }
 
 type appAIStep struct {
@@ -57,7 +70,7 @@ type appAICost struct {
 
 type appAIProjection struct {
 	ID        string                           `json:"id"`
-	Agent     appAIIdentity                    `json:"agent"`
+	Agent     appAgentIdentity                 `json:"agent"`
 	Record    *runs.Subject                    `json:"record,omitempty"`
 	Screen    string                           `json:"screen,omitempty"`
 	Title     string                           `json:"title"`
@@ -71,11 +84,15 @@ type appAIProjection struct {
 	Allowed   map[string]bool                  `json:"allowed,omitempty"`
 }
 
-func appAIRunProjection(r runs.Run) appAIProjection {
-	title := r.Title
-	if title == "" {
-		title = r.DefinitionID
+func appAITitle(r runs.Run) string {
+	if r.Title != "" {
+		return r.Title
 	}
+	return r.DefinitionID
+}
+
+func appAIRunProjection(r runs.Run) appAIProjection {
+	title := appAITitle(r)
 	step := r.Step
 	if step == "" {
 		step = r.FirstStep
@@ -112,15 +129,15 @@ func appAIRunProjection(r runs.Run) appAIProjection {
 }
 
 type appAIReviewProposal struct {
-	ID       string        `json:"id"`
-	Record   runs.Subject  `json:"record"`
-	Title    string        `json:"title"`
-	Agent    appAIIdentity `json:"agent"`
-	Field    string        `json:"field"`
-	Before   string        `json:"before"`
-	After    string        `json:"after"`
-	Safe     bool          `json:"safe"`
-	Revision string        `json:"expected_rev"`
+	ID       string           `json:"id"`
+	Record   runs.Subject     `json:"record"`
+	Title    string           `json:"title"`
+	Agent    appAgentIdentity `json:"agent"`
+	Field    string           `json:"field"`
+	Before   string           `json:"before"`
+	After    string           `json:"after"`
+	Safe     bool             `json:"safe"`
+	Revision string           `json:"expected_rev"`
 }
 
 func (b *appBackend) appAIReviewQueue(app, queue string) ([]appAIReviewProposal, error) {
@@ -147,7 +164,7 @@ func (b *appBackend) appAIReviewQueue(app, queue string) ([]appAIReviewProposal,
 			return nil, appDataError(err)
 		}
 		out = append(out, appAIReviewProposal{
-			ID: r.ID, Record: runs.Subject{Type: draft.Type, ID: draft.Record}, Title: r.Title, Agent: appAIIdentityFor(r),
+			ID: r.ID, Record: runs.Subject{Type: draft.Type, ID: draft.Record}, Title: appAITitle(r), Agent: appAIIdentityFor(r),
 			Field: strings.Join(slices.Sorted(maps.Keys(draft.Set)), ", "), Before: appAIValues(draft.Before), After: appAIValues(draft.Set),
 			Safe: safe, Revision: strconv.FormatInt(draft.Revision, 10),
 		})
@@ -171,9 +188,9 @@ func appAIValues(values map[string]any) string {
 }
 
 type appAIPresence struct {
-	Agent  appAIIdentity `json:"agent"`
-	Record runs.Subject  `json:"record"`
-	Task   string        `json:"task"`
+	Agent  appAgentIdentity `json:"agent"`
+	Record runs.Subject     `json:"record"`
+	Task   string           `json:"task"`
 }
 
 func (b *appBackend) appAIPresence(app, typ string) ([]appAIPresence, error) {
@@ -184,7 +201,7 @@ func (b *appBackend) appAIPresence(app, typ string) ([]appAIPresence, error) {
 	}
 	for _, r := range rows {
 		if (r.State == runs.Running || r.State == runs.Finishing || r.State == runs.YourCall) && r.Subject != nil && r.Subject.Type == typ && r.Harness != "" {
-			out = append(out, appAIPresence{Agent: appAIIdentityFor(r), Record: *r.Subject, Task: r.Title})
+			out = append(out, appAIPresence{Agent: appAIIdentityFor(r), Record: *r.Subject, Task: appAITitle(r)})
 		}
 	}
 	return out, nil

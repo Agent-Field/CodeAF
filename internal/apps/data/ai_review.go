@@ -13,6 +13,13 @@ const aiReviewMigration = `
 		decision TEXT NOT NULL,
 		PRIMARY KEY (app, queue, proposal)
 	);
+	CREATE TABLE app_mcp_agents (
+		app TEXT NOT NULL,
+		agent TEXT NOT NULL,
+		name TEXT NOT NULL,
+		harness TEXT NOT NULL,
+		PRIMARY KEY (app, agent)
+	);
 `
 
 // AIEffect is a proposed update prepared by an engine run.

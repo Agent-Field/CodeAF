@@ -43,8 +43,9 @@ type RecordCall struct {
 	IDs  []string
 	Set  map[string]any
 	// Trigger provenance goes only to the trusted data adapter.
-	causeChain []string
-	aiRevision int64
+	causeChain  []string
+	agentOrigin *AgentActionOrigin
+	aiRevision  int64
 }
 
 type AgentCall struct {

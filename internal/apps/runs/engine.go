@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -48,6 +50,7 @@ type Run struct {
 	Screen       string    `json:"screen,omitempty"`
 	CanSteer     bool      `json:"can_steer,omitempty"`
 	FirstStep    string    `json:"first_step,omitempty"`
+	Principal    string    `json:"principal,omitempty"`
 	Harness      string    `json:"harness,omitempty"`
 	AppVersion   int       `json:"app_version,omitempty"`
 	Title        string    `json:"title,omitempty"`
@@ -65,6 +68,8 @@ type ChangeEvent struct {
 	ID    string `json:"id"`
 	State string `json:"state"`
 	Step  string `json:"step"`
+	Agent bool   `json:"agent,omitempty"`
+	Queue string `json:"review_queue,omitempty"`
 }
 
 type Config struct {
@@ -82,7 +87,8 @@ type Config struct {
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
-	CheckTool func(context.Context, Call) (outbound bool, err error)
+	CheckTool        func(context.Context, Call) (outbound bool, err error)
+	CheckAgentAction func(app string, origin AgentActionOrigin) error
 	// Callbacks run after the checkpoint commits. They may read run state.
 	Changed func(ChangeEvent)
 	Ask     func(Run)
@@ -111,24 +117,33 @@ type Engine struct {
 	closeErr    error
 }
 
+// AgentActionOrigin is the app grant that authorized this run.
+type AgentActionOrigin struct {
+	Principal data.AgentPrincipal `json:"principal"`
+	Action    string              `json:"action"`
+	Cause     string              `json:"cause"`
+	Version   int                 `json:"version"`
+}
+
 type checkpoint struct {
 	Run
-	TriggerReceipt *triggerReceipt `json:"trigger_receipt,omitempty"`
-	Definition     Definition      `json:"definition"`
-	Params         map[string]any  `json:"params"`
-	Input          map[string]any  `json:"input,omitempty"`
-	Outputs        map[string]any  `json:"outputs"`
-	Frames         []frame         `json:"frames"`
-	Visit          int             `json:"visit"`
-	Attempt        int             `json:"attempt"`
-	Prepared       bool            `json:"prepared"`
-	Action         *action         `json:"action,omitempty"`
-	Approved       string          `json:"approved,omitempty"`
-	Declined       string          `json:"declined,omitempty"`
-	RaisedBudget   float64         `json:"raised_budget,omitempty"`
-	ApprovalSeq    int             `json:"approval_seq"`
-	Steering       []string        `json:"steering,omitempty"`
-	Stopped        bool            `json:"stopped,omitempty"`
+	TriggerReceipt *triggerReceipt    `json:"trigger_receipt,omitempty"`
+	Definition     Definition         `json:"definition"`
+	Params         map[string]any     `json:"params"`
+	Input          map[string]any     `json:"input,omitempty"`
+	Outputs        map[string]any     `json:"outputs"`
+	Frames         []frame            `json:"frames"`
+	Visit          int                `json:"visit"`
+	Attempt        int                `json:"attempt"`
+	Prepared       bool               `json:"prepared"`
+	Action         *action            `json:"action,omitempty"`
+	Approved       string             `json:"approved,omitempty"`
+	Declined       string             `json:"declined,omitempty"`
+	RaisedBudget   float64            `json:"raised_budget,omitempty"`
+	ApprovalSeq    int                `json:"approval_seq"`
+	Steering       []string           `json:"steering,omitempty"`
+	Stopped        bool               `json:"stopped,omitempty"`
+	AgentOrigin    *AgentActionOrigin `json:"agent_origin,omitempty"`
 }
 
 type frame struct {
@@ -239,6 +254,27 @@ func (e *Engine) Get(id string) (Run, error) {
 	return c.Run, err
 }
 
+// AgentProjection reads the question's address and the answer committed by the agent step.
+func (e *Engine) AgentProjection(id string) (map[string]any, string, error) {
+	c, err := e.read(id)
+	if err != nil {
+		return nil, "", err
+	}
+	step, _ := c.Outputs[c.FirstStep].(map[string]any)
+	if step == nil {
+		step, _ = c.Outputs["answer"].(map[string]any)
+	}
+	answer, text := step["output"].(string)
+	if !text && step["output"] != nil {
+		raw, err := json.Marshal(step["output"])
+		if err != nil {
+			return nil, "", err
+		}
+		answer = string(raw)
+	}
+	return c.Params, answer, nil
+}
+
 func (e *Engine) List(app, run string) ([]Run, error) {
 	e.mu.Lock()
 	entries := make([]json.RawMessage, 0, len(e.checkpoints))
@@ -264,6 +300,23 @@ func (e *Engine) List(app, run string) ([]Run, error) {
 
 func (e *Engine) Start(app, run string, params map[string]any) (Run, error) {
 	return e.start(app, run, params, nil, false, "", nil)
+}
+
+// StartAgentAction starts a declared automation under the app agent's grant.
+func (e *Engine) StartAgentAction(app, run string, params map[string]any, origin AgentActionOrigin) (Run, error) {
+	if origin.Principal.ID == "" || origin.Action == "" || origin.Cause == "" || origin.Version < 1 || e.cfg.CheckAgentAction == nil {
+		return Run{}, errors.New("the agent action grant is unavailable")
+	}
+	if err := e.cfg.CheckAgentAction(app, origin); err != nil {
+		return Run{}, err
+	}
+	c, err := e.newCheckpoint(app, run, params, nil, false)
+	if err != nil {
+		return Run{}, err
+	}
+	c.AgentOrigin, c.Principal = &origin, origin.Principal.ID
+	err = e.save(&c, "", nil)
+	return c.Run, err
 }
 
 func (e *Engine) start(app, run string, params, input map[string]any, caughtUp bool, clockKey string, clock any) (Run, error) {
@@ -329,19 +382,58 @@ func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[s
 			return checkpoint{}, err
 		}
 	}
-	if len(def.Steps) == 1 && def.Steps[0].AI != nil && def.Steps[0].AI.Propose != "" {
-		ai := def.Steps[0].AI
-		c.Harness, c.Title, c.FirstStep, c.CanSteer = ai.Harness, def.Title, def.Steps[0].ID, true
-		if c.Harness == "" {
-			c.Harness = "codeaf"
-		}
-		if row, ok := p[strings.TrimPrefix(ai.Propose, "$params.")].(map[string]any); ok {
-			id, _ := row["id"].(string)
-			kind, _ := row["type"].(string)
-			c.Subject = &Subject{Type: kind, ID: id}
+	c.bindAgentSubject()
+
+	return c, nil
+}
+
+// bindAgentSubject records the target before the worker runs, so presence and
+// record panels can show work while the first step is waiting.
+func (c *checkpoint) bindAgentSubject() {
+	def := c.Definition
+	step := firstAgentStep(def.Steps)
+	if step == nil {
+		return
+	}
+	c.Harness, c.Title, c.FirstStep, c.CanSteer = HarnessCodeaf, def.Title, step.ID, true
+	if step.AI != nil {
+		c.Harness = harnessID(step.AI)
+	}
+	switch {
+	case step.AI != nil && step.AI.Propose != "":
+		c.bindSubject(c.Params[strings.TrimPrefix(step.AI.Propose, "$params.")])
+	case def.Run == "_agent_ask" || strings.HasPrefix(def.Run, "_agent_duty_"):
+		c.Screen, _ = c.Params["screen"].(string)
+		c.bindSubject(map[string]any{"id": c.Params["record"], "type": c.Params["type"]})
+	default:
+		for _, key := range slices.Sorted(maps.Keys(def.Params)) {
+			if def.Params[key].Type == "ref" {
+				c.bindSubject(c.Params[key])
+				break
+			}
 		}
 	}
-	return c, nil
+}
+
+func firstAgentStep(steps []Step) *Step {
+	for _, step := range steps {
+		if step.AI != nil || step.Agent != "" {
+			return &step
+		}
+		if found := firstAgentStep(step.Steps); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func (c *checkpoint) bindSubject(value any) {
+	row, _ := value.(map[string]any)
+	id, _ := row["id"].(string)
+	typ, _ := row["type"].(string)
+	if id != "" && typ != "" {
+		c.Subject = &Subject{Type: typ, ID: id}
+	}
 }
 
 func (e *Engine) save(c *checkpoint, clockKey string, clock any) error {
@@ -417,7 +509,7 @@ func (e *Engine) activeRuns() []Run {
 
 func (e *Engine) changed(r Run) {
 	if e.cfg.Changed != nil {
-		e.cfg.Changed(ChangeEvent{App: r.App, Run: r.DefinitionID, ID: r.ID, State: r.State, Step: r.Step})
+		e.cfg.Changed(ChangeEvent{App: r.App, Run: r.DefinitionID, ID: r.ID, State: r.State, Step: r.Step, Agent: r.Harness != "", Queue: r.Queue})
 	}
 }
 

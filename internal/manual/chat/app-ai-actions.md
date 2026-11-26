@@ -48,3 +48,16 @@ shows the operation, destination, payload and app version. A standalone
 `args`. An approval applies to that displayed effect only. A stopped or
 uncertain delivery stays incomplete. A connection must be available to
 deliver an approved connector step.
+
+## Connect my agent via MCP
+
+Start `codeaf app mcp --app <app-id> --agent <agent-id> --harness codex`
+as a stdio MCP server from the same local profile as the open desktop.
+Choose a distinct agent ID for each outside agent. The desktop registers
+that ID and lists its Actions and data grants. Allow each declared Action
+or view you want it to use. Grant synthetic screen Look or a screen mark
+separately. A mark creates a draft suggestion for the person to Apply.
+
+Reconnect the MCP client after adding grants so it receives the updated
+tool list. Revocation takes effect on its next call. The engine takes the
+app and principal from the server launch and checks the grant at use.

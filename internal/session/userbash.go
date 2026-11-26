@@ -38,6 +38,9 @@ func IsUserBashCall(id string) bool { return strings.HasPrefix(id, "user_bash_")
 // SubmitBash is the explicit human command door. Generic submissions, including
 // scheduled work and model text, never gain shell authority from a leading !.
 func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan Event, error) {
+	if a.config.AppScope != nil {
+		return nil, errors.New("Shell commands are unavailable in an app conversation.")
+	}
 	command, ok := BashCommand(text)
 	if !ok || command == "" {
 		return nil, errors.New(BashEmptyWord)

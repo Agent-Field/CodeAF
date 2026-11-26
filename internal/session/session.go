@@ -1520,6 +1520,9 @@ type Config struct {
 	// Workspace and Model.
 	System string
 
+	// AppScope replaces the normal tool belt for a personal app conversation.
+	AppScope *AppScope
+
 	// ContextWindow is the model's window in tokens; compaction fires at
 	// window − max(15% of window, 16384). Zero selects a conservative default.
 	//

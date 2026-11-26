@@ -65,6 +65,11 @@ func TestLiveMarketingFanout(t *testing.T) {
 	for _, row := range created.Rows {
 		ids = append(ids, row["id"].(string))
 	}
+	var harnesses []string
+	call("agents.query", appwire.AppAgentQuery{App: app, Kind: "harnesses"}, &harnesses)
+	if len(harnesses) != 1 || harnesses[0] != runs.HarnessCodeaf {
+		t.Fatalf("scratch harnesses = %v", harnesses)
+	}
 	var launched appwire.AppAILaunched
 	call("agents.launch", appwire.AppAILaunch{App: app, Action: "draft-reply", Screen: "mentions", Records: ids}, &launched)
 	var reviews []appwire.AppAISelection
@@ -97,7 +102,25 @@ func TestLiveMarketingFanout(t *testing.T) {
 	if cost <= 0 || cost > 0.09 {
 		t.Fatalf("fan-out cost = $%.6f", cost)
 	}
+	var pending []struct {
+		ID          string `json:"id"`
+		ExpectedRev string `json:"expected_rev"`
+		Safe        bool   `json:"safe"`
+	}
+	call("agents.query", appwire.AppAgentQuery{App: app, Kind: "review", Queue: launched.Queue}, &pending)
+	if len(pending) != 3 {
+		t.Fatalf("desk review queue = %v", pending)
+	}
+	for _, item := range pending {
+		if !item.Safe || item.ExpectedRev != "1" {
+			t.Fatalf("desk proposal = %+v", item)
+		}
+	}
 	call("agents.review", appwire.AppAIReview{App: app, Queue: launched.Queue, Decision: "accept_safe", IDs: reviews}, nil)
+	call("agents.query", appwire.AppAgentQuery{App: app, Kind: "review", Queue: launched.Queue}, &pending)
+	if len(pending) != 0 {
+		t.Fatalf("desk review queue after Apply = %v", pending)
+	}
 	for _, id := range ids {
 		var result struct{ Row map[string]any }
 		call("data.get", map[string]string{"app": app, "type": "mention", "id": id}, &result)
@@ -144,4 +167,47 @@ func TestLiveMarketingFanout(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("three codeaf harness drafts accepted at $%.6f total", cost)
+}
+
+func TestDeterministicAppActionRunsWithNoModel(t *testing.T) {
+	binary := os.Getenv("CODEAF_APP_EVAL_BINARY")
+	if binary == "" {
+		t.Skip("set CODEAF_APP_EVAL_BINARY to the built app engine")
+	}
+	scratch := t.TempDir()
+	app, err := seedApp(scratch, "testdata/marketing-desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	engine, err := launch(ctx, binary, scratch, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := engine.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	raw, err := engine.wire(ctx, "agents.query", appwire.AppAgentQuery{App: app, Kind: "harnesses"})
+	if err != nil || string(raw) != "[]" {
+		t.Fatalf("keyless harnesses = %s, %v", raw, err)
+	}
+	var record string
+	var started string
+	vars := map[string]any{"app": app}
+	err = runSteps(ctx, engine, []Step{
+		{Method: "data.create", Params: map[string]any{"app": app, "type": "mention", "set": map[string]any{"text": "Docs question", "reply": "See the guide."}}, Capture: map[string]string{"record": "/rows/0/id"}},
+		{Method: "agents.launch", Params: map[string]any{"app": app, "action": "draft-reply", "records": []any{"$record"}}, Error: string(appwire.CodeNotFound)},
+		{Method: "runs.start", Params: map[string]any{"app": app, "run": "approve-post", "params": map[string]any{"mention": "$record"}}, Capture: map[string]string{"run": "/id"}},
+		{Method: "runs.get", Params: map[string]any{"app": app, "id": "$run"}, Await: 20 * time.Second, Expect: []Check{equal("/state", runs.YourCall), equal("/approval/args/text", "See the guide.")}},
+	}, vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, _ = vars["record"].(string)
+	started, _ = vars["run"].(string)
+	if record == "" || started == "" {
+		t.Fatal("the deterministic action did not run")
+	}
 }

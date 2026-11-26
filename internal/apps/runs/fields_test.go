@@ -13,7 +13,7 @@ import (
 
 func TestAIAutoFieldFillsOnChangeAndPreservesPersonValue(t *testing.T) {
 	root := t.TempDir()
-	db, err := data.Open(filepath.Join(root, "records.db"), data.Options{NoRefresh: true})
+	db, err := data.Open(filepath.Join(root, "records.db"), data.Options{NoRefresh: true, RequireAgentPrincipal: true})
 	if err != nil {
 		t.Fatal(err)
 	}

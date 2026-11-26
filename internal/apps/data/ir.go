@@ -29,6 +29,8 @@ type Cond struct {
 	Op    string
 	Value string
 	Neg   bool
+	// Literal keeps a declared view argument from being interpreted as query token syntax.
+	Literal bool
 
 	// raw is the token a condition was parsed from: a name that turns out
 	// not to be a field is searched as the words typed.
