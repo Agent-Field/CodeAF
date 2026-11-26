@@ -39,7 +39,9 @@ type wireReply struct {
 }
 
 func launch(ctx context.Context, binary, scratch, key, model string) (*appProcess, error) {
-	env := []string{"HOME=" + scratch, "CODEAF_HOME=" + scratch, "PATH=" + os.Getenv("PATH")}
+	// The detached chat clock can outlive this disposable home. App runs use
+	// the engine's own dispatcher, which still starts and joins normally.
+	env := []string{"HOME=" + scratch, "CODEAF_HOME=" + scratch, "PATH=" + os.Getenv("PATH"), "CODEAF_NO_AUTOMATIONS=1"}
 	if key != "" {
 		env = append(env, "OPENROUTER_API_KEY="+key, "CODEAF_APPS_BUILDER_MODEL="+model)
 	}

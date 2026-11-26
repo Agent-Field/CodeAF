@@ -21,12 +21,13 @@ func TestSampleReportsTheRowWithAnInvalidID(t *testing.T) {
 	}
 }
 
-func TestSampleReportsIDsSharedByDifferentTypes(t *testing.T) {
+func TestSampleReportsAllInvalidIDsTogether(t *testing.T) {
 	def := schema.Definition{Files: map[string][]byte{
-		schema.SampleFile: []byte(`{"records":{"company":[{"id":"00000000000000000000000001"}],"contact":[{"id":"00000000000000000000000001"}]}}`),
+		schema.SampleFile: []byte(`{"records":{"company":[{"id":"00000000000000000000000001"}],"contact":[{"id":"00000000000000000000000001"},{"id":"contact-two"}]}}`),
 	}}
 	_, err := check.Sample(def)
-	if err == nil || !strings.Contains(err.Error(), "Example contact row 1 reuses id") {
+	if err == nil || !strings.Contains(err.Error(), "Example contact row 1 reuses id") ||
+		!strings.Contains(err.Error(), "Example contact row 2 needs a 26-character ULID") {
 		t.Fatalf("sample problem = %v", err)
 	}
 }
