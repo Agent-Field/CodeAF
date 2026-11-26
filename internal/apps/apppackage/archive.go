@@ -109,6 +109,7 @@ func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 			}
 		}
 	}
+	a.Manifest.Hash = a.digest()
 	if strings.EqualFold(p.Publisher, "codeaf examples") {
 		def := schema.Definition{Files: a.Files}
 		rows, err := check.Sample(def)
@@ -120,7 +121,6 @@ func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 			return nil, &Findings{Report: schema.Report{Depth: &depth, Problems: depth.Warnings}}
 		}
 	}
-	a.Manifest.Hash = a.digest()
 	raw, err := json.Marshal(a)
 	if len(raw) > maxArchive {
 		return nil, fmt.Errorf("the app package exceeds %d MiB", maxArchive>>20)
