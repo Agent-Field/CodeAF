@@ -236,6 +236,7 @@ var migrations = []string{
 	aiReviewMigration,
 	outputMigration,
 	runWriteMigration,
+	residencyMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
@@ -596,7 +597,7 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 	defer flushAudit()
 	sch := s.schema.Load()
 	counts := map[string]int{}
-	stmt := "SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL"
+	stmt := "SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM type_residency WHERE type_id = records.type_id AND mode = 'live')"
 	var args []any
 	if sch.hasRowPolicies {
 		var protected []string

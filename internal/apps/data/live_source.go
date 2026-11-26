@@ -26,7 +26,7 @@ func (s *Store) LiveBinding(sc Scope, alias string, write bool) (TypeBinding, *T
 	if err != nil {
 		return TypeBinding{}, nil, err
 	}
-	if write && (t.Ledger || t.Lifecycle != nil || len(t.Freeze) != 0) {
+	if write && (t.Ledger || t.Lifecycle != nil || len(t.Freeze) != 0 || t.rules.invalid != nil || len(t.rules.bookings)+len(t.rules.assignments)+len(t.rules.approvals) != 0) {
 		return TypeBinding{}, nil, errorf(CodeNotAllowed, "this record type needs its native write rules")
 	}
 	return binding, t, nil
@@ -36,7 +36,7 @@ func (s *Store) LiveBinding(sc Scope, alias string, write bool) (TypeBinding, *T
 // source's schema owns constraints such as uniqueness for those fields.
 func (t *Type) LiveField(name string, write bool) (*Field, error) {
 	f := t.field(name)
-	if f == nil || f.Computed != "" || (write && (f.AI != "" || f.Sequence != nil || f.Masked)) {
+	if f == nil || f.Hidden || f.Computed != "" || (write && (f.AI != "" || f.Sequence != nil || f.Masked)) {
 		return nil, fieldErr(name, "cannot be mapped to this source operation")
 	}
 	switch f.Type {
@@ -72,4 +72,14 @@ func (f *Field) liveValue(value any, write bool) (any, error) {
 		return nil, fieldErr(f.Name, "does not match the bound field")
 	}
 	return out, nil
+}
+
+// SourceReferenceField checks the declaration for a reviewed external-to-local
+// crosswalk. A reference cannot be written back as a scalar source value.
+func (t *Type) SourceReferenceField(name string) (*Field, error) {
+	f := t.field(name)
+	if f == nil || f.Type != TypeRef || f.Hidden || f.Masked || f.Computed != "" {
+		return nil, fieldErr(name, "a source crosswalk needs a visible reference field")
+	}
+	return f, nil
 }

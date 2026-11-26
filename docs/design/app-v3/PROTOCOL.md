@@ -324,8 +324,24 @@ through an approved run.
 | method | params | result |
 |---|---|---|
 | `connections.list` | `{app}` | `{connections:[{id,kind,reads,writes}]}` for the app's Personal profile scope. |
-| `connections.read` | `{app,connection,read,args?,limit?}` | `{rows,source:{connection,read,residency,freshness,observed_at},has_more?}`. Live rows carry canonical IDs and any declared `_source_version`. |
+| `connections.read` | `{app,connection,read,args?,limit?}` | `{rows,source:{connection,read,residency,freshness,observed_at},has_more?}`. Rows carry canonical IDs and any declared `_source_version`. A managed binding reads its current residency. |
 | `connections.test` | `{app,connection}` | `{ok:true}` when the source answers. |
+
+## residency methods
+
+These owner calls move a kept Personal PostgreSQL type between live, mirror
+and native residency. The app publication and canonical record IDs stay
+fixed. Preview binds confirmation to the source rows, app version and epochs.
+
+| method | params | result |
+|---|---|---|
+| `residency.show` | `{app,type}` | `{type,connection?,read?,state:{mode,epochs,checked_at?}}` |
+| `residency.preview` | `{app,type,to,source_quiesced?}` | `{from,to,rows,conflicts,replay_rows,epochs,confirmation}` |
+| `residency.cutover` | `{app,type,to,source_quiesced?,confirmation}` | The applied plan with the committed epochs. |
+
+Pause upstream writers before entering or leaving native authority. An
+expired confirmation or a conflict keeps the current route. A rollback can
+replay edits to existing rows through the declared reverse mapping.
 
 ## data methods
 
@@ -399,6 +415,11 @@ reconnects subscribes again with `cursor` (the last one it saw) and is sent
 one diff of everything since, or `data.reset` `{sub, cursor}` when that
 cannot be told as a diff, after which it refetches. Subscriptions end with
 `data.unsubscribe` or the connection.
+
+Record queries, counts, aggregates and point reads add a `source` with
+residency, freshness and observation time. Federated answers include the
+contributing sources. Live and federated watches emit payload-free resets
+and refetch under the app's grant.
 
 A type with a lifecycle (declared under `process.lifecycles` or on the
 type) moves its state only by `data.transition` `{type, id, transition, rev,
