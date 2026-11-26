@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,8 +114,13 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		}
 		return harnesses.Run(ctx, call)
 	}
+	var ownerName string
+	if person, err := user.Current(); err == nil {
+		ownerName = strings.TrimSpace(person.Name)
+	}
 	e, err := runs.Open(runs.Config{
-		Root: home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
+		OwnerName: ownerName,
+		Root:      home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: agent,
 		CheckAI: harnesses.Check, AppVersion: files.Version, Render: b.renderRunOutput,
 		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,

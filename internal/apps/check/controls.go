@@ -16,17 +16,18 @@ func missingControls(def schema.Definition, types schema.TypeSet) []schema.Probl
 	plan, _ := schema.ParsePlan(def.Files[schema.PlanFile])
 	controls := screenControls{
 		commands: map[string]bool{}, creates: map[string]bool{}, runs: map[string]bool{},
-		app: app, types: types,
+		app: app, types: types, collections: map[string]bool{},
 	}
 	for _, file := range def.ScreenFiles() {
 		screen, _ := schema.ParseScreen(def.Files[file])
-		controls.scan(screen.Nav, screen.Body)
+		controls.scan(file, screen.Nav, screen.Body)
 	}
-	var issues []schema.Problem
+	issues := controls.issues
 	exposed := map[string]bool{}
 	directRuns := maps.Clone(controls.runs)
 	for _, command := range app.Commands {
-		visible := controls.commands[command.ID] || (command.Run != "" && directRuns[command.Run])
+		visible := controls.commands[command.ID] || (command.Run != "" && directRuns[command.Run]) ||
+			(app.Kit == 2 && command.For != "" && controls.collections[command.For])
 		// Inline actions expose a command only when they perform its same write or action sequence.
 		for _, actions := range controls.actions {
 			if len(command.Do) > 0 && reflect.DeepEqual(command.Do, actions) {
@@ -68,16 +69,18 @@ func missingControls(def schema.Definition, types schema.TypeSet) []schema.Probl
 type screenControls struct {
 	commands, creates, runs map[string]bool
 	actions                 [][]schema.Action
+	collections             map[string]bool
+	issues                  []schema.Problem
 	app                     schema.App
 	types                   schema.TypeSet
 }
 
-func (c *screenControls) scan(roots ...*schema.Node) {
+func (c *screenControls) scan(file string, roots ...*schema.Node) {
 	// A Sheet starts closed. Its controls count once an exposed control can open it.
 	sheets := map[string]*schema.Node{}
 	opened := map[string]bool{}
-	var visit func(*schema.Node)
-	visit = func(node *schema.Node) {
+	var visit func(*schema.Node, bool)
+	visit = func(node *schema.Node, inRecord bool) {
 		if node == nil || strings.TrimSpace(node.When) == "false" {
 			return
 		}
@@ -86,7 +89,14 @@ func (c *screenControls) scan(roots ...*schema.Node) {
 			return
 		}
 		switch node.Part {
+		case "RecordList", "Board", "Table":
+			if node.Bind != nil {
+				c.collections[node.Bind.Records] = true
+			}
 		case "RecordPage":
+			if node.Bind != nil && node.Bind.Type != "" && node.Bind.Record != "" {
+				c.collections[node.Bind.Type] = true
+			}
 			if node.Bind != nil && node.Bind.Record != "" {
 				ids, _ := node.Props["actions"].([]any)
 				for _, id := range ids {
@@ -95,7 +105,7 @@ func (c *screenControls) scan(roots ...*schema.Node) {
 					}
 				}
 			}
-		case "RecordForm":
+		case "Form", "RecordForm":
 			if node.Bind == nil || node.Bind.Record == "" {
 				typ, _ := node.Props["type"].(string)
 				if typ == "" && node.Bind != nil {
@@ -110,8 +120,18 @@ func (c *screenControls) scan(roots ...*schema.Node) {
 				}
 			}
 		}
+		inRecord = inRecord || node.Part == "RecordPage" || node.Bind != nil && node.Bind.Record != ""
 		for _, actions := range node.On {
 			c.collect(actions)
+			if c.app.Kit == 2 && node.Part == "Button" && !inRecord {
+				for _, action := range actions {
+					run, ok := action["runs.start"].(string)
+					if ok && selectionParameter(action["params"]) {
+						c.issues = append(c.issues, schema.Problem{File: file, Path: node.ID, Code: "record_command_placement",
+							Message: fmt.Sprintf("Put %q on the record. Declare a command with for set to the record type and bind the run parameter to $record.id.", run)})
+					}
+				}
+			}
 			c.actions = append(c.actions, actions)
 			for _, a := range actions {
 				if id, ok := a["open"].(string); ok {
@@ -120,18 +140,18 @@ func (c *screenControls) scan(roots ...*schema.Node) {
 			}
 		}
 		for _, child := range node.Children {
-			visit(child)
+			visit(child, inRecord)
 		}
 	}
 	for _, root := range roots {
-		visit(root)
+		visit(root, false)
 	}
 	for {
 		visited := false
 		for id, sheet := range sheets {
 			if opened[id] {
 				delete(sheets, id)
-				visit(sheet)
+				visit(sheet, false)
 				visited = true
 			}
 		}
@@ -139,6 +159,16 @@ func (c *screenControls) scan(roots ...*schema.Node) {
 			return
 		}
 	}
+}
+
+func selectionParameter(raw any) bool {
+	params, _ := raw.(map[string]any)
+	for _, value := range params {
+		if text, ok := value.(string); ok && (strings.HasPrefix(text, "$selection.") || strings.HasPrefix(text, "$record.")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c screenControls) collect(actions []schema.Action) {

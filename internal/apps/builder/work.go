@@ -71,6 +71,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		var report schema.Report
 		var files map[string]string
 		var reply string
+		var calls BuildCalls
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
@@ -85,12 +86,12 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 				}
 			}
 		} else if err == nil {
-			files, reply, err = s.ask(ctx, j, t, catalog, headless)
+			files, reply, calls, err = s.ask(ctx, j, t, catalog, headless)
 		}
 		if ctx.Err() != nil {
 			return true
 		}
-		if err = s.commitTurn(id, t, checking, headless, catalog, report, files, reply, err); err != nil {
+		if err = s.commitTurn(id, t, checking, headless, catalog, report, files, reply, calls, err); err != nil {
 			return errors.Is(err, context.Canceled)
 		}
 	}
@@ -146,13 +147,13 @@ func safeTypes(types schema.TypeSet, counts map[string]int) []modelType {
 	return out
 }
 
-func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headless bool) (map[string]string, string, error) {
+func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headless bool) (map[string]string, string, BuildCalls, error) {
 	model, err := s.opts.Model()
 	if err != nil {
-		return nil, "", err
+		return nil, "", BuildCalls{}, err
 	}
 	if model == nil {
-		return nil, "", errors.New("no app model is configured")
+		return nil, "", BuildCalls{}, errors.New("no app model is configured")
 	}
 	stage := t.Stage
 	if t.Report != nil {
@@ -177,9 +178,9 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 			}
 		}
 	}
-	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
+	files, reply, calls, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
-		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report,
+		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -191,7 +192,7 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 	if err == nil || errors.Is(err, errModelCallLimit) {
 		err = errors.Join(err, stampAppID(files, j))
 	}
-	return files, reply, err
+	return files, reply, calls, err
 }
 
 // A stable ID makes preview and live capability checks agree after Keep.
@@ -250,7 +251,7 @@ func (s *Jobs) showWork(ctx context.Context, base *job, t turn, files map[string
 	return s.save(current, Event{})
 }
 
-func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Catalog, report schema.Report, files map[string]string, reply string, err error) error {
+func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Catalog, report schema.Report, files map[string]string, reply string, calls BuildCalls, err error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, loadErr := s.load(id)
@@ -262,20 +263,39 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 	}
 	j.WritingFiles = nil
 	j.Screens = screens(j.Working.Files)
+	if calls.Limit > 0 {
+		stage := startEvent(t, false)
+		stage.Draft = id
+		stage.Line = "Finished this pass."
+		stage.Calls = &calls
+		stage.Detail = briefText(string(trace.Scrub([]byte(reply))), 2400)
+		j.Progress = append(j.Progress, stage)
+	}
 	if errors.Is(err, errModelCallLimit) {
+		advanced := !maps.Equal(j.Working.Files, files)
 		j.Working = snapshot{Files: files}
 		j.describeDraft(catalog, headless, t.Stage == Planning)
-		j.State.State = Failed
-		j.Problem = "I ran out of model calls. Your changes are saved. Build again to continue."
-		if t.Stage == Planning {
-			j.Problem = "I ran out of model calls. Your draft is saved. Ask me to continue the plan."
-		} else if len(j.Queue) == 1 {
-			j.Paused = &t
+		j.Presence = nil
+		const maxContinuations = 2
+		if t.Stage != Planning && check.Definition(definition(files), externalTypes(catalog.Types, id, j.App)).OK() {
+			// The last allowed call can finish the draft even if the model
+			// never had a chance to say so. Run the full sample and Desk checks.
+			j.Queue[0].Round++
+			j.Queue[0].Report = nil
+			j.State.State = Checking
+			return s.save(j, Event{Stage: Checking, Round: t.Round + 1, Line: "Progress saved. Checking the draft."})
 		}
+		if t.Stage != Planning && advanced && t.Continuations < maxContinuations {
+			j.Queue[0].Continuations++
+			return s.save(j, Event{Stage: Writing, Round: t.Round + 1, Line: "Progress saved. Continuing the build."})
+		}
+		j.State.State = Failed
+		j.Problem = "I reached the build limit. Your draft is saved."
 		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
 			{Code: "build_failed", Message: j.Problem},
 		}}})
 	}
+
 	if errors.Is(err, errCompilerUnavailable) {
 		j.State.State = NeedsYou
 		j.Problem = "This engine needs the screen compiler before it can finish the app."
@@ -307,11 +327,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			j.Working.Passed = true
 			j.Working.CheckComplete = true
 			j.Working.Look = report.Look
-			reply := t.Reply
-			if reply == "" {
-				reply = "I checked this version of the app."
-			}
-			if err := j.checkpoint(reply); err != nil {
+			if err := j.checkpoint(s.displaySummary(j, t)); err != nil {
 				return err
 			}
 			j.State.State = Ready
@@ -327,7 +343,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		unavailable := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
 			return strings.HasSuffix(p.Code, "_unavailable")
 		})
-		if t.Round == maxRounds || unavailable || pendingReuse || t.CheckOnly {
+		if t.Round >= maxRounds || sameFindings(t.PreviousFindings, report.Problems) || unavailable || pendingReuse || t.CheckOnly {
 			j.State.State = NeedsYou
 			j.Problem = "Check found an issue. " + report.Problems[0].Message
 			if pendingReuse {
@@ -341,13 +357,11 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 					}
 				}
 			}
-			if t.Reply != "" {
-				j.Transcript = append(j.Transcript, Message{ID: t.ID + "-reply", Role: "assistant", Text: t.Reply})
-			}
 			event.Stage, event.Line = NeedsYou, j.Problem
 			return s.finish(j, event)
 		}
 		j.Queue[0].Report = &report
+		j.Queue[0].PreviousFindings = report.Problems
 		event.Line = "Some parts need another pass."
 		return s.save(j, event)
 	}
@@ -363,17 +377,36 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			j.State.State, j.Problem = NeedsYou, reply
 			return s.finish(j, Event{Line: reply})
 		}
-		if err := j.checkpoint(reply); err != nil {
+		if err := j.checkpoint("Here is the plan for " + displayName(j.Name, "your app") + "."); err != nil {
 			return err
 		}
 		j.State.State = Ready
 		return s.finish(j, Event{Stage: Planning, Line: "Plan ready to review."})
 	}
-	j.Queue[0].Reply = reply
 	j.Queue[0].Round++
 	j.Queue[0].Report = nil
 	j.State.State = Checking
 	return s.save(j, Event{})
+}
+
+// Repeating the same set of findings means the last repair did not move Check forward.
+func sameFindings(previous, current []schema.Problem) bool {
+	if len(previous) == 0 || len(previous) != len(current) {
+		return false
+	}
+	type address struct{ File, Path, Code string }
+	counts := map[address]int{}
+	for _, p := range previous {
+		counts[address{p.File, p.Path, p.Code}]++
+	}
+	for _, p := range current {
+		key := address{p.File, p.Path, p.Code}
+		if counts[key] == 0 {
+			return false
+		}
+		counts[key]--
+	}
+	return true
 }
 
 func (j *job) checkpoint(reply string) error {
@@ -414,7 +447,11 @@ func (s *Jobs) finish(j *job, event Event) error {
 			if p.Screen != "" && len(j.Checkpoints) != 0 {
 				p.Kind = "small"
 				p.Checkpoint = j.Checkpoints[len(j.Checkpoints)-1].ID
-				p.SummaryLines = []string{j.Checkpoints[len(j.Checkpoints)-1].Summary}
+				if live, err := s.opts.Store.Get(j.App); err == nil {
+					change := screenChange(live.Files(), j.Working.Files, "screens/"+p.Screen+".json", finished.Target)
+					p.Display = &change
+					p.SummaryLines = []string{change.Part}
+				}
 			}
 		}
 		s.opts.Proposed(p)

@@ -49,6 +49,10 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		if json.Unmarshal(raw, &args) != nil || !json.Valid(args.Plan) {
 			return nil, errors.New("plan needs the app name and a plan object")
 		}
+		plan, err := schema.ParsePlan(args.Plan)
+		if err != nil || strings.TrimSpace(plan.Ask) == "" {
+			return nil, errors.New("plan needs a plan object with a nonempty ask")
+		}
 		if len(files[schema.AppFile]) == 0 {
 			if strings.TrimSpace(args.Name) == "" {
 				return nil, errors.New("give the app a name")

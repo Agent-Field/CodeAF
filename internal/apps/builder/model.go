@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -25,13 +26,13 @@ type Completer interface {
 }
 
 const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
-at a time in the scoped executor. Report progress during long tool sequences.
+at a time in the scoped executor. Finish when the requested edits are saved.
 
-Start with codeaf app context for the manifest, plan, file names and Check
-findings. Get an external shape with context {"type":"contact"} and a file
+The request includes the current manifest, plan, file names and Check findings.
+Use that context and existing_shapes directly. If a shape is missing, use context {"type":"contact"} and a file
 with context {"file":"screens/deals.json"}. Reuse replies for unchanged files.
 Fetch needed kit descriptors together with parts {"select":["add-view/board","RecordList"]}.
-Use the examples below first. If needed, use reference {"schema":"app-2.json"}
+Use the supplied parts and the examples below first. If needed, use reference {"schema":"app-2.json"}
 for types and settings, process-2.json for lifecycle, and run-2.json or
 {"example":"crm","file":"runs/follow-up.yaml"} for automations.
 
@@ -39,7 +40,8 @@ plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Trac
 writes the outline and starts the manifest. Each plan line has id and line.
 Use data for type ids, screens for screen ids, and automation for each
 planned run id. In data, use "create":true for types people add. Put manual
-actions in "actions" by command or run id. Keep these declarations when
+actions in "actions" by command or run id. List custom parts and steps in
+"extensions" by id, with a short reason. Keep these declarations when
 revising the plan. Reuse the plan ids in the compiled definitions.
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
@@ -67,7 +69,7 @@ Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
-Use the screen_controls guide from context for commands, Add buttons and approvals.
+Use the supplied screen_controls guide for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
@@ -148,6 +150,7 @@ type modelInput struct {
 	Using      []string
 	Definition map[string]string
 	Report     *schema.Report
+	Continued  bool
 }
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
@@ -168,13 +171,14 @@ Use a plain enum for status unless the request needs guarded transitions.
 Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
 "transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
 
-Put the controls on the screen where the person works. Use a Button with
-on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
-or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
-button, set the list id and selection mode and show the button when a row
-is selected. A local save requiring approval puts gate: {approval: proof}
+Declare record commands with "for":"deal" and params {"deal":"$record.id"}
+so record views can show them with the current record. For an app-wide
+action without a record parameter, use a Button with on-click='[{"runs.start":"review"}]'. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
+In drafts use {{params.deal.contact.name}} and {{owner.name}} if these values
+are needed. Use the actual declared relation and title field ids. Don't leave
+bracketed placeholders in draft prompts, template values or example replies.
 Use a Button labelled "Add <record>" with on-click to open a Sheet
 containing a RecordForm, or use a Button with an asked records.create
 action. Supply every required field with no default through the form, or
@@ -304,13 +308,36 @@ func briefText(text string, limit int) string {
 
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
-func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, error) {
-	raw, err := json.Marshal(struct {
-		Request string  `json:"request"`
-		Target  *Target `json:"target,omitempty"`
-	}{in.Request, in.Target})
+func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
 	if err != nil {
-		return nil, "", err
+		return nil, "", BuildCalls{}, err
+	}
+	// Share the vocabulary without copying every external type into a large
+	// workspace's prompt. The same shapes are still available by name.
+	typeShapes, err := json.Marshal(in.Types)
+	if err != nil {
+		return nil, "", BuildCalls{}, err
+	}
+	if len(typeShapes) > contextFilePage {
+		typeShapes = nil
+	}
+	var catalog string
+	if in.Stage != Planning {
+		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "RecordForm", "RecordPage", "Button", "Sheet"})
+		if err != nil {
+			return nil, "", BuildCalls{}, err
+		}
+	}
+	raw, err := json.Marshal(struct {
+		Request        string          `json:"request"`
+		Target         *Target         `json:"target,omitempty"`
+		Context        json.RawMessage `json:"context"`
+		Parts          json.RawMessage `json:"parts,omitempty"`
+		ExistingShapes json.RawMessage `json:"existing_shapes,omitempty"`
+	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes})
+	if err != nil {
+		return nil, "", BuildCalls{}, err
 	}
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
@@ -329,9 +356,14 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	})
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
+	var planSaved bool
+	var planErr error
 	execute := func(ctx context.Context, command string) (result string, err error) {
 		verb, args, err := appcmd.Parse(command)
 		if err != nil {
+			mu.Lock()
+			planErr = err
+			mu.Unlock()
 			return "", err
 		}
 		mu.Lock()
@@ -430,6 +462,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		default:
 			next, err := author.edit(ctx, verb, files, types, args)
 			if err != nil {
+				if verb == "plan" {
+					planErr = err
+				}
 				if errors.Is(err, errCompilerUnavailable) {
 					compilerErr = err
 				}
@@ -439,6 +474,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 				return "", err
 			}
 			files = next
+			if verb == "plan" {
+				planSaved = true
+			}
 			return "Saved the definition change.", nil
 		}
 	}
@@ -452,12 +490,12 @@ with their exact ids, and remove extras with remove-screen {"id":"extra"}.
 For a layout finding, replace only the affected screen with markup
 {"screen":"...","replace":true,"markup":"..."}, keeping existing node ids.
 Keep everything unaffected. Fix the reported locations using the commands
-shown above, then run check once to confirm and finish.`
+shown above, then finish. The engine checks the draft automatically.`
 	default:
 		if in.Editing {
 			prompt += `Apply only the requested change. If it adds an optional field,
 use add-field with just {"type":"number"} for an optional number. Keep the
-plan, screens and samples when the request leaves them alone. Then run check once and finish.`
+plan, screens and samples when the request leaves them alone. Then finish so the engine can check the draft.`
 			break
 		}
 		prompt += `Complete the planned screens and samples before making refinements.
@@ -465,9 +503,11 @@ Set record permissions and compile one recipe for each missing plan screen,
 using its exact screen id. Implement each planned run and its requested
 entry point before Check. Keep existing screens unless asked to edit them.
 Use markup only for a composition the request needs and recipes cannot do.
-Write the sample rows and run check once. When check reports no problems,
-finish immediately with a short summary. The engine tries sample data and
-Desk Look after this turn.`
+Write the sample rows and finish with a short summary. The engine runs Check,
+tries the sample data and asks Desk to draw the screens after this turn.`
+	}
+	if in.Continued {
+		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
 	}
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
@@ -475,12 +515,48 @@ Desk Look after this turn.`
 	if in.Headless {
 		prompt += "\nHeadless build: propose matching types from using. Continue to Check. Apply confirms reuse."
 	}
-	bounded := &boundedModel{model: model, limit: in.callBudget()}
-	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
-	if bounded.exhausted() {
+	limit := in.callBudget()
+	bounded := &boundedModel{model: model, stage: in.Stage, stopAt: limit, stats: BuildCalls{Limit: limit}}
+	run := func(prompt string) (string, error) {
+		return session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
+	}
+	reply, err := run(prompt)
+	if in.Stage == Planning {
+		// The saved plan is the reply. Some providers end after the last tool
+		// call or omit the closing text, even though the plan was written.
+		if planSaved && (err == nil || bounded.hit || bounded.incomplete) {
+			err = nil
+		} else if !planSaved && ctx.Err() == nil && (err == nil || bounded.incomplete) && !bounded.hit {
+			reason := "the reply did not save a plan object"
+			if planErr != nil {
+				reason = planErr.Error()
+			} else if bounded.incomplete {
+				reason = "the model returned an empty or truncated reply"
+			}
+			bounded.incomplete = false
+			bounded.stopAt = min(bounded.stats.Limit, bounded.stats.Total+4)
+			reply, err = run(prompt + "\nThe previous plan failed: " + reason +
+				". Save the plan with codeaf app plan. If tool calls are unavailable, return the same {\"name\",\"plan\"} arguments as a single JSON object.")
+			if !planSaved && err == nil {
+				fallback := strings.TrimSpace(reply)
+				if body, ok := strings.CutPrefix(fallback, "```json"); ok {
+					fallback = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body), "```"))
+				}
+				if _, parseErr := execute(ctx, "codeaf app plan "+fallback); parseErr == nil {
+					reply = "I outlined the app for review."
+				} else {
+					err = fmt.Errorf("the corrected reply did not contain a usable plan: %w", parseErr)
+				}
+			}
+			if planSaved && (bounded.incomplete || bounded.hit) {
+				err = nil
+			}
+		}
+	}
+	if bounded.hit && !(in.Stage == Planning && planSaved && err == nil) {
 		err = errModelCallLimit
 	}
-	return files, reply, errors.Join(err, compilerErr)
+	return files, reply, bounded.stats, errors.Join(err, compilerErr)
 }
 
 func builderModelID(model Completer) string {
@@ -491,12 +567,14 @@ func builderModelID(model Completer) string {
 }
 
 const (
-	planCallBudget = 20
-	buildCallBase  = 12
-	callsPerType   = 2
-	callsPerScreen = 3
-	callsPerRun    = 5
-	maxBuildCalls  = 64
+	planCallBudget    = 20
+	buildCallBase     = 14
+	callsPerType      = 2
+	callsPerScreen    = 3
+	callsPerRun       = 5
+	callsPerExtension = 8
+	revisionCalls     = 8
+	maxBuildCalls     = 80
 )
 
 // Planning starts before the outline exists. Writing and repair budget for
@@ -506,36 +584,87 @@ func (in modelInput) callBudget() int {
 		return planCallBudget
 	}
 	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
-	return min(maxBuildCalls, buildCallBase+
-		len(plan.Data)*callsPerType+len(plan.Screens)*callsPerScreen+len(plan.Automation)*callsPerRun)
+	calls := buildCallBase + len(plan.Data)*callsPerType + len(plan.Screens)*callsPerScreen +
+		len(plan.Automation)*callsPerRun + len(plan.Extensions)*callsPerExtension
+	if in.Editing {
+		// Revisions can add work that was absent from the kept plan.
+		calls += revisionCalls
+	}
+	return min(maxBuildCalls, calls)
+}
+
+// BuildCalls counts each submitted completion once, using the work it returned.
+type BuildCalls struct {
+	Limit     int `json:"limit"`
+	Total     int `json:"total"`
+	Planning  int `json:"planning"`
+	Lookups   int `json:"lookups"`
+	Authoring int `json:"authoring"`
+	Repairs   int `json:"repairs"`
+	Other     int `json:"other"`
 }
 
 type boundedModel struct {
-	model Completer
-	mu    sync.Mutex
-	limit int
-	calls int
-	hit   bool
+	model      Completer
+	stats      BuildCalls
+	mu         sync.Mutex
+	stage      string
+	stopAt     int
+	hit        bool
+	incomplete bool
 }
 
 var errModelCallLimit = errors.New("the Builder reached its model call limit")
 
-func (b *boundedModel) exhausted() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.hit
-}
-
 func (b *boundedModel) CompleteWithMessages(ctx context.Context, messages []ai.Message, opts ...ai.Option) (*ai.Response, error) {
 	b.mu.Lock()
-	if b.calls >= b.limit {
+	if b.stats.Total >= b.stopAt {
 		b.hit = true
 		b.mu.Unlock()
 		return nil, errModelCallLimit
 	}
-	b.calls++
+	b.stats.Total++
 	b.mu.Unlock()
-	return b.model.CompleteWithMessages(ctx, messages, append(opts, ai.WithMaxTokens(12000))...)
+	resp, err := b.model.CompleteWithMessages(ctx, messages, append(opts, ai.WithMaxTokens(12000))...)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	category := &b.stats.Other
+	if resp != nil && len(resp.Choices) > 0 {
+		choice := resp.Choices[0]
+		b.incomplete = b.incomplete || choice.FinishReason == "length" || len(choice.Message.Content) == 0 && len(choice.Message.ToolCalls) == 0
+		for _, call := range choice.Message.ToolCalls {
+			var args struct{ Command string }
+			if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
+				b.incomplete = true
+				continue
+			}
+			verb, _, err := appcmd.Parse(args.Command)
+			if err != nil {
+				continue
+			}
+			switch verb {
+			case "context", "common_types", "parts", "kit", "reference", "mark", "presence":
+				if category == &b.stats.Other {
+					category = &b.stats.Lookups
+				}
+			default:
+				// A batch containing both reads and edits counts as editing work.
+				switch b.stage {
+				case Planning:
+					category = &b.stats.Planning
+				case "repair":
+					category = &b.stats.Repairs
+				default:
+					category = &b.stats.Authoring
+				}
+			}
+		}
+	} else if err == nil {
+		b.incomplete = true
+	}
+	*category++
+	return resp, err
 }
 
 func definition(files map[string]string) schema.Definition {

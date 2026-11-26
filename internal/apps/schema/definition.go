@@ -336,6 +336,7 @@ type Plan struct {
 	Ask        string     `json:"ask"`
 	Data       []PlanLine `json:"data"`
 	Automation []PlanLine `json:"automation,omitempty"`
+	Extensions []PlanLine `json:"extensions,omitempty"`
 	Actions    []PlanLine `json:"actions,omitempty"`
 	Screens    []PlanLine `json:"screens"`
 	Agent      *PlanAgent `json:"agent,omitempty"`

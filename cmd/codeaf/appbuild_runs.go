@@ -125,7 +125,7 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 		}
 	}
 	return runs.Open(runs.Config{
-		Root: root, Now: now,
+		Root: root, Now: now, OwnerName: "Example Owner",
 		Load: func(id, run string) (runs.Definition, error) {
 			if id != app.ID {
 				return runs.Definition{}, store.ErrNotFound

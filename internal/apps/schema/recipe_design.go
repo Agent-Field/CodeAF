@@ -108,7 +108,7 @@ func (c *checker) designCollection(s *Screen, n *Node, q *QueryIR, r Recipe) {
 		if slices.Contains(values, life.Initial) {
 			value = life.Initial
 		}
-		metric(state, value+" "+strings.ToLower(label)+" records", "count", "", []QueryPredicate{{Field: state, Op: "eq", Value: value}})
+		metric(state, value, "count", "", []QueryPredicate{{Field: state, Op: "eq", Value: value}})
 	}
 	if len(tiles) > 0 {
 		s.Body = &Node{ID: nodeID("recipe/" + s.Screen + "/layout"), Part: "Stack", Children: append(tiles, n)}

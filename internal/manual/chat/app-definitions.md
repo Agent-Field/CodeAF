@@ -24,7 +24,9 @@ Rendering a custom part requires the desktop sandbox.
 Kit 2 can check Markdown, sheets, timelines, graphs, maps and slide content.
 It also checks declarations for file references, record links, reasoned reveals,
 sign-off, evidence, timers and output templates. Check matches a render Action
-to its declared output and checks the visible merge fields. Draft runs render
+to its declared output and checks the visible merge fields. A metric Chart
+uses its declared aggregate and filter. The desktop reads that value through
+`data.aggregate` with `view: {screen, id, args}`. Draft runs render
 with example records so you can test the output before applying the app.
 The data store, run engine and desktop each implement their own execution and
 rendering, including carrying out a run in a repository.
@@ -53,7 +55,11 @@ Both actions keep the person's records and the app's saved files on disk.
 Open **+ New app** in the desktop app and describe what you want to track
 and do. The plan shows data, screens, automations and what the app needs.
 Send a message to change any of it, then choose **Build**. Leave the tab
-while it works and come back to the same conversation. An Inbox item opens
+while it works and come back to the same conversation. If a writing pass
+reaches its model call limit after saving changes, the Builder can continue
+from those files automatically, up to two times per build. If Check repeats
+the same findings after a repair, the draft stops and shows the issue.
+An Inbox item opens
 the app when it's ready to try or needs your input.
 
 Try the screens with made-up records before choosing **Apply**. If the plan
@@ -65,7 +71,10 @@ no access to your records.
 
 Open **Edit app** and say what to change. Select an element in the preview
 to ask about that exact part. The saved mark keeps the selected node ID and
-checkpoint. Use an earlier step in the conversation to
+checkpoint. The builder describes the change by its display name in the
+conversation. Open **Build activity** for tool replies and Check details.
+A small assistant change card shows the part and its before and after
+states. Choose **Apply** or **Discard** there. Use an earlier step in the conversation to
 preview it or choose **Go back to this** to put it back as a new step.
 **Apply** publishes the checked files as the next version. **Discard**
 drops the unpublished change and returns to your saved app.
