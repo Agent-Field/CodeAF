@@ -29,6 +29,12 @@ Sections (run one at a time; `all` runs control and job):
              the operator's metadata, a bot's chats and its creator's rights, the hosting policy
   hosted-p2-after (in the codeaf container, after every service restarted) the shares and the privacy are what they were
 
+  relay      (in the codeaf container, after `org`) the organization's own relay answers its health page, the organization
+             server tells a signed-in person where it is and a stranger nothing, and two throwaway computers pair through it
+             with `codeaf pair --org` and see each other: nothing here uses the public relay
+  relay-after (in the codeaf container, after every service restarted) those two computers still see each other, because the
+             relay kept its device list on its volume
+
 An organization server takes a password only over https or from its own machine, so `org` and
 `after-org` run inside the codeaf container with ORG_URL=http://127.0.0.1:8787 (smoke.sh does).
 
@@ -43,6 +49,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -1760,17 +1767,143 @@ def hosted_p2_after():
         check(f'P2-1 {who} still has none of it after the restart', chat_p not in p2_ids(other, 'sessions') + p2_ids(other, 'shared') and got[0] == 404, short(got, 160))
 
 
+# ---------------------------------------------------------------------------------------------
+# The organization's relay (the `relay` service). Every check goes through the real client doors a member uses: the relay's own HTTP
+# address, `codeaf pair --org <the organization>` on one throwaway computer and `codeaf pair <code> --via <address>` on another,
+# and `codeaf devices` on each, with no CODEAF_SYNC_URL anywhere, so the only way a computer finds this relay is by being told.
+# What only the machine itself can show (the volume's contents) is checked by smoke.sh. The live view of a chat over this relay is
+# not driven here: it needs a terminal, which this container does not have, so smoke.sh hands it to the Go test
+# internal/e2e/org_relay_e2e_test.go when SMOKE_RELAY_LIVE=1.
+RELAY = (os.environ.get('RELAY_URL') or os.environ.get('CODEAF_ORG_RELAY_URL') or 'http://relay:8788').rstrip('/')
+RELAY_HOMES = Path(os.environ.get('SMOKE_RELAY_HOMES', '/tmp/smoke-relay'))
+RELAY_NAMES = {'desk': 'desktop', 'lap': 'laptop'}
+
+
+def relay_env(home, token=''):
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('CODEAF_', 'AGENTFIELD_', 'OPENROUTER_', 'OPENAI_'))}
+    env.update(HOME=str(RELAY_HOMES / home), CODEAF_HOME=str(RELAY_HOMES / home / 'codeaf'), CODEAF_TELEMETRY='off',
+               DO_NOT_TRACK='1', CODEAF_NO_UPDATE_CHECK='1')
+    if token:
+        env['CODEAF_ORG_TOKEN'] = token
+    return env
+
+
+class Lines:
+    """What a command prints, read as it comes, so a script can wait for a line while the command waits for it. It reads bytes and not
+    lines, because a question that is waiting for its answer has no newline after it."""
+
+    def __init__(self, proc):
+        self.proc, self.chunks = proc, []
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        fd = self.proc.stdout.fileno()
+        while True:
+            data = os.read(fd, 4096)
+            if not data:
+                return
+            self.chunks.append(data.decode(errors='replace'))
+
+    def text(self):
+        return ''.join(self.chunks)
+
+
+def relay_devices(home):
+    """`codeaf devices` on one throwaway computer: (exit status, what it printed)."""
+    done = subprocess.run(['codeaf', 'devices'], cwd=RELAY_HOMES / home, env=relay_env(home), stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=90)
+    return done.returncode, done.stdout + done.stderr
+
+
+def relay_sees(home, other):
+    """Waits until `codeaf devices` on one computer lists the other by name, and says which relay it asked."""
+    last = []
+
+    def listed():
+        status, out = relay_devices(home)
+        last[:] = [status, out]
+        return status == 0 and other in out and out
+
+    got = wait_until(listed, 90, every=3)
+    return bool(got), (got or (last[1] if last else ''))
+
+
+def relay():
+    print("--- the organization's relay")
+    code, _ = http('GET', RELAY + '/p/health')
+    check('the relay answers its health page', code == 200, f'{code}')
+    code, _ = http('GET', RELAY + '/status')
+    check('and does not say which computers are connected', code in (403, 404), f'{code}')
+    token = sign_in('owner')
+    if not check('the operator signs in to the organization', bool(token)):
+        return
+    want = os.environ.get('CODEAF_ORG_RELAY_URL', '').rstrip('/')
+    code, profile = http('GET', ORG + '/v1/org', token)
+    told = (profile or {}).get('relay') if isinstance(profile, dict) else None
+    check('the organization tells a signed-in person where its relay is', code == 200 and bool(want) and told == want, f'{code} relay={told}')
+    code, bare = http('GET', ORG + '/v1/org')
+    check('and tells nobody who is not signed in', code in (401, 403) and 'relay' not in json.dumps(bare), f'{code}')
+
+    shutil.rmtree(RELAY_HOMES, ignore_errors=True)
+    for home in RELAY_NAMES:
+        (RELAY_HOMES / home).mkdir(parents=True)
+    offer = subprocess.Popen(['codeaf', 'pair', '--org', ORG, '--name', RELAY_NAMES['desk'], '--code'], cwd=RELAY_HOMES / 'desk',
+                             env=relay_env('desk', token), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    shown = Lines(offer)
+    command = wait_until(lambda: re.search(r'codeaf pair (\d{1,4}-\d{3}-\d{3}) --via (\S+)', shown.text()), 90, every=1)
+    check('`codeaf pair --org` shows a code, and the relay it names is the organization\'s own',
+          bool(command) and command.group(2).rstrip('/') == want, short(shown.text(), 300) if not command else command.group(2))
+    if not command:
+        offer.kill()
+        return
+    join = subprocess.Popen(['codeaf', 'pair', '--name', RELAY_NAMES['lap'], command.group(1), '--via', command.group(2)],
+                            cwd=RELAY_HOMES / 'lap', env=relay_env('lap'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    joined = Lines(join)
+    asked = wait_until(lambda: 'wants your chats' in shown.text(), 90, every=1)
+    check('the first computer is asked whether the second may have its chats', bool(asked), short(shown.text(), 300))
+    if asked:
+        offer.stdin.write('y\n')
+        offer.stdin.flush()
+    ends = []
+    for name, proc in (('the first', offer), ('the second', join)):
+        try:
+            ends.append((name, proc.wait(timeout=90)))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            ends.append((name, 'timed out'))
+    check('both computers finish pairing', bool(asked) and all(status == 0 for _, status in ends),
+          f'{ends} offer={short(shown.text(), 200)} join={short(joined.text(), 200)}')
+    for home, other in (('desk', RELAY_NAMES['lap']), ('lap', RELAY_NAMES['desk'])):
+        ok, said = relay_sees(home, other)
+        host = urlparse(want).netloc
+        check(f'the {RELAY_NAMES[home]} lists the {other} and says it uses the organization\'s relay', ok and host in said, short(said, 240))
+    saved = (RELAY_HOMES / 'lap' / 'codeaf' / 'sync-url')
+    check('the second computer remembered the relay it was told, so no variable is needed from now on',
+          saved.exists() and saved.read_text().strip().rstrip('/') == want, saved.read_text().strip() if saved.exists() else 'no file')
+
+
+def relay_after():
+    print("--- the organization's relay after a restart")
+    code, _ = http('GET', RELAY + '/p/health')
+    check('the relay answers its health page again', code == 200, f'{code}')
+    for home, other in (('desk', RELAY_NAMES['lap']), ('lap', RELAY_NAMES['desk'])):
+        ok, said = relay_sees(home, other)
+        check(f'the {RELAY_NAMES[home]} still lists the {other}: the relay kept its device list', ok, short(said, 240))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('section', choices=['all', 'control', 'job', 'org', 'after', 'after-org', 'hosted-prepare', 'hosted-seed', 'hosted', 'hosted-host', 'hosted-after', 'hosted-leftovers',
                                             'hosted-p1', 'hosted-p1-host', 'hosted-p1-restart', 'hosted-p1-bearer', 'hosted-p1-after',
-                                            'hosted-p2-prepare', 'hosted-p2', 'hosted-p2-after'])
+                                            'hosted-p2-prepare', 'hosted-p2', 'hosted-p2-after', 'relay', 'relay-after'])
     parser.add_argument('--operator-link', default='')
     args = parser.parse_args()
     for name, run in (('control', control), ('job', job), ('org', lambda: org(args.operator_link)), ('after', after), ('after-org', after_org),
                       ('hosted-prepare', hosted_prepare), ('hosted-seed', hosted_seed), ('hosted', hosted), ('hosted-host', hosted_host), ('hosted-after', hosted_after), ('hosted-leftovers', hosted_leftovers),
                       ('hosted-p1', hosted_p1), ('hosted-p1-host', hosted_p1_host), ('hosted-p1-restart', hosted_p1_restart), ('hosted-p1-bearer', hosted_p1_bearer),
-                      ('hosted-p1-after', hosted_p1_after), ('hosted-p2-prepare', hosted_p2_prepare), ('hosted-p2', hosted_p2), ('hosted-p2-after', hosted_p2_after)):
+                      ('hosted-p1-after', hosted_p1_after), ('hosted-p2-prepare', hosted_p2_prepare), ('hosted-p2', hosted_p2), ('hosted-p2-after', hosted_p2_after),
+                      ('relay', relay), ('relay-after', relay_after)):
         if args.section == name or (args.section == 'all' and name in ('control', 'job')):
             run()
     print('RESULT ' + ('PASS' if failures == 0 else f'FAIL ({failures} check(s) failed)'))
