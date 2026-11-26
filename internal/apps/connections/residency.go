@@ -84,14 +84,15 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 			return route, err
 		}
 		for name, read := range cfg.Reads {
-			if read.Residency == nil || state.Binding.App != "" && state.Binding.Read != name {
+			graphScan := cfg.Kind == Microsoft365 && graphListSupportsType(read)
+			if read.Residency == nil && !graphScan || state.Binding.App != "" && state.Binding.Read != name {
 				continue
 			}
 			bound, err := store.Type(scope, read.Type)
 			if err != nil || bound.ID != typ.ID {
 				continue
 			}
-			if route.read.Residency != nil {
+			if route.name != "" {
 				return route, errors.New("this type has more than one declared residency binding")
 			}
 			route.config, route.read, route.name = cfg, read, name
@@ -102,10 +103,10 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 		state.Binding.Key != route.binding.Key || !slices.Equal(state.Binding.Writable, route.binding.Writable)) {
 		return route, ErrUnavailable
 	}
-	if route.read.Residency != nil && state.Binding.App == "" {
+	if route.name != "" && state.Binding.App == "" {
 		route.state.Mode = data.ResidencyLive
 	}
-	if route.read.Residency != nil {
+	if route.name != "" {
 		if typ.HasRowPolicy() && route.state.Mode != data.ResidencyNative {
 			return route, ErrSourcePermission
 		}
@@ -328,6 +329,10 @@ func (s Service) SyncResidency(ctx context.Context, app, alias string) error {
 }
 
 func (r residencyRoute) source() Source {
+	if r.read.Residency == nil && r.config.Kind == Microsoft365 {
+		return Source{Connection: r.config.ID, Read: r.name, Residency: "live", Freshness: "live",
+			MappingEpoch: r.state.Epochs.Mapping, ResidencyEpoch: r.state.Epochs.Residency}
+	}
 	freshness := string(r.state.Mode)
 	if r.state.Mode == data.ResidencyMirror &&
 		time.Since(r.state.CheckedAt) > time.Duration(r.read.Residency.FreshForSeconds)*time.Second {
@@ -469,7 +474,7 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 		if err != nil {
 			return ir, Source{}, nil, err
 		}
-		if relation.read.Residency == nil {
+		if relation.name == "" {
 			continue
 		}
 		relatedSource := relation.source()
@@ -488,6 +493,9 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 }
 
 func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, filters map[string]any) (data.SourceScan, error) {
+	if r.config.Kind == Microsoft365 {
+		return s.graphScan(ctx, r, typ)
+	}
 	page, err := s.Read(ctx, Query{App: r.config.App, Connection: r.config.ID, Read: r.name, Limit: maxRows, filters: filters})
 	if err != nil {
 		return data.SourceScan{}, err
@@ -538,7 +546,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 	if err != nil {
 		return nil, Source{}, err
 	}
-	if r.read.Residency == nil {
+	if r.name == "" {
 		row, err := r.store.Get(data.Scope{App: app, Person: s.person(ctx)}, alias, id, reveal)
 		return row, NativeSource(), err
 	}
@@ -601,6 +609,9 @@ func UnbindCursor(source Source, cursor string) (string, bool) {
 }
 
 func sourceField(read Read, typ *data.Type, name string) (*data.Field, error) {
+	if read.GraphMeetingRead != "" && read.Fields[name] == "meeting" {
+		return typ.SourceReferenceField(name)
+	}
 	if read.Residency != nil && read.Residency.References[name] != nil {
 		return typ.SourceReferenceField(name)
 	}
