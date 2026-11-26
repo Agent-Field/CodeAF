@@ -86,7 +86,7 @@ The amber dot and number on Inbox in the app's left rail count only what waits o
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
-## who is doing this task — Your chat, Factory for Marco, and what the row says
+## who is doing this task — what Your chat means, Factory for Marco, and what the row says
 
 Each row in Tasks reads left to right: a mark for the task's state, the title, who does it, and one short state word. The mark is never amber, even when the task waits on you (amber means the Waiting on you count); it is a check when it is done, a box for a person's work, a dot while an agent works, and a hollow ring for an agent's work not started yet or asking. Who does it is the doer's face and name: "You", "Afi", "Lena", "Your chat" for a chat of yours, "Lena's chat" for one of hers (you see its tasks, never the chat), or "Factory #128". When the owner is someone other than you, their name follows: "Factory for Marco", "Afi for Lena". The owner is never shown where the doer goes. The state word is short: "asks you" or "asks Marco", how long it has run ("4m"), "due Fri", "waits on 1", or "failed" in red. Every running row says how long it has run, and its second line says what it is doing now (a Factory job's step); a failed row's second line says why. Work up next and done work say nothing there. A heading names who does its tasks: "Release 2.4 · 2 of 6 done · Your chat, Afi, Lena".
 
