@@ -4,16 +4,16 @@
   "params": {
     "source": {
       "type": "ref",
-      "to": "document"
+      "to": "docs_document"
     }
   },
   "steps": [
     {
       "id": "copy",
       "records.create": {
-        "type": "document",
+        "type": "docs_document",
         "set": {
-          "title": "$params.source.title",
+          "title": "{{params.source.title}} copy",
           "body": "$params.source.body"
         }
       }

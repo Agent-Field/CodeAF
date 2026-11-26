@@ -70,13 +70,13 @@
         "label": "Slide",
         "bind": {
           "record": "$params.id",
-          "type": "slide"
+          "type": "slides_slide"
         },
         "on": {
           "edit": [
             {
               "records.update": {
-                "type": "slide",
+                "type": "slides_slide",
                 "id": "$record.id",
                 "set": {
                   "body": "$input.value",
@@ -94,7 +94,7 @@
         "label": "Slide details",
         "bind": {
           "record": "$params.id",
-          "type": "slide"
+          "type": "slides_slide"
         },
         "props": {
           "fields": [

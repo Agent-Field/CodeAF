@@ -8,7 +8,7 @@
   "ask": "Open Docs and work with document records.",
   "data": [
     {
-      "id": "document",
+      "id": "docs_document",
       "line": "Each document is a versioned record."
     }
   ],

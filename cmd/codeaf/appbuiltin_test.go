@@ -45,7 +45,7 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 	docs := kit.Templates[1].ID
 	scope := appwire.DataScope{App: docs}
 	var created appwire.DataWriteResult
-	wire.must("data.create", appwire.DataCreateParams{DataScope: scope, Type: "document", Set: map[string]any{
+	wire.must("data.create", appwire.DataCreateParams{DataScope: scope, Type: "docs_document", Set: map[string]any{
 		"title": "Review notes", "body": "Confirm the numbers.",
 	}}, &created)
 	id := created.Rows[0]["id"]
@@ -82,7 +82,7 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 		}
 		return result
 	}
-	wire.must("data.create", appwire.DataCreateParams{DataScope: scope, Type: "document", Set: map[string]any{
+	wire.must("data.create", appwire.DataCreateParams{DataScope: scope, Type: "docs_document", Set: map[string]any{
 		"title": "Agent draft",
 	}}, &created)
 	id = created.Rows[0]["id"]
@@ -92,7 +92,7 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 		"args": map[string]any{"record": id, "body": "The figures agree."},
 	}})
 	var history appwire.DataHistoryResult
-	wire.must("data.history", map[string]any{"app": docs, "type": "document", "id": id}, &history)
+	wire.must("data.history", map[string]any{"app": docs, "type": "docs_document", "id": id}, &history)
 	found := false
 	for _, entry := range history.History {
 		found = found || entry.Actor == "Docs agent" && entry.ByKind == "ai" && entry.After["body"] == "The figures agree."
@@ -176,5 +176,58 @@ func TestBuiltinPublisherUpdatePreservesTheLocalVersionUntilApply(t *testing.T) 
 	screen, _ := got.Screen("library")
 	if got.Meta.Lineage.Source.Version != "1.1.0" || !strings.Contains(string(screen), "Team documents") || !slices.Contains(got.Runs, "duplicate") {
 		t.Fatalf("kept definition has wrong publisher or changes: %+v", got.Meta)
+	}
+}
+
+func TestBuiltinEditorExportsUseTheKeptRecord(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	if err := b.AppDefinitions().InstallBuiltins(); err != nil {
+		t.Fatal(err)
+	}
+	wire := wireOver(t, b)
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, archive := range archives {
+		if archive.Manifest.Name == "Docs" {
+			continue
+		}
+		t.Run(archive.Manifest.Name, func(t *testing.T) {
+			app, err := schema.ParseApp(archive.Files[schema.AppFile])
+			if err != nil {
+				t.Fatal(err)
+			}
+			var typ string
+			for typ = range app.Records {
+				break
+			}
+			body := "First line\nSecond line"
+			if archive.Manifest.Name == "Sheets" {
+				body = "Item\tAmount\nMaterials\t25"
+			}
+			var row appwire.DataWriteResult
+			wire.must("data.create", appwire.DataCreateParams{
+				DataScope: appwire.DataScope{App: app.ID}, Type: typ,
+				Set: map[string]any{"title": "Proof", "body": body},
+			}, &row)
+			for name, template := range app.Outputs {
+				params := map[string]any{"app": app.ID, "output": name}
+				if template.Record != "" {
+					params["record"] = row.Rows[0]["id"]
+				}
+				var receipt struct{ ID string }
+				wire.must("apps.render", params, &receipt)
+				var file appwire.AppOutputFileResult
+				wire.must("apps.output_file", map[string]string{"app": app.ID, "id": receipt.ID}, &file)
+				want := map[string]string{"pdf": "%PDF", "pptx": "PK", "csv": "Item,Amount\nMaterials,25\n"}
+				if !strings.HasPrefix(string(file.Content), want[template.Format]) ||
+					len(file.File.Sources) != 1 || file.File.Sources[0].ID != row.Rows[0]["id"] {
+					t.Fatalf("%s exported the wrong source or format: %+v", name, file.File)
+				}
+			}
+		})
 	}
 }

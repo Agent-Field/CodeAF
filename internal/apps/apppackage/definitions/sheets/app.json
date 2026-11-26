@@ -4,7 +4,7 @@
   "version": 1,
   "kit": 2,
   "records": {
-    "worksheet": {
+    "sheets_worksheet": {
       "label": "Worksheet",
       "title": "title",
       "fields": {
@@ -14,14 +14,15 @@
         },
         "body": {
           "type": "longtext",
-          "label": "Cells"
+          "label": "Cells",
+          "default": ""
         }
       }
     }
   },
   "capabilities": {
     "records": {
-      "worksheet": "rw"
+      "sheets_worksheet": "rw"
     }
   },
   "commands": [
@@ -31,7 +32,7 @@
       "do": [
         {
           "records.create": {
-            "type": "worksheet",
+            "type": "sheets_worksheet",
             "set": {
               "title": "$input.title"
             }
@@ -48,7 +49,7 @@
       "do": [
         {
           "records.update": {
-            "type": "worksheet",
+            "type": "sheets_worksheet",
             "id": "$record.id",
             "set": {
               "body": "$input.body"
@@ -59,7 +60,7 @@
           }
         }
       ],
-      "for": "worksheet"
+      "for": "sheets_worksheet"
     },
     {
       "id": "rename",
@@ -67,7 +68,7 @@
       "do": [
         {
           "records.update": {
-            "type": "worksheet",
+            "type": "sheets_worksheet",
             "id": "$record.id",
             "set": {
               "title": "$input.title"
@@ -78,12 +79,12 @@
           }
         }
       ],
-      "for": "worksheet"
+      "for": "sheets_worksheet"
     },
     {
       "id": "duplicate",
       "label": "Duplicate",
-      "for": "worksheet",
+      "for": "sheets_worksheet",
       "run": "duplicate",
       "params": {
         "source": "$record.id"
@@ -94,7 +95,7 @@
     "csv": {
       "label": "Export CSV",
       "format": "csv",
-      "record": "worksheet",
+      "record": "sheets_worksheet",
       "table": "body"
     }
   }

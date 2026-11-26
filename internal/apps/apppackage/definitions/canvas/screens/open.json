@@ -53,13 +53,13 @@
         "label": "Board",
         "bind": {
           "record": "$params.id",
-          "type": "board"
+          "type": "canvas_board"
         },
         "on": {
           "edit": [
             {
               "records.update": {
-                "type": "board",
+                "type": "canvas_board",
                 "id": "$record.id",
                 "set": {
                   "body": "$input.value",
@@ -77,7 +77,7 @@
         "label": "Board details",
         "bind": {
           "record": "$params.id",
-          "type": "board"
+          "type": "canvas_board"
         },
         "props": {
           "fields": [

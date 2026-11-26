@@ -53,13 +53,13 @@
         "label": "Worksheet",
         "bind": {
           "record": "$params.id",
-          "type": "worksheet"
+          "type": "sheets_worksheet"
         },
         "on": {
           "edit": [
             {
               "records.update": {
-                "type": "worksheet",
+                "type": "sheets_worksheet",
                 "id": "$record.id",
                 "set": {
                   "body": "$input.value"
@@ -75,7 +75,7 @@
         "label": "Worksheet details",
         "bind": {
           "record": "$params.id",
-          "type": "worksheet"
+          "type": "sheets_worksheet"
         },
         "props": {
           "fields": [

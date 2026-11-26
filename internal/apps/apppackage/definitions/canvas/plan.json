@@ -8,7 +8,7 @@
   "ask": "Open Canvas and work with board records.",
   "data": [
     {
-      "id": "board",
+      "id": "canvas_board",
       "line": "Each board is a versioned record."
     }
   ],

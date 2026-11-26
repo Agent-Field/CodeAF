@@ -4,16 +4,16 @@
   "params": {
     "source": {
       "type": "ref",
-      "to": "board"
+      "to": "canvas_board"
     }
   },
   "steps": [
     {
       "id": "copy",
       "records.create": {
-        "type": "board",
+        "type": "canvas_board",
         "set": {
-          "title": "$params.source.title",
+          "title": "{{params.source.title}} copy",
           "body": "$params.source.body",
           "x": "$params.source.x",
           "y": "$params.source.y"

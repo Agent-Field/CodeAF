@@ -4,7 +4,7 @@
   "version": 1,
   "kit": 2,
   "records": {
-    "board": {
+    "canvas_board": {
       "label": "Board",
       "title": "title",
       "fields": {
@@ -13,20 +13,24 @@
           "required": true
         },
         "body": {
-          "type": "longtext"
+          "type": "longtext",
+          "default": "",
+          "label": "Contents"
         },
         "x": {
-          "type": "number"
+          "type": "number",
+          "default": 40
         },
         "y": {
-          "type": "number"
+          "type": "number",
+          "default": 120
         }
       }
     }
   },
   "capabilities": {
     "records": {
-      "board": "rw"
+      "canvas_board": "rw"
     }
   },
   "commands": [
@@ -36,7 +40,7 @@
       "do": [
         {
           "records.create": {
-            "type": "board",
+            "type": "canvas_board",
             "set": {
               "title": "$input.title"
             }
@@ -53,7 +57,7 @@
       "do": [
         {
           "records.update": {
-            "type": "board",
+            "type": "canvas_board",
             "id": "$record.id",
             "set": {
               "body": "$input.body"
@@ -64,7 +68,7 @@
           }
         }
       ],
-      "for": "board"
+      "for": "canvas_board"
     },
     {
       "id": "rename",
@@ -72,7 +76,7 @@
       "do": [
         {
           "records.update": {
-            "type": "board",
+            "type": "canvas_board",
             "id": "$record.id",
             "set": {
               "title": "$input.title"
@@ -83,12 +87,12 @@
           }
         }
       ],
-      "for": "board"
+      "for": "canvas_board"
     },
     {
       "id": "duplicate",
       "label": "Duplicate",
-      "for": "board",
+      "for": "canvas_board",
       "run": "duplicate",
       "params": {
         "source": "$record.id"
@@ -99,7 +103,7 @@
     "pdf": {
       "label": "Export PDF",
       "format": "pdf",
-      "record": "board",
+      "record": "canvas_board",
       "body": "{{title}}\n\n{{body}}"
     }
   }

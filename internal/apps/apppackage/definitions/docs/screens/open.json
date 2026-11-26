@@ -71,13 +71,13 @@
         "label": "Document",
         "bind": {
           "record": "$params.id",
-          "type": "document"
+          "type": "docs_document"
         },
         "on": {
           "edit": [
             {
               "records.update": {
-                "type": "document",
+                "type": "docs_document",
                 "id": "$record.id",
                 "set": {
                   "body": "$input.value"
@@ -93,7 +93,7 @@
         "label": "Document details",
         "bind": {
           "record": "$params.id",
-          "type": "document"
+          "type": "docs_document"
         },
         "props": {
           "fields": [

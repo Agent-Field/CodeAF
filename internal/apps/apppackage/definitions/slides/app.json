@@ -4,7 +4,7 @@
   "version": 1,
   "kit": 2,
   "records": {
-    "slide": {
+    "slides_slide": {
       "label": "Slide",
       "title": "title",
       "fields": {
@@ -13,20 +13,24 @@
           "required": true
         },
         "body": {
-          "type": "longtext"
+          "type": "longtext",
+          "default": "",
+          "label": "Contents"
         },
         "x": {
-          "type": "number"
+          "type": "number",
+          "default": 40
         },
         "y": {
-          "type": "number"
+          "type": "number",
+          "default": 120
         }
       }
     }
   },
   "capabilities": {
     "records": {
-      "slide": "rw"
+      "slides_slide": "rw"
     }
   },
   "commands": [
@@ -36,7 +40,7 @@
       "do": [
         {
           "records.create": {
-            "type": "slide",
+            "type": "slides_slide",
             "set": {
               "title": "$input.title"
             }
@@ -53,7 +57,7 @@
       "do": [
         {
           "records.update": {
-            "type": "slide",
+            "type": "slides_slide",
             "id": "$record.id",
             "set": {
               "body": "$input.body"
@@ -64,7 +68,7 @@
           }
         }
       ],
-      "for": "slide"
+      "for": "slides_slide"
     },
     {
       "id": "rename",
@@ -72,7 +76,7 @@
       "do": [
         {
           "records.update": {
-            "type": "slide",
+            "type": "slides_slide",
             "id": "$record.id",
             "set": {
               "title": "$input.title"
@@ -83,12 +87,12 @@
           }
         }
       ],
-      "for": "slide"
+      "for": "slides_slide"
     },
     {
       "id": "duplicate",
       "label": "Duplicate",
-      "for": "slide",
+      "for": "slides_slide",
       "run": "duplicate",
       "params": {
         "source": "$record.id"
@@ -100,7 +104,7 @@
       "label": "Export PPTX",
       "format": "pptx",
       "query": {
-        "type": "slide",
+        "type": "slides_slide",
         "select": [
           "title",
           "body"
@@ -116,7 +120,7 @@
     "pdf": {
       "label": "Export PDF",
       "format": "pdf",
-      "record": "slide",
+      "record": "slides_slide",
       "body": "{{title}}\n\n{{body}}"
     }
   }

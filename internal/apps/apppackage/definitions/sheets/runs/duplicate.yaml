@@ -4,16 +4,16 @@
   "params": {
     "source": {
       "type": "ref",
-      "to": "worksheet"
+      "to": "sheets_worksheet"
     }
   },
   "steps": [
     {
       "id": "copy",
       "records.create": {
-        "type": "worksheet",
+        "type": "sheets_worksheet",
         "set": {
-          "title": "$params.source.title",
+          "title": "{{params.source.title}} copy",
           "body": "$params.source.body"
         }
       }

@@ -3,7 +3,7 @@
   "title": "Slides",
   "views": {
     "listed": {
-      "type": "slide"
+      "type": "slides_slide"
     }
   },
   "body": {
@@ -25,7 +25,7 @@
               "click": [
                 {
                   "records.create": {
-                    "type": "slide",
+                    "type": "slides_slide",
                     "set": {
                       "title": "$input.title"
                     }
@@ -61,7 +61,7 @@
         "id": "records",
         "label": "Slides",
         "bind": {
-          "records": "slide",
+          "records": "slides_slide",
           "view": "listed"
         },
         "props": {

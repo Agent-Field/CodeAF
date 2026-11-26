@@ -3,7 +3,7 @@
   "title": "Sheets",
   "views": {
     "listed": {
-      "type": "worksheet"
+      "type": "sheets_worksheet"
     }
   },
   "body": {
@@ -25,7 +25,7 @@
               "click": [
                 {
                   "records.create": {
-                    "type": "worksheet",
+                    "type": "sheets_worksheet",
                     "set": {
                       "title": "$input.title"
                     }
@@ -44,7 +44,7 @@
         "id": "records",
         "label": "Sheets",
         "bind": {
-          "records": "worksheet",
+          "records": "sheets_worksheet",
           "view": "listed"
         },
         "props": {

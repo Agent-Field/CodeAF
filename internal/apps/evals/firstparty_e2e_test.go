@@ -74,8 +74,33 @@ func TestLiveTalkChangeOnDocsFork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	field := def.Records["document"].Fields["status"]
+	field := def.Records["docs_document"].Fields["status"]
 	if field.Type != "enum" || !slices.Equal(field.Values, []string{"Draft", "Review", "Final"}) {
 		t.Fatalf("model authored status %+v", field)
 	}
+	applied, err := readReply[struct{ Meta store.Meta }](engine.cli(ctx, "apply", addr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := store.NewAt(engine.home, nil).Get(applied.Meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range app.Runs {
+		raw, _ := app.Run(name)
+		run, err := schema.ParseRun(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gated := false
+		for _, step := range run.Steps {
+			gated = gated || step.Gate != nil && step.Gate.Approval != ""
+			if gated && step.RecordsUpdate != nil && step.RecordsUpdate.Set["status"] == "Final" {
+				t.Logf("%s asks for approval before setting Final", name)
+				return
+			}
+		}
+	}
+	t.Fatal("the kept fork needs an approval step before its Final write")
+
 }

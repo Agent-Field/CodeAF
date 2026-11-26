@@ -8,7 +8,7 @@
   "ask": "Open Sheets and work with worksheet records.",
   "data": [
     {
-      "id": "worksheet",
+      "id": "sheets_worksheet",
       "line": "Each worksheet is a versioned record."
     }
   ],

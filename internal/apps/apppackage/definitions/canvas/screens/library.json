@@ -3,7 +3,7 @@
   "title": "Canvas",
   "views": {
     "listed": {
-      "type": "board"
+      "type": "canvas_board"
     }
   },
   "body": {
@@ -25,7 +25,7 @@
               "click": [
                 {
                   "records.create": {
-                    "type": "board",
+                    "type": "canvas_board",
                     "set": {
                       "title": "$input.title"
                     }
@@ -59,7 +59,7 @@
         "id": "records",
         "label": "Canvas",
         "bind": {
-          "records": "board",
+          "records": "canvas_board",
           "view": "listed"
         },
         "props": {

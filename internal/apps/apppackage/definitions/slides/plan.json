@@ -8,7 +8,7 @@
   "ask": "Open Slides and work with slide records.",
   "data": [
     {
-      "id": "slide",
+      "id": "slides_slide",
       "line": "Each slide is a versioned record."
     }
   ],
