@@ -139,14 +139,14 @@ func TestAppRunApprovalReopensFromItsJournal(t *testing.T) {
 		t.Fatalf("inbox.open = %+v, want run %s", target, r.ID)
 	}
 	var detail struct {
-		Steps    []struct{ ID string }
+		Steps    []struct{ ID, Kind, State string }
 		Approval struct {
 			RecordType string `json:"record_type"`
 			Args       map[string]any
 		}
 	}
 	wire.must("runs.get", map[string]string{"id": r.ID}, &detail)
-	if len(detail.Steps) != 1 || detail.Steps[0].ID != "save" || detail.Approval.RecordType != "note" || detail.Approval.Args["body"] != "Call Acme" {
+	if len(detail.Steps) != 1 || detail.Steps[0].ID != "save" || detail.Steps[0].Kind != "records_create" || detail.Steps[0].State != runs.YourCall || detail.Approval.RecordType != "note" || detail.Approval.Args["body"] != "Call Acme" {
 		t.Fatalf("run detail = %+v", detail)
 	}
 }

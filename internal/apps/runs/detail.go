@@ -9,6 +9,8 @@ import (
 type StepDetail struct {
 	ID    string       `json:"id"`
 	Label string       `json:"label,omitempty"`
+	Kind  string       `json:"kind"`
+	State string       `json:"state"`
 	Steps []StepDetail `json:"steps,omitempty"`
 }
 
@@ -18,17 +20,46 @@ type ApprovalRecord struct {
 	Label string `json:"label,omitempty"`
 }
 
-func stepDetails(steps []Step) []StepDetail {
+func (c *checkpoint) stepDetails(steps []Step) []StepDetail {
 	details := make([]StepDetail, 0, len(steps))
 	for _, step := range steps {
-		details = append(details, StepDetail{ID: step.ID, Label: step.Title, Steps: stepDetails(step.Steps)})
+		state := "planned"
+		if step.ID == c.Step {
+			state = c.State
+		} else if _, completed := c.Outputs[step.ID]; completed {
+			state = Done
+		}
+		details = append(details, StepDetail{
+			ID: step.ID, Label: step.Title, Kind: detailStepKind(step), State: state, Steps: c.stepDetails(step.Steps),
+		})
 	}
 	return details
 }
 
+func detailStepKind(step Step) string {
+	switch {
+	case step.Agent != "":
+		return "agent"
+	case step.AI != nil:
+		return "ai"
+	case step.Tool != "":
+		return "tool"
+	case step.RecordsUpdate != nil:
+		return "records_update"
+	case step.RecordsCreate != nil:
+		return "records_create"
+	case step.Loop != nil:
+		return "loop"
+	case step.Wait != nil:
+		return "wait"
+	default:
+		return "gate"
+	}
+}
+
 // Project the details from the saved run so old checkpoints need no migration.
 func (c *checkpoint) projectDetails() {
-	c.Run.Steps = stepDetails(c.Definition.Steps)
+	c.Run.Steps = c.stepDetails(c.Definition.Steps)
 	if c.Approval == nil || c.Action == nil {
 		return
 	}

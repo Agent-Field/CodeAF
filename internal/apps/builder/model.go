@@ -81,7 +81,7 @@ Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
 Put the controls on the screen where the person works. Use a Button with
 on-click='[{"runs.start":"follow-up","params":{"deal":"$selection.deals.id"}}]'
-or a RecordPage with a matching command id in prop-actions. For a selection
+or a RecordPage with a matching command id in props.actions (prop-actions in markup). For a selection
 button, set the list id and selection mode and show the button when a row
 is selected. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
