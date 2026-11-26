@@ -78,10 +78,12 @@ func resultCopyFixture(t *testing.T) (taskdoor.CopyDeps, string, *plandb.Store, 
 type delayedResultStore struct {
 	blobstore.Store
 	entered, release chan struct{}
+	firstFetch       sync.Once
 }
 
 func (s *delayedResultStore) GetMany(ctx context.Context, _ []string) ([]blobstore.Object, error) {
-	close(s.entered)
+	// A retry is still part of the same download.
+	s.firstFetch.Do(func() { close(s.entered) })
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
