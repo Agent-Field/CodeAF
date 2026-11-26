@@ -89,9 +89,11 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Offers) != 2 || plan.Offers[0].Type != "contact" || plan.Offers[0].Count != 4 ||
-		plan.Offers[1].Type != "person" || plan.Offers[1].App != "" || plan.Offers[1].Count != 0 || plan.Offers[1].Line != "Start a People list" {
-		t.Fatalf("wanted existing contact and library Person offers: %+v", plan.Offers)
+	outline, err := schema.ParsePlan(plan.Plan)
+	if err != nil || len(outline.Data) != 0 || len(plan.Offers) != 1 ||
+		plan.Offers[0].Type != "contact" || plan.Offers[0].Count != 4 ||
+		plan.Offers[0].Outline == nil || plan.Offers[0].Outline.Line != "Customer details" {
+		t.Fatalf("wanted one customer row with its reuse choice: plan=%s offers=%+v, %v", plan.Plan, plan.Offers, err)
 	}
 	<-review
 	if err := jobs.Say(plan.Draft, "Use my existing contact records (4, from CRM) instead of making a new type", nil); err != nil {
@@ -109,7 +111,7 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 	if state.State != builder.Planning || len(state.Screens) != 0 {
 		t.Fatalf("accepted plan must still be waiting for Write: state=%s screens=%v", state.State, state.Screens)
 	}
-	if !slices.Contains(state.Using, "customer") || !slices.Contains(state.Needs, "Uses your existing Contacts from CRM") || !slices.Contains(state.Needs, "Read and edit customer") {
+	if len(state.Offers) != 0 || !slices.Contains(state.Using, "customer") || !slices.Contains(state.Needs, "Uses your existing Contacts from CRM") || !slices.Contains(state.Needs, "Read and edit customer") {
 		t.Fatalf("expected the card to name the CRM reuse: %+v", state)
 	}
 	if err := jobs.Build(plan.Draft); err != nil {

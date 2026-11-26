@@ -63,7 +63,7 @@ func TestBuiltInKeepsPlanLineAndWriterSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
-	if len(got.Actions) != 0 || len(got.Builtins) != 1 || got.Builtins[0].Line != plan.Actions[0].Line ||
+	if len(got.Actions) != 1 || got.Actions[0].Line != plan.Actions[0].Line || len(got.Builtins) != 1 || got.Builtins[0].Line != plan.Actions[0].Line ||
 		got.Builtins[0].Transition != "finish" || files["runs/finish.yaml"] != "" {
 		t.Fatalf("builtin conversion = %+v", got)
 	}
@@ -86,12 +86,66 @@ func TestLocalApprovalSelectsAndGatesTheChosenRun(t *testing.T) {
 		"runs/read.yaml":  "run: read\nsteps:\n  - id: look\n    gate: {approval: start}\n",
 	}
 	read := files["runs/read.yaml"]
-	if err := compileCapabilities(plan.Ask, &plan, nil, nil, files); err != nil {
+	if err := plannedWork(plan.Ask, schema.Plan{}).compileCapabilities(&plan, files); err != nil {
 		t.Fatal(err)
 	}
 	run, err := schema.ParseRun([]byte(files["runs/draft.yaml"]))
 	if err != nil || run.Steps[0].Steps[0].Gate == nil || run.Steps[0].Steps[0].Gate.Approval != "proof" ||
 		files["runs/read.yaml"] != read {
 		t.Fatalf("selected approval = %s, %v", files["runs/draft.yaml"], err)
+	}
+}
+
+func TestWriterCanCompleteAnApprovalWithItsOwnPlanID(t *testing.T) {
+	plan := schema.Plan{Ask: "Draft and ask for approval before saving", Automation: []schema.PlanLine{
+		{ID: "draft", Line: "Draft a note"}, {ID: "review", Line: "Review notes"},
+	}}
+	files := map[string]string{}
+	work := plannedWork(plan.Ask, schema.Plan{})
+	if err := saveJSON(files, schema.PlanFile, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := work.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	unresolved, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if len(unresolved.Builtins) != 1 || unresolved.Builtins[0].Run != "" {
+		t.Fatalf("expected one approval with no target yet: %+v", unresolved.Builtins)
+	}
+	plan.Builtins = []schema.PlanBuiltin{{ID: "approve-draft", Kind: schema.BuiltinApproval, Run: "draft"}}
+	if err := saveJSON(files, schema.PlanFile, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := work.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if len(got.Builtins) != 1 || got.Builtins[0].Run != "draft" {
+		t.Fatalf("completed approval plan = %+v", got.Builtins)
+	}
+}
+
+func TestPersonCanRemoveANativeCapability(t *testing.T) {
+	plan := schema.Plan{Ask: "Import CSV into items and move them through a lifecycle", Data: []schema.PlanLine{{ID: "item", Line: "Items"}}}
+	files := map[string]string{}
+	work := plannedWork(plan.Ask, schema.Plan{})
+	if err := saveJSON(files, schema.PlanFile, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := work.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if len(got.Builtins) != 2 || len(got.Actions) != 2 {
+		t.Fatalf("native work missing from the visible plan: %+v", got)
+	}
+	remove := plannedWork("Please remove CSV import.", got)
+	if err := remove.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if len(got.Builtins) != 1 || got.Builtins[0].Kind != schema.BuiltinLifecycle ||
+		len(got.Actions) != 1 || got.Actions[0].ID != got.Builtins[0].ID {
+		t.Fatalf("expected only the lifecycle selection to remain: %+v", got)
 	}
 }

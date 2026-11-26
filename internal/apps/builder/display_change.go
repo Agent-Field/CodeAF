@@ -3,6 +3,7 @@ package builder
 import (
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -132,13 +133,19 @@ func titleWords(value string) string {
 	return strings.Join(strings.FieldsFunc(value, func(r rune) bool { return r == '-' || r == '_' || unicode.IsSpace(r) }), " ")
 }
 
+var builderDetail = regexp.MustCompile(`(?i)\b(?:node-[a-z0-9]+|recordlist|board_by|app (?:check|look)|classed\s+internal|[a-z0-9_-]+:\s*(?:rw|r)\b)`)
+
+func hasBuilderDetail(text string) bool {
+	return strings.ContainsAny(text, "`{}[]") || strings.Contains(text, `access:"`) || builderDetail.MatchString(text)
+}
+
 func displayName(value, fallback string) string {
 	value = strings.TrimSpace(value)
-	folded := strings.ToLower(value)
-	if value == "" || strings.ContainsAny(value, "`{}[]") || strings.Contains(folded, "node-") ||
-		strings.Contains(folded, "recordlist") || strings.Contains(folded, "board_by") ||
-		strings.Contains(folded, "app check") || strings.Contains(folded, "app look") {
+	if value == "" || hasBuilderDetail(value) {
 		value = fallback
+	}
+	if hasBuilderDetail(value) {
+		value = "This part"
 	}
 	value = titleWords(value)
 	if runes := []rune(value); len(runes) > 0 {
@@ -146,6 +153,18 @@ func displayName(value, fallback string) string {
 		return string(runes)
 	}
 	return "Screen"
+}
+
+func displayBuildIssue(files map[string]string, report schema.Report) string {
+	for _, issue := range report.Problems {
+		if strings.HasPrefix(issue.File, schema.ScreensDir+"/") {
+			screen, err := schema.ParseScreen([]byte(files[issue.File]))
+			if err == nil && screen.Title != "" {
+				return "The " + displayName(screen.Title, "app") + " screen still needs an adjustment. See Build activity for details."
+			}
+		}
+	}
+	return "The draft needs another change before you can keep it. See Build activity for details."
 }
 
 // A field-only revision may have no changed screen file to name the edit.

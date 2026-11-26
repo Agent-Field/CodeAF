@@ -56,3 +56,14 @@ func TestPlanChecksNativeImportWritesAndLifecycleTransition(t *testing.T) {
 		t.Fatalf("missing findings for unavailable native work: %v", findings)
 	}
 }
+
+func TestPlanChecksEveryReservedRunHasAFile(t *testing.T) {
+	def := load(t, "testdata/crm")
+	delete(def.Files, "runs/follow-up.yaml")
+	for _, finding := range Validate(def, nil).Problems {
+		if finding.File == PlanFile && finding.Path == "/automation/0/id" && finding.Code == CodePlanUnknownID {
+			return
+		}
+	}
+	t.Fatal("Check accepted a missing reserved run")
+}

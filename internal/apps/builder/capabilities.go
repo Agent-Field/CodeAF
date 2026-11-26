@@ -13,12 +13,13 @@ import (
 type planCapability struct {
 	kind  string
 	match *regexp.Regexp
+	names string
 }
 
 var planCapabilities = []planCapability{
-	{schema.BuiltinCSV, regexp.MustCompile(`(?i)\b(?:import|upload)(?:s|ed|ing)?\b[^.!?;]{0,45}\bcsv\b|\bcsv[ -]+import\b`)},
-	{schema.BuiltinLifecycle, regexp.MustCompile(`(?i)\b(?:lifecycle(?:[ -]+transitions?)?|(?:state|stage)[ -]+transitions?)\b`)},
-	{schema.BuiltinApproval, regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:save\w*|writ\w*|updat\w*)\b`)},
+	{schema.BuiltinCSV, regexp.MustCompile(`(?i)\b(?:import|upload)(?:s|ed|ing)?\b[^.!?;]{0,45}\bcsv\b|\bcsv[ -]+import\b`), `(?:csv[ -]+imports?|import(?:ing)?[ -]+csv)`},
+	{schema.BuiltinLifecycle, regexp.MustCompile(`(?i)\b(?:lifecycle(?:[ -]+transitions?)?|(?:state|stage)[ -]+transitions?)\b`), `(?:(?:record[ -]+)?lifecycle|state[ -]+transitions?)`},
+	{schema.BuiltinApproval, regexp.MustCompile(`(?i)\b(?:approve|approval)\b[^.!?;]{0,45}\bbefore\b[^.!?;]{0,30}\b(?:sav\w*|writ\w*|updat\w*)\b`), `(?:local[ -]+)?approval`},
 }
 
 var lifecycleMove = regexp.MustCompile(`(?i)\b(?:move|mark|transition|change|advance)\b[^.!?;]{0,60}\b(?:to|into)\b`)
@@ -27,19 +28,21 @@ var independentWork = regexp.MustCompile(`(?i)\b(?:connector|scheduled?|daily|ho
 
 // Native record capabilities run through the data API. Approval configures an
 // existing run. Preserving the plan line gives the author its original settings.
-func compileCapabilities(request string, plan *schema.Plan, previous []schema.PlanBuiltin, reserved []schema.PlanLine, files map[string]string) error {
-	ask := request
+func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]string) error {
+	ask := w.ask
 	if ask == "" {
 		ask = plan.Ask
 	}
 	settings := plan.Builtins
-	plan.Builtins = slices.Clone(previous)
+	plan.Builtins = slices.DeleteFunc(slices.Clone(w.builtins), func(b schema.PlanBuiltin) bool {
+		return slices.Contains(w.disabled, b.Kind)
+	})
 	used := make(map[string]bool, len(settings))
 	use := func(next schema.PlanBuiltin) {
-		for _, authored := range settings {
-			if authored.Kind != next.Kind || (authored.ID != next.ID && authored.ID != next.Kind) {
-				continue
-			}
+		if slices.Contains(w.disabled, next.Kind) {
+			return
+		}
+		if authored, ok := builtinSettings(next, settings); ok {
 			used[authored.ID] = true
 			if next.Line == "" {
 				next.Line = authored.Line
@@ -53,7 +56,6 @@ func compileCapabilities(request string, plan *schema.Plan, previous []schema.Pl
 			if authored.Run != "" {
 				next.Run = authored.Run
 			}
-			break
 		}
 		i := slices.IndexFunc(plan.Builtins, func(old schema.PlanBuiltin) bool { return old.ID == next.ID && old.Kind == next.Kind })
 		if i == -1 {
@@ -64,12 +66,12 @@ func compileCapabilities(request string, plan *schema.Plan, previous []schema.Pl
 	}
 
 	selectRecordCapability := func(line schema.PlanLine) bool {
-		if hasPlanLine(reserved, line.ID) || independentWork.MatchString(line.Line) {
+		if hasPlanLine(w.runs, line.ID) || independentWork.MatchString(line.Line) {
 			return false
 		}
 		words := strings.ReplaceAll(line.ID, "-", " ") + " " + line.Line
 		for _, capability := range planCapabilities {
-			if capability.kind == schema.BuiltinApproval {
+			if capability.kind == schema.BuiltinApproval || slices.Contains(w.disabled, capability.kind) {
 				continue
 			}
 			matches := capability.match.MatchString(words)
@@ -104,6 +106,9 @@ func compileCapabilities(request string, plan *schema.Plan, previous []schema.Pl
 		}
 	}
 	for _, capability := range planCapabilities {
+		if slices.Contains(w.disabled, capability.kind) {
+			continue
+		}
 		if capability.kind == schema.BuiltinApproval {
 			for _, line := range plan.Automation {
 				if capability.match.MatchString(line.Line) {
@@ -149,8 +154,56 @@ func compileCapabilities(request string, plan *schema.Plan, previous []schema.Pl
 				return err
 			}
 		}
+		if line := builtinPlanLine(*builtin, plan.Automation); line != "" && !hasPlanLine(plan.Actions, builtin.ID) {
+			plan.Actions = append(plan.Actions, schema.PlanLine{ID: builtin.ID, Line: line})
+		}
 	}
 	return nil
+}
+
+func removedCapabilities(request string) []string {
+	var removed []string
+	for _, capability := range planCapabilities {
+		pattern := removalPrefix + "(?:" + removalVerb + `|(?:no|without)\s+)` + capability.names + `(?:[\s,.!?;]|$)`
+		if regexp.MustCompile(pattern).MatchString(request) {
+			removed = append(removed, capability.kind)
+		}
+	}
+	return removed
+}
+
+func builtinSettings(next schema.PlanBuiltin, authored []schema.PlanBuiltin) (schema.PlanBuiltin, bool) {
+	if i := slices.IndexFunc(authored, func(value schema.PlanBuiltin) bool { return value.Kind == next.Kind && value.ID == next.ID }); i >= 0 {
+		return authored[i], true
+	}
+	var match schema.PlanBuiltin
+	for _, value := range authored {
+		if value.Kind != next.Kind || !(value.ID == next.Kind || next.ID == next.Kind && next.Record == "" && next.Run == "") {
+			continue
+		}
+		if match.ID != "" {
+			return schema.PlanBuiltin{}, false
+		}
+		match = value
+	}
+	return match, match.ID != ""
+}
+
+func builtinPlanLine(builtin schema.PlanBuiltin, runs []schema.PlanLine) string {
+	if builtin.Line != "" {
+		return builtin.Line
+	}
+	switch builtin.Kind {
+	case schema.BuiltinCSV:
+		return "Import a CSV into " + displayName(builtin.Record, "your records")
+	case schema.BuiltinLifecycle:
+		return "Move " + displayName(builtin.Record, "records") + " between states"
+	case schema.BuiltinApproval:
+		if !hasPlanLine(runs, builtin.ID) {
+			return "Approve changes before they save"
+		}
+	}
+	return ""
 }
 
 func plannedTransition(kind, line, ask string) string {

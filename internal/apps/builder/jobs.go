@@ -142,11 +142,12 @@ type Event struct {
 }
 
 type Offer struct {
-	Common string `json:"common,omitempty"`
-	Line   string `json:"line,omitempty"`
-	Type   string `json:"type"`
-	Count  int    `json:"count"`
-	App    string `json:"app"`
+	Outline *schema.PlanLine `json:"outline,omitempty"`
+	Common  string           `json:"common,omitempty"`
+	Line    string           `json:"line,omitempty"`
+	Type    string           `json:"type"`
+	Count   int              `json:"count"`
+	App     string           `json:"app"`
 }
 
 type Message struct {
@@ -347,6 +348,21 @@ func (s *Jobs) load(id string) (*job, error) {
 	var j job
 	if err := json.Unmarshal(raw, &j); err != nil || j.Draft != id {
 		return nil, store.ErrCorrupt
+	}
+	// Older drafts could save the writer's own words in the conversation.
+	for i := range j.Transcript {
+		message := &j.Transcript[i]
+		if message.Role == "assistant" && hasBuilderDetail(message.Text) {
+			message.Text = "I worked on " + displayName(j.Name, "your app") + ". See Build activity for details."
+		}
+	}
+	for i := range j.Checkpoints {
+		if hasBuilderDetail(j.Checkpoints[i].Summary) {
+			j.Checkpoints[i].Summary = "I updated " + displayName(j.Name, "your app") + "."
+		}
+	}
+	if hasBuilderDetail(j.Problem) {
+		j.Problem = displayBuildIssue(j.Working.Files, schema.Report{})
 	}
 	// Older builds used Ready for plans with no screens.
 	if j.State.State == Ready && len(j.Screens) == 0 {
@@ -803,6 +819,9 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	}
 	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
 	j.Offers = reuseOffers(app, plan, j.App, j.Accepted, catalog)
+	if plan.Ask != "" {
+		j.projectOutline(app, plan)
+	}
 	if headless && planning {
 		// Put reuse of actual records before empty types and library suggestions.
 		slices.SortStableFunc(j.Offers, func(a, b Offer) int {

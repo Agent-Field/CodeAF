@@ -169,12 +169,12 @@ steps:
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	if _, err := engine.Start(app.ID, "Save the draft", nil); err == nil {
-		t.Fatal("the display title started a run")
+	if _, err := engine.Start(app.ID, "save-the-draft", nil); err == nil {
+		t.Fatal("a different valid ID started a run")
 	}
 	started, err := engine.Start(app.ID, "save-note", nil)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || started.DefinitionID != "save-note" {
+		t.Fatalf("started with definition %q: %v", started.DefinitionID, err)
 	}
 	if err := engine.Tick(t.Context()); err != nil {
 		t.Fatal(err)

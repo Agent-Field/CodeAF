@@ -331,10 +331,10 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			action = "make the plan"
 		}
 		var api *provider.APIError
-		if errors.As(err, &api) && api.Overflow {
-			j.Problem = "I couldn't " + action + " because the app instructions and conversation were too long for the model."
+		if errors.As(err, &api) && api.Overflow || strings.Contains(strings.ToLower(reason), "context window") {
+			j.Problem = "I couldn't " + action + " because the conversation was too long for the model's context window."
 		} else {
-			j.Problem = "I couldn't " + action + " because " + strings.TrimRight(reason, ".") + "."
+			j.Problem = "I couldn't " + action + ". See Build activity for details."
 		}
 		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
 			{Code: "build_failed", Message: reason},
@@ -367,19 +367,12 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		})
 		if t.Round >= maxRounds || sameFindings(t.PreviousFindings, report.Problems) || unavailable || pendingReuse || t.CheckOnly {
 			j.State.State = NeedsYou
-			j.Problem = "Check found an issue. " + report.Problems[0].Message
+			j.Problem = displayBuildIssue(j.Working.Files, report)
 			if pendingReuse {
 				j.Problem = report.Problems[reuseQuestion].Message
 				event.OK = nil
 			}
-			if unavailable {
-				for _, issue := range report.Problems {
-					if strings.HasSuffix(issue.Code, "_unavailable") {
-						j.Problem = issue.Message
-						break
-					}
-				}
-			}
+
 			event.Stage, event.Line = NeedsYou, j.Problem
 			return s.finish(j, event)
 		}
@@ -392,13 +385,11 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 	j.Working = snapshot{Files: files}
 	j.Presence = nil
 	j.describeDraft(catalog, headless, t.Stage == Planning)
-	if reply == "" {
-		reply = "I updated your app."
-	}
 	if t.Stage == Planning {
 		if len(j.Plan) == 0 || j.Working.Files[schema.AppFile] == "" {
-			j.State.State, j.Problem = NeedsYou, reply
-			return s.finish(j, Event{Line: reply})
+			j.State.State = NeedsYou
+			j.Problem = "I couldn't prepare the outline. See Build activity for details."
+			return s.finish(j, Event{Line: j.Problem})
 		}
 		if err := j.checkpoint("Here is the plan for " + displayName(j.Name, "your app") + "."); err != nil {
 			return err

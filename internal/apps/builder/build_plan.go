@@ -17,10 +17,11 @@ type buildPlan struct {
 	runs     []schema.PlanLine
 	builtins []schema.PlanBuiltin
 	removed  []string
+	disabled []string
 }
 
 func plannedWork(ask string, plan schema.Plan) buildPlan {
-	work := buildPlan{ask: ask, builtins: slices.Clone(plan.Builtins)}
+	work := buildPlan{ask: ask, builtins: slices.Clone(plan.Builtins), disabled: removedCapabilities(ask)}
 	for _, line := range plan.Automation {
 		if removesRun(ask, line.ID) {
 			work.removed = append(work.removed, line.ID)
@@ -36,11 +37,12 @@ func plannedWork(ask string, plan schema.Plan) buildPlan {
 	return work
 }
 
+const removalPrefix = `(?i)(?:^|[.!?;\n]\s*)(?:please\s+)?`
+const removalVerb = `(?:remove|delete|drop|forget)\s+(?:the\s+)?`
+
 func removesRun(ask, id string) bool {
 	name := "[`'\"]?" + regexp.QuoteMeta(id) + "[`'\"]?"
-	verb := `(?i)(?:^|[.!?;
-]\s*|please\s+)(?:remove|delete|drop)\s+(?:the\s+)?`
-	return regexp.MustCompile(verb + `(?:run\s+` + name + `|` + name + `\s+run)(?:[\s,.!?;]|$)`).MatchString(ask)
+	return regexp.MustCompile(removalPrefix + removalVerb + `(?:run\s+` + name + `|` + name + `\s+run)(?:[\s,.!?;]|$)`).MatchString(ask)
 }
 
 const runWord = "[`'\"]?[a-z][a-z0-9_-]*[`'\"]?"
@@ -94,7 +96,12 @@ func (w *buildPlan) apply(files map[string]string) error {
 			plan.Automation = append(plan.Automation, line)
 		}
 	}
-	if err := compileCapabilities(w.ask, &plan, w.builtins, w.runs, files); err != nil {
+	for _, b := range append(slices.Clone(w.builtins), plan.Builtins...) {
+		if slices.Contains(w.disabled, b.Kind) {
+			plan.Actions = slices.DeleteFunc(plan.Actions, func(line schema.PlanLine) bool { return line.ID == b.ID })
+		}
+	}
+	if err := w.compileCapabilities(&plan, files); err != nil {
 		return err
 	}
 	w.builtins = slices.Clone(plan.Builtins)

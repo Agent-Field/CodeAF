@@ -64,7 +64,7 @@ the app when it's ready to try or needs your input.
 
 A collection recipe adds an **Add** control when the plan asks to create
 that type and the app can write it. The form collects the record’s fields.
-Open **Your data** and choose **Import CSV** to fill an editable type from a
+Open **Your data** and choose **Import CSV…** to fill an editable type from a
 file. A plan can also use a record's lifecycle to move it between states, or
 hold a run's record changes until you approve.
 A run keeps the ID reserved in its plan. To remove one, ask the builder to

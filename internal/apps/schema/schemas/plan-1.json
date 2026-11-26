@@ -10,7 +10,7 @@
     "$schema": { "type": "string" },
     "ask": { "type": "string", "minLength": 1 },
     "data": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/line" } },
-    "actions": { "description": "Actions a person launches from the app. The id names a command or run.", "type": "array", "items": { "$ref": "#/$defs/line" } },
+    "actions": { "description": "Actions a person launches from the app. The id names a command, run, or built-in.", "type": "array", "items": { "$ref": "#/$defs/line" } },
     "builtins": {
       "description": "Native capabilities and the author's settings. Lifecycle and CSV import use the record type. Local approval holds writes in the named run.",
       "type": "array",

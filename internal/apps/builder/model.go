@@ -71,8 +71,8 @@ set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
 Use refs with a query default for scheduled loops. Read ids with $params.post.id.
-Agent steps return text at $steps.<id>.output. For lists and approvals, copy
-reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
+Agent steps return text at $steps.<id>.output. For loops and approvals, use
+the supplied run example as a syntax reference.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
@@ -391,7 +391,15 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		typeShapes = nil
 	}
 	var catalog string
+	var runExample string
 	if in.Stage != Planning {
+		if planned, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile])); len(planned.Automation) > 0 {
+			example, err := schema.BuilderExampleFile("draft-review", "runs/draft-thread.yaml")
+			if err != nil {
+				return nil, "", BuildCalls{}, err
+			}
+			runExample = string(example)
+		}
 		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "add-chart", "Form", "RecordPage", "Button", "Sheet"})
 		if err != nil {
 			return nil, "", BuildCalls{}, err
@@ -403,7 +411,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		Context        json.RawMessage `json:"context"`
 		Parts          json.RawMessage `json:"parts,omitempty"`
 		ExistingShapes json.RawMessage `json:"existing_shapes,omitempty"`
-	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes})
+		RunExample     string          `json:"run_example,omitempty"`
+	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes, runExample})
 	if err != nil {
 		return nil, "", BuildCalls{}, err
 	}
