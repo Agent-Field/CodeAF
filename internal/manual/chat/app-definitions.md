@@ -131,6 +131,10 @@ manual action in the plan's `actions` needs a screen control. A data line with
 `create: true` needs a create button or form. These findings go back to the
 Builder for repair, including when Desk is closed.
 
+If a RecordPage names a fixed record, Check requires its saved record ID.
+For a detail panel that follows a list, bind to `$selection.<list>.id`.
+For a detail screen that takes an ID parameter, use `$params.id`.
+
 With the CLI alone, Check still validates the app. The Check result and
 change card show `look: skipped (desk not running)`. You can keep the
 checkpoint and choose **Apply**. The standalone `app look` command returns
