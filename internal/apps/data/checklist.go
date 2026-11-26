@@ -198,7 +198,7 @@ func (w *writeTx) setChecklistStep(sc Scope, t *Type, before *record, checklist 
 	if _, err := w.newBatch(sc, OpChecklist, t); err != nil {
 		return nil, err
 	}
-	if err := w.save(t, next, false); err != nil {
+	if err := w.save(t, next, false, sc); err != nil {
 		return nil, err
 	}
 	return next, w.history(t, sc, OpChecklist, checklist.ID+"/"+step.ID, before, next)

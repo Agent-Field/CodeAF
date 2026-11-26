@@ -233,7 +233,7 @@ func (w *writeTx) deliverRecord(t *Type, sc Scope, in IntakeDelivery, receipt *I
 	if in.Work != nil {
 		work := *in.Work
 		work.Type, work.Record = in.Type, r.ID
-		item, err := w.createWorkItem(sc, work)
+		item, err := w.createWorkItem(sc, t, work)
 		if err != nil {
 			return err
 		}
