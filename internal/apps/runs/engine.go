@@ -81,12 +81,14 @@ type Config struct {
 	Now           func() time.Time
 	Load          func(app, run string) (Definition, error)
 	Triggers      func() ([]Trigger, error)
-	Records       func(context.Context, RecordCall) (Reply, error)
-	Render        func(context.Context, Call, schema.RenderAction) (Reply, error)
-	Agent         func(context.Context, AgentCall) (Reply, error)
-	CheckAI       func(*schema.AIStep) error
-	AppVersion    func(string) (int, error)
-	Connector     Connector
+	// Records applies local writes. The live and sample engines use Data.Write,
+	// which commits a receipt for each declared write's stable Call.Key.
+	Records    func(context.Context, RecordCall) (Reply, error)
+	Render     func(context.Context, Call, schema.RenderAction) (Reply, error)
+	Agent      func(context.Context, AgentCall) (Reply, error)
+	CheckAI    func(*schema.AIStep) error
+	AppVersion func(string) (int, error)
+	Connector  Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
 	CheckTool        func(context.Context, Call) (outbound bool, err error)
