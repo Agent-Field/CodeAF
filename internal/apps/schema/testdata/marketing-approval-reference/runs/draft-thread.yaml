@@ -12,6 +12,11 @@ steps:
     prompt: >-
       Draft exactly three short thread replies to post {{post}}, each under
       40 words, in a plain and friendly voice.
+    output:
+      replies:
+        type: array
+        items:
+          type: string
   - id: save
     loop:
       over: $steps.draft.replies
@@ -31,4 +36,4 @@ steps:
       who: $me
     args:
       post: "{{post}}"
-      text: $steps.draft.output
+      replies: $steps.draft.replies

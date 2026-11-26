@@ -8,7 +8,7 @@ import (
 )
 
 func TestCheckIdentifiesInvalidDraftReplyReference(t *testing.T) {
-	// The first baseline build could not read replies from an untyped agent.
+	// The first baseline build copied its unresolved loop input to the gate during repair.
 	const file = "runs/draft-thread.yaml"
 	recorded, err := os.ReadFile("testdata/marketing-approval-reference/" + file)
 	if err != nil {
@@ -45,23 +45,15 @@ func TestCheckIdentifiesInvalidDraftReplyReference(t *testing.T) {
 	}
 	assertFinding("/steps/1/loop/over", "$steps.draft.replies", "ai step")
 
-	// Replay the same unresolved output in the approval payload itself.
-	start := bytes.Index(recorded, []byte("  - id: save"))
-	end := bytes.Index(recorded, []byte("  - id: approve"))
-	if start == -1 || end <= start {
-		t.Fatal("recorded run should save drafts before approval")
-	}
-	gateOnly := append(bytes.Clone(recorded[:start]), recorded[end:]...)
-	def.Files[file] = bytes.Replace(gateOnly, []byte("text: $steps.draft.output"), []byte("text: '{{steps.draft.replies}}'"), 1)
-	assertFinding("/steps/1/args/text", "steps.draft.replies", "$steps.draft.output")
+	const approval = "/steps/2/args/replies"
+	assertFinding(approval, "$steps.draft.replies", "$steps.draft.output")
 
-	def.Files[file] = bytes.Replace(gateOnly, []byte("text: $steps.draft.output"), []byte("text: $steps.drafted.output"), 1)
-	assertFinding("/steps/1/args/text", "$steps.drafted.output", "draft")
+	original := []byte("replies: $steps.draft.replies")
+	def.Files[file] = bytes.Replace(recorded, original, []byte("replies: '{{steps.draft.replies}}'"), 1)
+	assertFinding(approval, "steps.draft.replies", "$steps.draft.output")
 
-	def.Files[file] = gateOnly
-	if report := Validate(def, nil); !report.OK() {
-		t.Fatalf("Check should accept the plain agent's text in the approval:\n%s", report)
-	}
+	def.Files[file] = bytes.Replace(recorded, original, []byte("replies: $steps.drafted.output"), 1)
+	assertFinding(approval, "$steps.drafted.output", "draft")
 
 	example, err := BuilderExampleFile("draft-review", file)
 	if err != nil {
