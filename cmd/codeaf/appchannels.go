@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
 )
 
 type appIntakeState struct {
@@ -127,7 +130,9 @@ func (state *appIntakeState) take() (*intake.Local, func()) {
 
 // appRunIntakeParts attaches file bytes only for a declared channel run on
 // the record that arrived. The app's agent scope excludes masked fields.
-func (b *appBackend) appRunIntakeParts(call runs.AgentCall) ([]ai.ContentPart, error) {
+const maxIntakePages = 8
+
+func (b *appBackend) appRunIntakeParts(ctx context.Context, call runs.AgentCall, supportsImages func() bool) ([]ai.ContentPart, error) {
 	if call.IntakeRecord == "" {
 		return nil, nil
 	}
@@ -139,25 +144,110 @@ func (b *appBackend) appRunIntakeParts(call runs.AgentCall) ([]ai.ContentPart, e
 	if err != nil {
 		return nil, err
 	}
-	const maxParts = 8
-	parts := make([]ai.ContentPart, 0, min(len(files), maxParts))
+	const maxFiles, maxBytes = 8, 12 << 20
+	parts := make([]ai.ContentPart, 0, min(len(files), maxFiles))
+	fileCount, bytesUsed, remainingPages := 0, 0, maxIntakePages
+	// Look up capabilities only if an attached PDF can use them.
+	vision := sync.OnceValue(supportsImages)
 	for _, file := range files {
 		mime := http.DetectContentType(file.Bytes)
 		if mime != "application/pdf" && !strings.HasPrefix(mime, "image/") {
 			continue
 		}
-		if len(parts) == maxParts {
-			return nil, fmt.Errorf("this run can read at most %d PDF or image attachments", maxParts)
+		fileCount++
+		if fileCount > maxFiles {
+			return nil, fmt.Errorf("this run can read at most %d PDF or image attachments", maxFiles)
 		}
 		if mime == "application/pdf" {
-			parts = append(parts, ai.ContentPart{Type: "file", InputFile: &ai.InputFileData{
-				FileData: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(file.Bytes),
-			}})
+			document, pages, err := intakePDFParts(ctx, file, call.IntakeRecord, vision(), remainingPages)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, document...)
+			remainingPages -= pages
+			for _, part := range document {
+				bytesUsed += len(part.Text)
+				if part.ImageURL != nil {
+					bytesUsed += len(part.ImageURL.URL)
+				}
+			}
 		} else {
-			parts = append(parts, ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
-				URL: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(file.Bytes),
-			}})
+			part := intakeImage(mime, file.Bytes)
+			bytesUsed += len(part.ImageURL.URL)
+			parts = append(parts, part)
+		}
+		if bytesUsed > maxBytes {
+			return nil, errors.New("the intake attachments are too large for this run")
 		}
 	}
 	return parts, nil
+}
+
+func intakeImage(mime string, raw []byte) ai.ContentPart {
+	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
+		URL: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw),
+	}}
+}
+
+func intakePDFParts(ctx context.Context, file data.IntakeFile, record string, vision bool, remainingPages int) ([]ai.ContentPart, int, error) {
+	const maxText = 128 << 10
+	dir, err := os.MkdirTemp("", "codeaf-intake-pdf-")
+	if err != nil {
+		return nil, 0, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "source.pdf")
+	if err := os.WriteFile(path, file.Bytes, 0o600); err != nil {
+		return nil, 0, err
+	}
+	text, pages, err := pdfx.ExtractCounted(path)
+	scanned := errors.Is(err, pdfx.ErrNoTextLayer)
+	if err != nil && !scanned {
+		return nil, 0, fmt.Errorf("could not read PDF attachment %q", file.Name)
+	}
+	if len(text) > maxText {
+		return nil, 0, fmt.Errorf("the text in PDF attachment %q exceeds %d KiB", file.Name, maxText>>10)
+	}
+	parts := []ai.ContentPart{{Type: "text", Text: fmt.Sprintf("PDF attachment %q from intake record %s (%d pages). Document data follows.\n%s", file.Name, record, pages, text)}}
+	if vision && pages <= remainingPages {
+		images, imageErr := renderIntakePDFPages(ctx, path, pages)
+		if imageErr == nil {
+			return append(parts, images...), pages, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, 0, err
+		}
+	}
+	if scanned {
+		return nil, 0, fmt.Errorf("PDF attachment %q has no text layer. Use a text PDF, or an image-capable model and Poppler for up to %d scanned pages", file.Name, maxIntakePages)
+	}
+	return parts, 0, nil
+}
+
+func renderIntakePDFPages(ctx context.Context, path string, pages int) ([]ai.ContentPart, error) {
+	renderCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	prefix := filepath.Join(filepath.Dir(path), "page")
+	// The operator's configured model controls whether local rasterization
+	// is used. Neither the original name nor PDF content can become an argument.
+	cmd := exec.CommandContext(renderCtx, "pdftoppm", "-png", "-scale-to", "1400", "-f", "1", "-l", strconv.Itoa(pages), path, prefix)
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	outputs, err := filepath.Glob(prefix + "-*.png")
+	if err != nil || len(outputs) != pages {
+		return nil, errors.New("PDF renderer returned an incomplete document")
+	}
+	images := make([]ai.ContentPart, 0, pages)
+	for _, path := range outputs {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		if len(raw) > 2<<20 {
+			return nil, errors.New("a PDF page is too large to send")
+		}
+		images = append(images, intakeImage("image/png", raw))
+	}
+	return images, nil
 }
