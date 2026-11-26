@@ -650,7 +650,8 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target) (string, e
 	}
 	next := turn{ID: id, Stage: stage, Request: request, Target: target}
 	if stage == Writing && request == "" && j.Paused != nil {
-		next.Request, next.Target = j.Paused.Request, j.Paused.Target
+		next = *j.Paused
+		next.ID = id
 	}
 	j.Paused = nil
 	j.Dirty = true

@@ -34,11 +34,17 @@ type partsCatalog struct {
 	}
 }
 
+func readPartsCatalog() (partsCatalog, error) {
+	var kit partsCatalog
+	err := json.Unmarshal(schema.KitJSON(), &kit)
+	return kit, err
+}
+
 // Parts reads the same live vocabulary as apps.kit. With an intent it sends
 // just the matching view recipe and part, or a single named markup part.
 func Parts(intent string) (json.RawMessage, error) {
-	var kit partsCatalog
-	if err := json.Unmarshal(schema.KitJSON(), &kit); err != nil {
+	kit, err := readPartsCatalog()
+	if err != nil {
 		return nil, err
 	}
 	return kit.part(intent)
@@ -51,8 +57,8 @@ func batchParts(intents []string) (string, error) {
 	if len(intents) == 0 || len(intents) > maxPartSelectors {
 		return "", fmt.Errorf("choose between 1 and %d catalog selectors", maxPartSelectors)
 	}
-	var kit partsCatalog
-	if err := json.Unmarshal(schema.KitJSON(), &kit); err != nil {
+	kit, err := readPartsCatalog()
+	if err != nil {
 		return "", err
 	}
 	reply := struct {

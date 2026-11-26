@@ -52,7 +52,13 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 	}
 	rows, err := Sample(def)
 	if err != nil {
-		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", err.Error()))
+		problems := []error{err}
+		if rows, ok := err.(interface{ Unwrap() []error }); ok {
+			problems = rows.Unwrap()
+		}
+		for _, issue := range problems {
+			report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", issue.Error()))
+		}
 		return report
 	}
 	if len(rows) == 0 {

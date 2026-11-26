@@ -336,7 +336,7 @@ func TestPlanPersistsAndReportsTheModelFailure(t *testing.T) {
 	}
 }
 
-func TestPlanNamesTheCallLimitWhenTheTurnKeepsWorking(t *testing.T) {
+func TestPlanKeepsTheOutlineWhenTheModelRunsOutOfCalls(t *testing.T) {
 	opts := scriptedApp(t, t.TempDir())
 	opts.Model = func() (builder.Completer, error) {
 		step := 0

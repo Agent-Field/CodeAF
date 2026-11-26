@@ -87,7 +87,9 @@ the outline, manifest and file names. Ask for an individual definition
 with `app context {"file":"screens/deals.json"}`. An unchanged file page
 can be reused from its earlier reply. In the scoped app session,
 `app parts {"select":["add-view/board","RecordList"]}` fetches several
-descriptors in one command.
+descriptors in one command. Use one `for` selector or a `select` list of up
+to 12 selectors. The batch returns each match and lists misses in
+`problems`.
 
 `app look` uses the open desktop to draw the selected screen on example
 records. When the desktop renderer is connected, Check draws every screen
@@ -102,8 +104,9 @@ checkpoint and choose **Apply**. The standalone `app look` command returns
 `desk_unavailable` until the renderer connects.
 
 If a build stops, reopen it to see the reason in the build progress.
-When the Builder runs out of model calls, completed definition changes
-stay in the draft. Use Build again to continue writing, or ask the Builder
+Build and repair get a model call limit based on the record types, screens
+and runs in the outline. When the Builder runs out of model calls,
+completed definition changes stay in the draft. Use Build again to continue writing, or ask the Builder
 to continue an unfinished plan. Check reports all definition findings
 together before Apply. If the saved app changed during editing, discard the stale draft to start
 from the latest version.

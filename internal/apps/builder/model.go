@@ -34,7 +34,8 @@ definition names and the last Check findings. Inspect an existing type with
 context {"type":"contact"} only if its shape is absent from the manifest.
 Read an individual definition with context {"file":"screens/deals.json"}
 only when needed to change it. Keep using the result until that file changes.
-The manifest and plan in context already contain their full text when present.
+The manifest and plan in context contain their full text when present.
+Use the earlier reply for files listed as unchanged.
 If you need kit descriptors, fetch them together with
 parts {"select":["add-view/board","RecordList"]}.
 Use the examples below directly for ordinary plans, types, and views.
@@ -54,14 +55,15 @@ A linked field uses {"type":"ref","to":"company"}. New types start read-only.
 For an app where the person tracks records, grant read and write to every
 tracked type. For a CRM, use
 configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}}}
-before writing screens. Keep other capabilities when editing an existing
-app. Make title fields unique when records are identified by name.
+before writing screens. Each configure setting replaces its whole value.
+Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 A new record should be creatable with its title and the essential input
-the person supplied. Give a required status an initial value, for example
+the person supplied. For text-first content such as posts and mentions, use
+text as the title field. Give a required status an initial value, for example
 {"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
 Leave other fields optional unless the request requires a value at creation.
-For a guarded lifecycle, put this on the record definition, with an enum
-field whose values match: "lifecycle":{"field":"status","initial":"Planned",
+Use a plain enum for status unless the request needs guarded transitions.
+When it does, put this on the definition with a matching enum field: "lifecycle":{"field":"status","initial":"Planned",
 "transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
 recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
 compiles a collection. For ordinary collections use as "table" or "list"
@@ -75,7 +77,8 @@ set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids such as launch-research or draft-thread. Use params for
 inputs, agent and prompt for model steps, and records.create for saved results.
-Use a send gate on the outbound tool step with the exact text in its args.
+Set agent to the app agent's exact configured name. Never set a
+lifecycle-owned field with records.create or records.update. Use a send gate on the outbound tool step with the exact text in its args.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Set the app's schedule and commands through configure. Use set-agent for
 instructions and configure agent to point at agent.md.
@@ -205,29 +208,37 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		}{body[opts.Offset:end], next})
 		return string(raw), err
 	}
+	var unchanged []string
 	preview := func(name string) json.RawMessage {
 		raw := json.RawMessage(files[name])
 		if len(raw) > contextFilePage || !json.Valid(raw) {
 			return nil
 		}
-		reads[contextRequest{File: name}] = files[name]
+		page := contextRequest{File: name}
+		if previous, read := reads[page]; read && previous == files[name] {
+			unchanged = append(unchanged, name)
+			return nil
+		}
+		reads[page] = files[name]
 		return raw
 	}
+	manifest, plan := preview(schema.AppFile), preview(schema.PlanFile)
 	typeNames := make([]string, 0, len(in.Types))
 	for _, typ := range in.Types {
 		typeNames = append(typeNames, typ.Name)
 	}
 	raw, err := json.Marshal(struct {
-		Stage    string          `json:"stage"`
-		Manifest json.RawMessage `json:"manifest,omitempty"`
-		Plan     json.RawMessage `json:"plan,omitempty"`
-		Files    []string        `json:"files,omitempty"`
-		Types    []string        `json:"existing_types,omitempty"`
-		Using    []string        `json:"using,omitempty"`
-		Report   *modelReport    `json:"report,omitempty"`
+		Stage     string          `json:"stage"`
+		Manifest  json.RawMessage `json:"manifest,omitempty"`
+		Plan      json.RawMessage `json:"plan,omitempty"`
+		Files     []string        `json:"files,omitempty"`
+		Unchanged []string        `json:"unchanged,omitempty"`
+		Types     []string        `json:"existing_types,omitempty"`
+		Using     []string        `json:"using,omitempty"`
+		Report    *modelReport    `json:"report,omitempty"`
 	}{
-		in.Stage, preview(schema.AppFile), preview(schema.PlanFile), slices.Sorted(maps.Keys(files)),
-		typeNames, in.Using, briefReport(in.Report),
+		in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		unchanged, typeNames, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err
 }
@@ -394,7 +405,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 with their exact ids, and remove extras with remove-screen {"id":"extra"}.
 For a layout finding, replace only the affected screen with markup
 {"screen":"...","replace":true,"markup":"..."}, keeping existing node ids.
-Keep everything unaffected. Run check and finish.`
+Keep everything unaffected. Fix the reported locations using the commands
+shown above, then run check once to confirm and finish.`
 	default:
 		if in.Editing {
 			prompt += `Apply only the requested change. If it adds an optional field,
@@ -415,7 +427,7 @@ Then write the sample rows, run check once, and finish with a short summary.`
 	bounded := &boundedModel{model: model, limit: in.callBudget()}
 	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
 	if bounded.exhausted() {
-		err = errModelSteps
+		err = errModelCallLimit
 	}
 	return files, reply, errors.Join(err, compilerErr)
 }
@@ -455,7 +467,7 @@ type boundedModel struct {
 	hit   bool
 }
 
-var errModelSteps = errors.New("the Builder reached its model call limit")
+var errModelCallLimit = errors.New("the Builder reached its model call limit")
 
 func (b *boundedModel) exhausted() bool {
 	b.mu.Lock()
@@ -468,7 +480,7 @@ func (b *boundedModel) CompleteWithMessages(ctx context.Context, messages []ai.M
 	if b.calls >= b.limit {
 		b.hit = true
 		b.mu.Unlock()
-		return nil, errModelSteps
+		return nil, errModelCallLimit
 	}
 	b.calls++
 	b.mu.Unlock()
