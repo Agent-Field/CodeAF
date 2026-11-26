@@ -142,11 +142,12 @@ type Event struct {
 }
 
 type Offer struct {
-	Common string `json:"common,omitempty"`
-	Line   string `json:"line,omitempty"`
-	Type   string `json:"type"`
-	Count  int    `json:"count"`
-	App    string `json:"app"`
+	Outline *schema.PlanLine `json:"outline,omitempty"`
+	Common  string           `json:"common,omitempty"`
+	Line    string           `json:"line,omitempty"`
+	Type    string           `json:"type"`
+	Count   int              `json:"count"`
+	App     string           `json:"app"`
 }
 
 type Message struct {
@@ -227,6 +228,8 @@ type job struct {
 	KeptMarks       int
 	LastRequest     string
 	Accepted        []string
+	Separate        []string                `json:",omitempty"`
+	Reuse           map[string]reuseBinding `json:",omitempty"`
 }
 
 // OpenJobs resumes work waiting from an earlier engine process.
@@ -346,6 +349,21 @@ func (s *Jobs) load(id string) (*job, error) {
 	var j job
 	if err := json.Unmarshal(raw, &j); err != nil || j.Draft != id {
 		return nil, store.ErrCorrupt
+	}
+	// Older drafts could save the writer's own words in the conversation.
+	for i := range j.Transcript {
+		message := &j.Transcript[i]
+		if message.Role == "assistant" && hasBuilderDetail(message.Text) {
+			message.Text = "I worked on " + displayName(j.Name, "your app") + ". See Build activity for details."
+		}
+	}
+	for i := range j.Checkpoints {
+		if hasBuilderDetail(j.Checkpoints[i].Summary) {
+			j.Checkpoints[i].Summary = "I updated " + displayName(j.Name, "your app") + "."
+		}
+	}
+	if hasBuilderDetail(j.Problem) {
+		j.Problem = displayBuildIssue(j.Working.Files, schema.Report{})
 	}
 	// Older builds used Ready for plans with no screens.
 	if j.State.State == Ready && len(j.Screens) == 0 {
@@ -800,7 +818,14 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	if app.Budget != nil && app.Budget.Month > 0 {
 		j.Needs = append(j.Needs, fmt.Sprintf("Monthly limit · $%.2f", app.Budget.Month))
 	}
-	j.Offers = reuseOffers(app, j.App, j.Accepted, catalog)
+	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	j.Offers = reuseOffers(app, plan, j.App, j.Accepted, catalog)
+	j.Offers = slices.DeleteFunc(j.Offers, func(offer Offer) bool {
+		return offer.App != "" && j.keepsSeparate(offer.Type, offer.Common)
+	})
+	if plan.Ask != "" {
+		j.projectOutline(app, plan, catalog)
+	}
 	if headless && planning {
 		// Put reuse of actual records before empty types and library suggestions.
 		slices.SortStableFunc(j.Offers, func(a, b Offer) int {
@@ -818,6 +843,7 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 func (j *job) acceptKeptUses() {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	j.Accepted = []string{}
+	j.Reuse = nil
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if record := app.Records[name]; record.Uses {
 			if record.Common != "" {
@@ -831,8 +857,15 @@ func (j *job) acceptKeptUses() {
 // The plan card sends the chosen type in the person's own words. Treat only
 // a positive choice for an offered type as consent to share it.
 func (j *job) applyReuseChoice(request string) {
-	const prefix = "use my existing "
-	text, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(request)), prefix)
+	request = strings.ToLower(strings.TrimSpace(request))
+	if words, ok := strings.CutPrefix(request, "keep a separate "); ok {
+		name, _, _ := strings.Cut(words, " ")
+		if validTypeWord(name) {
+			j.releaseReuse(name)
+		}
+		return
+	}
+	text, ok := strings.CutPrefix(request, "use my existing ")
 	if !ok {
 		return
 	}
@@ -849,6 +882,10 @@ func (j *job) applyReuseChoice(request string) {
 			j.acceptReuse(offer.Type)
 			return
 		}
+	}
+	if slices.Contains(j.Separate, name) {
+		j.Separate = slices.DeleteFunc(j.Separate, func(id string) bool { return id == name })
+		j.acceptReuse(name)
 	}
 }
 

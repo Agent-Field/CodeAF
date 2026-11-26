@@ -34,6 +34,9 @@ func (c Catalog) reuseText(name string) string {
 }
 
 func (j *job) reuseAccepted(name string, record schema.RecordType, catalog Catalog) bool {
+	if j.keepsSeparate(name, record.Common) {
+		return false
+	}
 	if record.Common == "" {
 		return slices.Contains(j.Accepted, name)
 	}

@@ -6,6 +6,9 @@ A desktop app can start a run from a screen or command using its saved run defin
 row and record detail. Its run can bind the current record with
 `$record.id`. Progress updates as each step runs. A run can create or update records the app has permission to write, render a declared output, ask the app agent for an answer, call an allowed connection, wait for a duration, or repeat steps up to a limit. Shell commands and repository workspaces are unavailable in app runs.
 
+An approved standalone gate shows as done once the run passes it, including
+after the run finishes. A new loop round can ask for its own approval.
+
 ## What happens to scheduled runs when codeaf is closed?
 
 Runs advance while codeaf is running. Completed steps, approval requests and wait deadlines are saved. When you reopen codeaf, a schedule with missed slots starts one run marked “caught up”, then returns to its regular schedule. A send interrupted before its result was saved is shown as incomplete so the same message cannot be sent twice.
