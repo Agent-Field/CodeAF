@@ -12,14 +12,17 @@ import (
 )
 
 type Trigger struct {
-	Since     time.Time `json:"-"`
-	App       string    `json:"-"`
-	ID        string    `json:"id"`
-	On        string    `json:"on"`
-	Run       string    `json:"run"`
-	Cron      string    `json:"cron"`
-	Type      string    `json:"type"`
-	When      string    `json:"when"`
+	Since     time.Time      `json:"-"`
+	App       string         `json:"-"`
+	ID        string         `json:"id"`
+	On        string         `json:"on"`
+	Run       string         `json:"run"`
+	Cron      string         `json:"cron"`
+	Type      string         `json:"type"`
+	When      string         `json:"when"`
+	Connector string         `json:"connector,omitempty"`
+	Event     string         `json:"event,omitempty"`
+	Match     map[string]any `json:"match,omitempty"`
 	fieldFill bool
 }
 

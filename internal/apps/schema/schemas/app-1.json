@@ -57,7 +57,7 @@
           }
         },
         "ai": { "type": "array", "items": { "enum": ["sort", "summarise"] }, "uniqueItems": true },
-        "tools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)*$" } }
+        "tools": { "type": "array", "items": { "type": "string", "pattern": "^(?:[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)*|connections\\.[a-z][a-z0-9_-]{0,63}\\.[a-z][a-z0-9_-]{0,63})$" } }
       }
     },
     "triggers": {
@@ -74,6 +74,7 @@
           "when": { "type": "string" },
           "connector": { "type": "string" },
           "event": { "type": "string" },
+          "match": { "type": "object" },
           "run": { "type": "string" }
         }
       }

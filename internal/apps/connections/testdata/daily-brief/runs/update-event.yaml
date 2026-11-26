@@ -1,0 +1,15 @@
+run: update-event
+title: Update calendar event
+params:
+  id: {type: text}
+  version: {type: text}
+  title: {type: text}
+steps:
+  - id: update
+    tool: connections.m365.update-event
+    gate: {approval: send}
+    args:
+      id: $params.id
+      version: $params.version
+      set:
+        title: $params.title

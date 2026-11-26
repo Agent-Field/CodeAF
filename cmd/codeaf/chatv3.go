@@ -2015,7 +2015,17 @@ func v3Connect(profileDir string) *connect.Manager {
 	if id := config.SlackOAuthClientAt(profileDir); strings.TrimSpace(id) != "" {
 		credentials["slack"] = connect.ClientCredential{ID: id, Public: true}
 	}
+	if id := strings.TrimSpace(env.Value("CODEAF_MICROSOFT_CLIENT_ID")); id != "" {
+		credentials[connect.Microsoft365] = connect.ClientCredential{
+			ID: id, Tenant: env.Value("CODEAF_MICROSOFT_TENANT_ID"),
+			Transcripts: env.Value("CODEAF_MICROSOFT_TRANSCRIPTS") == "1",
+		}
+	}
 	manager, err := connect.NewManager(profileDir, credentials)
+	if errors.Is(err, connect.ErrMicrosoftRegistration) {
+		delete(credentials, connect.Microsoft365)
+		manager, err = connect.NewManager(profileDir, credentials)
+	}
 	if err != nil {
 		return nil
 	}

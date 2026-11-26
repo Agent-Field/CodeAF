@@ -1,0 +1,154 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "brief",
+  "title": "Daily brief",
+  "body": {
+    "part": "Stack",
+    "props": {
+      "gap": 3
+    },
+    "children": [
+      {
+        "part": "Heading",
+        "props": {
+          "text": "Daily brief",
+          "level": 1
+        },
+        "id": "heading"
+      },
+      {
+        "part": "Row",
+        "props": {
+          "gap": 2
+        },
+        "children": [
+          {
+            "part": "Button",
+            "label": "Create Outlook draft",
+            "on": {
+              "click": [
+                {
+                  "runs.start": "draft",
+                  "ask": {
+                    "to": "email",
+                    "subject": "text",
+                    "body": "longtext"
+                  },
+                  "params": {
+                    "to": "$input.to",
+                    "subject": "$input.subject",
+                    "body": "$input.body"
+                  }
+                }
+              ]
+            },
+            "id": "draft"
+          },
+          {
+            "part": "Button",
+            "label": "Create calendar event",
+            "on": {
+              "click": [
+                {
+                  "runs.start": "create-event",
+                  "ask": {
+                    "title": "text",
+                    "start": "text",
+                    "end": "text"
+                  },
+                  "params": {
+                    "title": "$input.title",
+                    "start": "$input.start",
+                    "end": "$input.end"
+                  }
+                }
+              ]
+            },
+            "id": "create-event"
+          },
+          {
+            "part": "Button",
+            "label": "Update calendar event",
+            "on": {
+              "click": [
+                {
+                  "runs.start": "update-event",
+                  "ask": {
+                    "id": "text",
+                    "version": "text",
+                    "title": "text"
+                  },
+                  "params": {
+                    "id": "$input.id",
+                    "version": "$input.version",
+                    "title": "$input.title"
+                  }
+                }
+              ]
+            },
+            "id": "update-event"
+          }
+        ],
+        "id": "writes"
+      },
+      {
+        "part": "RecordList",
+        "id": "mail",
+        "label": "Outlook inbox",
+        "bind": {
+          "records": "message",
+          "query": "sort:-received"
+        },
+        "props": {
+          "views": [
+            "list"
+          ],
+          "columns": [
+            "subject",
+            "sender",
+            "received"
+          ]
+        }
+      },
+      {
+        "part": "RecordList",
+        "id": "meetings",
+        "label": "Outlook calendar",
+        "bind": {
+          "records": "meeting",
+          "query": "sort:start"
+        },
+        "props": {
+          "views": [
+            "list"
+          ],
+          "columns": [
+            "title",
+            "start",
+            "location"
+          ]
+        }
+      },
+      {
+        "part": "RecordList",
+        "id": "docs",
+        "label": "OneDrive and Teams",
+        "bind": {
+          "records": "document",
+          "query": "sort:-modified"
+        },
+        "props": {
+          "views": [
+            "list"
+          ],
+          "columns": [
+            "title",
+            "kind",
+            "modified"
+          ]
+        }
+      }
+    ],
+    "id": "body"
+  }
+}

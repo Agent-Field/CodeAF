@@ -108,7 +108,7 @@ func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperatio
 
 func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
 	if id, write, ok := schema.ParseSourceTool(call.Name); ok {
-		_, err := c.sourceEffect(call, id, write)
+		_, err := c.sourceEffect(ctx, call, id, write)
 		return true, err
 	}
 	_, _, ask, err := c.check(ctx, call)
@@ -116,12 +116,12 @@ func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
 }
 
 // SourceFence binds the run's durable approval to the authority it prepared.
-func (c ConnectedTools) SourceFence(call Call) (string, error) {
+func (c ConnectedTools) SourceFence(ctx context.Context, call Call) (string, error) {
 	id, write, ok := schema.ParseSourceTool(call.Name)
 	if !ok {
 		return "", nil
 	}
-	effect, err := c.sourceEffect(call, id, write)
+	effect, err := c.sourceEffect(ctx, call, id, write)
 	if err != nil {
 		return "", err
 	}
@@ -133,7 +133,7 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 		if !call.approved || call.Key == "" {
 			return Reply{}, errors.New("approval is required before writing to a source")
 		}
-		effect, err := c.sourceEffect(call, id, write)
+		effect, err := c.sourceEffect(ctx, call, id, write)
 		if err != nil {
 			return Reply{}, err
 		}
@@ -225,7 +225,7 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 	return connectorResult(output, err, op.outbound)
 }
 
-func (c ConnectedTools) sourceEffect(call Call, id, write string) (*connections.Effect, error) {
+func (c ConnectedTools) sourceEffect(ctx context.Context, call Call, id, write string) (*connections.Effect, error) {
 	app, err := c.Apps(call.App)
 	if err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ func (c ConnectedTools) sourceEffect(call Call, id, write string) (*connections.
 	if call.As != "me" || !slices.Contains(app.Capabilities.Tools, call.Name) {
 		return nil, errors.New("the app has no grant for this source write")
 	}
-	return c.Sources.PrepareEffect(call.App, id, write, call.Args)
+	return c.Sources.PrepareEffect(ctx, call.App, id, write, call.Args)
 }
 
 func connectorResult(output string, err error, mutates bool) (Reply, error) {
