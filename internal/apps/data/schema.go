@@ -178,6 +178,7 @@ type Scope struct {
 
 	sync        bool
 	sourceEvent string
+	sourceKey   ExternalKey
 }
 
 func (sc Scope) isAgent() bool {

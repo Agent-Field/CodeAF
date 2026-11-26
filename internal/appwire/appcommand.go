@@ -8,7 +8,8 @@ func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, err
 	switch verb {
 	case "new", "plan", "build", "check", "say", "build_state", "checkpoints",
 		"restore_checkpoint", "preview", "look", "discard", "change", "kit",
-		"reference", "parts", "common_types", "bind_common_type", "list", "get", "screen", "versions", "mark", "presence":
+		"reference", "parts", "common_types", "bind_common_type",
+		"match_candidates", "match_scan", "match_accept", "match_reject", "match_merge", "match_unmerge", "list", "get", "screen", "versions", "mark", "presence":
 	case "add_type", "add_field", "configure", "recipe", "markup", "claim", "set_run", "set_agent", "set_sample":
 		return nil, Errorf(CodeForbidden, "Start an app build to run this command in its scoped session.")
 	default:

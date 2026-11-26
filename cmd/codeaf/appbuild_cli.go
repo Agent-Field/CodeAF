@@ -93,6 +93,7 @@ func runAppCommand(args []string) error {
 	case verb == "help":
 		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|common-types|bind-common-type|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
+		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
 		return nil
 	case verb == "kit" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, string(schema.KitJSON()))

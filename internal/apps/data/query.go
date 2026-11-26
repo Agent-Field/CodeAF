@@ -314,7 +314,7 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value, Literal: cond.Literal}, sc, now); err != nil {
 		return err
 	}
-	sub := "SELECT x.id FROM records x WHERE " + inner.base() + " AND " + strings.Join(inner.where, " AND ")
+	sub := identityMembersSQL(target, "SELECT x.id FROM records x WHERE "+inner.base()+" AND "+strings.Join(inner.where, " AND "))
 	if f.Type == TypeRef {
 		c.add(c.col(f)+" IN ("+sub+")", cond.Neg, inner.args...)
 		return nil
@@ -612,11 +612,15 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		if c.related != nil {
 			c.related[target.ID] = true
 		}
-		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", target.Fields[title].ID) + ", '') LIKE ? ESCAPE '\\'"
+		byTitle = identityMembersSQL(target, titles+"COALESCE("+jsonPath("t.data_json", target.Fields[title].ID)+", '') LIKE ? ESCAPE '\\'")
 	}
 	pattern := wildcard(v)
+	byID := " = ?"
+	if target != nil && target.identifiable() {
+		byID = " IN (" + identityMembersSQL(target, "SELECT "+identityRefSQL(target, "?")) + ")"
+	}
 	if f.Type == TypeRef {
-		cond := col + " = ?"
+		cond := col + byID
 		args = append(args, v)
 		if byTitle != "" {
 			cond += " OR " + col + " IN (" + byTitle + ")"
@@ -624,7 +628,7 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		}
 		return cond, args, nil
 	}
-	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value = ?"
+	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value" + byID
 	args = append(args, v)
 	if byTitle != "" {
 		each += " OR j.value IN (" + byTitle + ")"

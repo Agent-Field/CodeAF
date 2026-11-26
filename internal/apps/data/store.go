@@ -230,6 +230,7 @@ var migrations = []string{
 	dataPlaneMigration,
 	writeRulesMigration,
 	ruleSourceGrantMigration,
+	identityMigration,
 	agentGrantMigration,
 }
 
