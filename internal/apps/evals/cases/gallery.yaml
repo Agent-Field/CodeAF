@@ -194,7 +194,7 @@
       capture: {contact: /rows/0/id}
     - method: build-app
       params:
-        prompt: Build a Support app with tickets. Let me use the same Contacts and Companies I have in CRM and show both on the ticket screen. Let me add and edit shared Contacts from Support, and look up Companies. Use the record aliases contact and company.
+        prompt: Build a simple Support app with two tables, Tickets and Contacts. Tickets have only name, contact and company. Reuse CRM Contacts as contact and Companies as company. Contacts have only name and can be created and edited here. Companies have only name and are lookup-only.
         reuse: [contact, company]
       capture: {support: /app}
     - method: app.get

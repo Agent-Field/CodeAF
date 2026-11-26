@@ -80,8 +80,10 @@ companies. Inspect context's common_bindings before proposing shared records.
 After acceptance, use the same common key and set "uses":true with "fields":{}.
 For an older unbound type, set "uses":true under its exact existing name.
 Keep candidate records distinct when a hiring app only links to contacts.
-Set "access":"rw" on add-type for every type this app's Actions create or
-edit, including shared records. Use "access":"r" for lookup-only records.
+For a shared type this app's Actions create or edit, use this shape:
+add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
+Access goes beside definition. Use "access":"r" for lookup-only records.
+In sample rows, use only the existing type's fields returned by context.
 If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
 Keep existing screen and node ids. For marked edits, use claim with screen
@@ -382,7 +384,9 @@ Keep everything unaffected. Run check and finish.`
 Set record permissions and compile one recipe for each missing plan screen,
 using its exact screen id. Keep existing screens unless asked to edit them.
 Use markup only for a composition the request needs and recipes cannot do.
-Then write the sample rows, run check once, and finish with a short summary.`
+Write the sample rows and run check once. When check reports no problems,
+finish immediately with a short summary. The engine tries sample data and
+Desk Look after this turn.`
 	}
 	bounded := &boundedModel{model: model}
 	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
