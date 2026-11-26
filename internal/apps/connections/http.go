@@ -23,7 +23,12 @@ func request(ctx context.Context, c Config, token, method, path string, query ur
 	if err != nil {
 		return nil, ErrUnavailable
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 	req.Header.Set("Accept", "application/json")
 	if method == http.MethodPost {
 		req.Header.Set("Idempotency-Key", key)
@@ -98,16 +103,36 @@ func httpRows(ctx context.Context, c Config, token string, read Read, args map[s
 	for name, value := range args {
 		query.Set(name, fmt.Sprint(value))
 	}
-	raw, err := request(ctx, c, token, http.MethodGet, read.Path, query, nil, "")
+	var missing bool
+	path := pathParameter.ReplaceAllStringFunc(read.Path, func(marker string) string {
+		name := marker[1 : len(marker)-1]
+		value := query.Get(name)
+		if !pathValue.MatchString(value) {
+			missing = true
+		}
+		return value
+	})
+	if missing || !fixedPath(path) {
+		return nil, errors.New("a path argument needs letters, digits, hyphens or underscores")
+	}
+	for _, param := range pathParameter.FindAllStringSubmatch(read.Path, -1) {
+		query.Del(param[1])
+	}
+	raw, err := request(ctx, c, token, http.MethodGet, path, query, nil, "")
 	if err != nil {
 		return nil, err
 	}
 	if read.Rows != "" {
-		var object map[string]json.RawMessage
-		if err := decodeJSON(raw, &object); err != nil {
-			return nil, err
+		for _, property := range strings.Split(read.Rows, ".") {
+			var object map[string]json.RawMessage
+			if err := decodeJSON(raw, &object); err != nil {
+				return nil, err
+			}
+			raw = object[property]
 		}
-		raw = object[read.Rows]
+	}
+	if read.Columnar {
+		return columnRows(raw, read)
 	}
 	var rows []map[string]any
 	if err := decodeJSON(raw, &rows); err != nil || rows == nil {
@@ -116,7 +141,40 @@ func httpRows(ctx context.Context, c Config, token string, read Read, args map[s
 	return rows, nil
 }
 
+// columnRows transposes only the declared arrays. The remote body is already
+// size-limited and the row cap bounds the temporary maps made from it.
+func columnRows(raw []byte, read Read) ([]map[string]any, error) {
+	const maxColumnRows = 10_000
+	var object map[string]json.RawMessage
+	if err := decodeJSON(raw, &object); err != nil {
+		return nil, err
+	}
+	names := append([]string{read.Key}, columnNames(read.Fields)...)
+	if read.Version != "" {
+		names = append(names, read.Version)
+	}
+	var rows []map[string]any
+	for _, name := range names {
+		var column []any
+		if err := decodeJSON(object[name], &column); err != nil || column == nil || len(column) > maxColumnRows {
+			return nil, ErrInvalidRows
+		}
+		if rows == nil {
+			rows = make([]map[string]any, len(column))
+			for i := range rows {
+				rows[i] = make(map[string]any, len(names))
+			}
+		} else if len(rows) != len(column) {
+			return nil, ErrInvalidRows
+		}
+		for i, cell := range column {
+			rows[i][name] = cell
+		}
+	}
+	return rows, nil
+}
+
 func containsCredential(value any, credential string) bool {
 	text, ok := value.(string)
-	return ok && strings.Contains(text, credential)
+	return credential != "" && ok && strings.Contains(text, credential)
 }

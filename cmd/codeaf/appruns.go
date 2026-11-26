@@ -373,7 +373,12 @@ data. App edits are unavailable in this run.`
 			}
 			return runs.Reply{Output: answer, Cost: spend.Task.Total()}, err
 		}
-		attachments, err := b.appRunIntakeParts(call)
+		attachments, err := b.appRunIntakeParts(ctx, call, func() bool {
+			service, id := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
+			options := config.CatalogOptionsFor(service, settings.ProfileDir)
+			options.NoDedicatedMedia = true
+			return catalog.Load(ctx, options).Supports(id, "input", "image")
+		})
 		if err != nil {
 			return runs.Reply{}, err
 		}
