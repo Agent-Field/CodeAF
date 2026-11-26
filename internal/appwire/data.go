@@ -1,6 +1,7 @@
 package appwire
 
 import (
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"reflect"
 	"strings"
 )
@@ -222,20 +223,23 @@ type (
 		Pad    int    `json:"pad,omitempty"`
 	}
 	DataQueryResult struct {
-		Rows  []DataRow `json:"rows"`
-		Next  string    `json:"next,omitempty"`
-		Total int       `json:"total"`
+		Source *data.QuerySource `json:"source,omitempty"`
+		Rows   []DataRow         `json:"rows"`
+		Next   string            `json:"next,omitempty"`
+		Total  int               `json:"total"`
 	}
 	DataCountResult struct {
-		Groups []DataGroup `json:"groups"`
-		Total  int         `json:"total"`
+		Source *data.QuerySource `json:"source,omitempty"`
+		Groups []DataGroup       `json:"groups"`
+		Total  int               `json:"total"`
 	}
 	DataGroup struct {
 		Key   any `json:"key"`
 		Count int `json:"count"`
 	}
 	DataRowResult struct {
-		Row DataRow `json:"row"`
+		Source *data.QuerySource `json:"source,omitempty"`
+		Row    DataRow           `json:"row"`
 	}
 	DataHistoryResult struct {
 		History []DataHistoryEntry `json:"history"`
@@ -269,9 +273,10 @@ type (
 		Field string `json:"field"`
 	}
 	DataAggregateResult struct {
-		Group  []string        `json:"group"`
-		Groups []DataAggregate `json:"groups"`
-		Total  int             `json:"total"`
+		Source *data.QuerySource `json:"source,omitempty"`
+		Group  []string          `json:"group"`
+		Groups []DataAggregate   `json:"groups"`
+		Total  int               `json:"total"`
 	}
 	DataAggregate struct {
 		Key    []any          `json:"key"`

@@ -80,9 +80,18 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	}
 	defer tx.Rollback()
 
+	return scanSQLRows(ctx, tx, kind, read, match, limit, "", false, "", policyColumn, subject)
+}
+
+type sqlTextMatch string
+
+func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match map[string]any, limit int, checkpoint string, includeDeleted bool, upper, policyColumn, subject string) ([]map[string]any, error) {
 	wanted := append(columnNames(read.Fields), read.Key)
 	if read.Version != "" {
 		wanted = append(wanted, read.Version)
+	}
+	if includeDeleted {
+		wanted = append(wanted, read.Residency.Tombstone)
 	}
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
@@ -100,8 +109,29 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	var predicates []string
 	var args []any
 	for _, name := range slices.Sorted(maps.Keys(match)) {
-		args = append(args, sqlValue(match[name]))
-		predicates = append(predicates, kind.quote(name)+" = "+kind.placeholder(len(args)))
+		arg, col := sqlValue(match[name]), kind.quote(name)
+		param := kind.placeholder(len(args) + 1)
+		if text, ok := arg.(sqlTextMatch); ok {
+			const ascii = ",'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') COLLATE \"C\""
+			col = "translate(CAST(" + col + " AS TEXT)" + ascii
+			param = "translate(" + param + "::text" + ascii
+			arg = string(text)
+		}
+		args = append(args, arg)
+		predicates = append(predicates, col+" = "+param)
+	}
+	if r := read.Residency; r != nil {
+		if !includeDeleted {
+			predicates = append(predicates, "NOT "+kind.quote(r.Tombstone))
+		}
+		if checkpoint != "" {
+			args = append(args, checkpoint)
+			predicates = append(predicates, kind.quote(r.UpdatedAt)+" >= "+kind.placeholder(len(args))+"::timestamptz - interval '5 minutes'")
+		}
+		if upper != "" {
+			args = append(args, upper)
+			predicates = append(predicates, kind.quote(r.UpdatedAt)+" <= "+kind.placeholder(len(args))+"::timestamptz")
+		}
 	}
 	if policyColumn != "" {
 		args = append(args, subject)
@@ -164,7 +194,7 @@ func sqlValue(value any) any {
 	return value
 }
 
-func sqlWrite(ctx context.Context, kind Kind, secret string, read Read, key, version string, values map[string]any) (string, error) {
+func sqlWrite(ctx context.Context, kind Kind, secret string, read Read, key, version string, values map[string]any, check func() error) (string, error) {
 	rev, err := strconv.ParseInt(version, 10, 64)
 	if err != nil || rev < 0 || rev == (1<<63)-1 {
 		return "", ErrRejected
@@ -191,6 +221,25 @@ func sqlWrite(ctx context.Context, kind Kind, secret string, read Read, key, ver
 			return "", ErrRejected
 		}
 	}
+	if read.Residency != nil {
+		if _, err := tx.ExecContext(ctx, "LOCK TABLE "+kind.table(read.Table)+" IN ROW EXCLUSIVE MODE"); err != nil {
+			return "", ErrUnavailable
+		}
+	}
+	if err := check(); err != nil {
+		return "", err
+	}
+	if err := updateSQLRow(ctx, tx, kind, read, key, rev, values); err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", ErrUncertain
+	}
+	return strconv.FormatInt(rev+1, 10), nil
+}
+
+func updateSQLRow(ctx context.Context, tx *sql.Tx, kind Kind, read Read, key string, rev int64, values map[string]any) error {
 	columns := make([]string, 0, len(values)+1)
 	args := make([]any, 0, len(values)+2)
 	for _, column := range slices.Sorted(maps.Keys(values)) {
@@ -199,22 +248,26 @@ func sqlWrite(ctx context.Context, kind Kind, secret string, read Read, key, ver
 	}
 	v := kind.quote(read.Version)
 	columns = append(columns, v+" = "+v+" + 1")
+	if read.Residency != nil {
+		col := kind.quote(read.Residency.UpdatedAt)
+		columns = append(columns, col+" = clock_timestamp()")
+	}
 	statement := "UPDATE " + kind.table(read.Table) + " SET " + strings.Join(columns, ", ") +
 		" WHERE " + kind.quote(read.Key) + " = " + kind.placeholder(len(args)+1) +
 		" AND " + v + " = " + kind.placeholder(len(args)+2)
+	if read.Residency != nil {
+		statement += " AND NOT " + kind.quote(read.Residency.Tombstone)
+	}
 	args = append(args, key, rev)
 	result, err := tx.ExecContext(ctx, statement, args...)
 	if err != nil {
-		return "", ErrRejected
+		return ErrRejected
 	}
 	affected, err := result.RowsAffected()
 	if err != nil || affected != 1 {
-		return "", ErrConflict
+		return ErrConflict
 	}
-	if err := tx.Commit(); err != nil {
-		return "", ErrUncertain
-	}
-	return strconv.FormatInt(rev+1, 10), nil
+	return nil
 }
 
 func sourceDatabaseError(err error) error {

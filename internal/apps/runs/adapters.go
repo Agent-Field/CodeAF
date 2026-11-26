@@ -13,15 +13,16 @@ import (
 // Call names one step invocation. Key is stable across retries of that same
 // invocation and can serve as an idempotency key at the destination.
 type Call struct {
-	approved bool
-	App      string         `json:"app"`
-	Run      string         `json:"run"`
-	ID       string         `json:"id"`
-	Step     string         `json:"step"`
-	Key      string         `json:"key"`
-	Name     string         `json:"name"`
-	As       string         `json:"as"`
-	Args     map[string]any `json:"args"`
+	approved    bool
+	App         string         `json:"app"`
+	Run         string         `json:"run"`
+	ID          string         `json:"id"`
+	Step        string         `json:"step"`
+	Key         string         `json:"key"`
+	SourceFence string         `json:"source_fence,omitempty"`
+	Name        string         `json:"name"`
+	As          string         `json:"as"`
+	Args        map[string]any `json:"args"`
 }
 
 type Reply struct {
@@ -72,13 +73,15 @@ type AgentCall struct {
 }
 
 type Approval struct {
-	ID        string         `json:"id"`
-	AskedAt   time.Time      `json:"asked_at,omitzero"`
-	Kind      string         `json:"kind"`
-	Who       string         `json:"who"`
-	Tool      string         `json:"tool,omitempty"`
-	Args      map[string]any `json:"args,omitempty"`
-	MinBudget float64        `json:"min_budget,omitempty"`
+	ID         string           `json:"id"`
+	AskedAt    time.Time        `json:"asked_at,omitzero"`
+	Kind       string           `json:"kind"`
+	Who        string           `json:"who"`
+	Tool       string           `json:"tool,omitempty"`
+	Args       map[string]any   `json:"args,omitempty"`
+	RecordType string           `json:"record_type,omitempty"`
+	Records    []ApprovalRecord `json:"records,omitempty"`
+	MinBudget  float64          `json:"min_budget,omitempty"`
 }
 
 type FakeConnector struct {
