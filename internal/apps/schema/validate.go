@@ -662,10 +662,29 @@ func (c *checker) checkAction(ctx actionCtx, at string, act Action) {
 	}
 }
 
+// ParseSourceTool recognizes a typed source mutation. A regular connector
+// named connections can still offer its own single-segment verbs.
+func ParseSourceTool(tool string) (connection, write string, ok bool) {
+	path, ok := strings.CutPrefix(tool, "connections.")
+	if !ok {
+		return "", "", false
+	}
+	connection, write, ok = strings.Cut(path, ".")
+	return connection, write, ok && connection != "" && write != "" && !strings.Contains(write, ".")
+}
+
 // checkTool checks one connector verb ("gmail.send") or MCP tool name against the
 // capabilities. In a screen, an outbound verb is allowed only when the connector
 // lists it under approve, since a screen has no gate of its own.
 func (c *checker) checkTool(file, at, tool string, fromScreen bool) {
+	if _, _, ok := ParseSourceTool(tool); ok {
+		if fromScreen {
+			c.add(file, at, CodeSendGateMissing, "A source write starts a run through runs.start.")
+		} else if !contains(c.app.Capabilities.Tools, tool) {
+			c.add(file, at, CodeToolNotAllowed, "This source write needs the exact tool in capabilities.tools.")
+		}
+		return
+	}
 	con, verb, _ := strings.Cut(tool, ".")
 	// Whether a call leaves the computer is decided before anything can wave it
 	// through: an MCP tool listed whole under capabilities.tools has no approve
@@ -702,6 +721,9 @@ func lastSegment(tool string) string {
 // of it counts, so "Send", "send " and "send_message" are all sends. The schemas
 // already insist on lowercase verbs; this is the second lock on the same door.
 func isOutbound(tool string) bool {
+	if _, _, ok := ParseSourceTool(tool); ok {
+		return true
+	}
 	verb := strings.ToLower(strings.TrimSpace(lastSegment(strings.TrimSpace(tool))))
 	for _, word := range strings.Split(verb, "_") {
 		if outbound[word] {

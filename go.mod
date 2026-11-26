@@ -18,12 +18,14 @@ require (
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/flynn/noise v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-sql-driver/mysql v1.10.2
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/int128/listener v1.3.0
 	github.com/int128/oauth2cli v1.18.0
 	github.com/invopop/jsonschema v0.14.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
@@ -36,7 +38,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/libc v1.41.0
@@ -45,7 +47,11 @@ require (
 
 require (
 	cel.dev/expr v0.24.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
