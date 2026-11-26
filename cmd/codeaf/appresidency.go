@@ -121,5 +121,6 @@ func (b *appBackend) appQueryRows(s *data.Store, p appwire.DataScope, sc data.Sc
 	if source.Connection != "" && source.Residency != string(data.ResidencyLive) {
 		page.Next = connections.BindCursor(source, page.Next)
 	}
+	source.ObserveNative(page.Rows)
 	return page, source, nil
 }

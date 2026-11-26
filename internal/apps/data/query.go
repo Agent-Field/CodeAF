@@ -109,6 +109,7 @@ func compileQuery(sch *schema, t *Type, sc Scope, text string, now time.Time) (*
 // compileIR compiles a query's IR against t for scope sc.
 func compileIR(sch *schema, t *Type, sc Scope, ir *QueryIR, now time.Time) (*compiled, error) {
 	c := &compiled{t: t, sch: sch, alias: "r", refTitle: refTitles(sch, sc), related: map[string]bool{}, sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
+	c.applyPolicy(sc)
 	if len(ir.Where) > tokensMax {
 		return nil, errorf(CodeInvalid, "the query has more than %d parts", tokensMax)
 	}
@@ -289,7 +290,7 @@ func (c *compiled) cond(cond Cond, sc Scope, now time.Time) error {
 		}
 		return c.words(unquote(cond.raw), false, sc)
 	}
-	if f.Masked && sc.App != "" {
+	if f.Masked && sc.App != "" || c.protectedField(sc, f) {
 		return fieldErr(f.Name, "%s is hidden until revealed, so it cannot be searched", f.Name)
 	}
 	return c.compare(f, c.col(f), cond.Op, cond.Value, cond.Neg, cond.Literal, now)
@@ -302,6 +303,9 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 	if f == nil || f.Type != TypeRef && f.Type != TypeRefs {
 		return fieldErr(head, "%s is not a link to another record, so %s.%s means nothing", head, head, tail)
 	}
+	if c.t.FieldPolicy(f) != "" || f.Masked && sc.App != "" {
+		return fieldErr(head, "a hidden link cannot be searched")
+	}
 	if strings.Contains(tail, ".") {
 		return fieldErr(cond.Field, "a query reaches one link away, not two")
 	}
@@ -313,6 +317,7 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 		c.related[target.ID] = true
 	}
 	inner := &compiled{t: target, sch: c.sch, alias: "x", refTitle: c.refTitle, related: c.related}
+	inner.applyPolicy(sc)
 	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value, Literal: cond.Literal}, sc, now); err != nil {
 		return err
 	}
@@ -331,7 +336,7 @@ func (c *compiled) usable(name string, sc Scope, what string) (*Field, error) {
 	if f == nil {
 		return nil, fieldErr(name, "%s records have no field %q to %s", c.t.Name, name, what)
 	}
-	if f.Masked && sc.App != "" {
+	if f.Masked && sc.App != "" || c.protectedField(sc, f) {
 		return nil, fieldErr(name, "%s is hidden until revealed, so it cannot be used to %s", name, what)
 	}
 	return f, nil
@@ -372,7 +377,7 @@ func (c *compiled) flag(kind, name string, neg bool, sc Scope) error {
 	if f == nil {
 		return fieldErr(name, "%s records have no field %q", c.t.Name, name)
 	}
-	if f.Masked && sc.App != "" && kind == "is" {
+	if f.Masked && sc.App != "" && kind == "is" || c.protectedField(sc, f) {
 		return fieldErr(name, "%s is hidden until revealed, so it cannot be searched", name)
 	}
 	col := c.col(f)
@@ -410,7 +415,7 @@ func (c *compiled) words(text string, neg bool, sc Scope) error {
 	title := c.t.titleField()
 	for _, name := range c.t.Order {
 		f := c.t.field(name)
-		if f == nil || f.Masked {
+		if f == nil || f.Masked || c.t.FieldPolicy(f) != "" || c.sch.withheldRef(f) {
 			continue
 		}
 		if name == title || f.Type == TypeText || f.Type == TypeLongtext || f.Type == TypeEmail {
@@ -720,6 +725,8 @@ type Page struct {
 
 // Query answers one page of the records of typ matching query.
 func (s *Store) Query(sc Scope, typ, query, after string, limit int) (*Page, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -755,7 +762,10 @@ func refTitles(sch *schema, sc Scope) func(string) string {
 			return ""
 		}
 		if t := sch.typeNamed(typ); t != nil {
-			return t.titleField()
+			name := t.titleField()
+			if f := t.field(name); f != nil && !f.Masked && t.FieldPolicy(f) == "" && t.rowRule == nil {
+				return name
+			}
 		}
 		return ""
 	}
@@ -782,6 +792,8 @@ func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) 
 
 // CountRows applies the same grouping to native and bounded source scans.
 func (s *Store) CountRows(sc Scope, ir *QueryIR, group string) ([]Group, int, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, ir.Type, false)
 	if err != nil {

@@ -138,6 +138,9 @@ func runApp(args []string) error {
 	if flags.Arg(0) == "residency" {
 		return appResidencyCommand(nil, flags.Args()[1:], os.Stdout)
 	}
+	if flags.Arg(0) == "model-policy" {
+		return appModelPolicyCommand(factoryProfile(config.ProfileDir()), flags.Args()[1:])
+	}
 	if flags.Arg(0) == "connections" {
 		// Configuration and one-shot reads use the same profile and data
 		// store as the wire, without starting the resident app engine.

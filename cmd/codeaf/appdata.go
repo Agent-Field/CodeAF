@@ -193,7 +193,7 @@ func (b *appBackend) DataTypes(p appwire.DataScope) (*appwire.DataTypesResult, e
 		for _, f := range t.Fields {
 			wf := appwire.DataField{
 				ID: f.ID, Name: f.Name, Type: f.Type, App: f.App, Hidden: f.Hidden, Label: f.Label,
-				Required: f.Required, Unique: f.Unique, Masked: f.Masked, Values: f.Values, To: f.To,
+				Class: string(f.Class), Visibility: f.Visibility, Required: f.Required, Unique: f.Unique, Masked: f.Masked || f.Visibility == "mask", Values: f.Values, To: f.To,
 				Currency: f.Currency, Computed: f.Computed != "", AI: f.AI != "",
 			}
 			if sq := f.Sequence; sq != nil {
@@ -314,6 +314,7 @@ func (b *appBackend) DataGet(p appwire.DataRecordParams) (*appwire.DataRowResult
 	if err != nil {
 		return nil, appConnectionError(err)
 	}
+	source.ObserveNative([]data.Row{row})
 	return &appwire.DataRowResult{Row: appwire.DataRow(row), Source: &source}, nil
 }
 
@@ -582,6 +583,7 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	result := &appwire.DataSubscribeResult{Cursor: snapshot.Cursor}
 	if snapshot.Rows != nil {
 		source := connections.NativeSource()
+		source.ObserveNative(snapshot.Rows)
 		result.Snapshot = &appwire.DataQueryResult{Source: &source, Rows: wireRows(snapshot.Rows), Next: snapshot.Next, Total: snapshot.Total}
 	}
 	if p.DeferEvents {

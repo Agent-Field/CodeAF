@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -67,7 +68,7 @@ func (k Kind) placeholder(n int) string {
 	return "?"
 }
 
-func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map[string]any, limit int) ([]map[string]any, error) {
+func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map[string]any, limit int, policyColumn, subject string) ([]map[string]any, error) {
 	db, err := database(kind, secret)
 	if err != nil {
 		return nil, err
@@ -75,16 +76,16 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	defer db.Close()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, sourceDatabaseError(err)
 	}
 	defer tx.Rollback()
 
-	return scanSQLRows(ctx, tx, kind, read, match, limit, "", false, "")
+	return scanSQLRows(ctx, tx, kind, read, match, limit, "", false, "", policyColumn, subject)
 }
 
 type sqlTextMatch string
 
-func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match map[string]any, limit int, checkpoint string, includeDeleted bool, upper string) ([]map[string]any, error) {
+func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match map[string]any, limit int, checkpoint string, includeDeleted bool, upper, policyColumn, subject string) ([]map[string]any, error) {
 	wanted := append(columnNames(read.Fields), read.Key)
 	if read.Version != "" {
 		wanted = append(wanted, read.Version)
@@ -132,6 +133,16 @@ func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match ma
 			predicates = append(predicates, kind.quote(r.UpdatedAt)+" <= "+kind.placeholder(len(args))+"::timestamptz")
 		}
 	}
+	if policyColumn != "" {
+		args = append(args, subject)
+		column := kind.quote(policyColumn)
+		if kind == MySQL {
+			column = "BINARY " + column
+		} else {
+			column = "CAST(" + column + " AS TEXT) COLLATE \"C\""
+		}
+		predicates = append(predicates, column+" = "+kind.placeholder(len(args)))
+	}
 	if len(predicates) != 0 {
 		query += " WHERE " + strings.Join(predicates, " AND ")
 	}
@@ -142,7 +153,7 @@ func scanSQLRows(ctx context.Context, tx *sql.Tx, kind Kind, read Read, match ma
 	query += kind.quote(read.Key) + " LIMIT " + strconv.Itoa(limit)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, sourceDatabaseError(err)
 	}
 	defer rows.Close()
 	var out []map[string]any
@@ -257,4 +268,14 @@ func updateSQLRow(ctx context.Context, tx *sql.Tx, kind Kind, read Read, key str
 		return ErrConflict
 	}
 	return nil
+}
+
+func sourceDatabaseError(err error) error {
+	var pg *pgconn.PgError
+	var my *mysql.MySQLError
+	if errors.As(err, &pg) && (pg.Code == "42501" || strings.HasPrefix(pg.Code, "28")) ||
+		errors.As(err, &my) && (my.Number == 1044 || my.Number == 1045 || my.Number == 1142 || my.Number == 1143) {
+		return ErrSourcePermission
+	}
+	return ErrUnavailable
 }

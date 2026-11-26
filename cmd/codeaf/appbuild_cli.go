@@ -97,6 +97,8 @@ func runAppCommand(args []string) error {
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		fmt.Fprintln(os.Stdout, "codeaf app residency <show|preview|apply> APP TYPE [MODE]")
 		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <data-query|data-aggregate|data-types> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app model-policy FILE.json")
 		fmt.Fprintln(os.Stdout, "codeaf app mcp --app <app> --agent <agent>")
 		return nil
 	case verb == "kit" && len(args) == 1:

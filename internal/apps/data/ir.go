@@ -87,6 +87,8 @@ const (
 // only those fields (and its own id, type, _rev and _meta), a related one
 // under its dotted name.
 func (s *Store) QueryRows(sc Scope, ir *QueryIR, after string, limit int) (*Page, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, ir.Type, false)
 	if err != nil {
@@ -184,6 +186,7 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, c *compiled, rows
 			}
 		}
 		related := map[string]Row{}
+		var records []*record
 		if len(ids) > 0 {
 			stmt, args := c.statement(`SELECT `+recordColumns+` FROM records WHERE type_id = ? AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?))`,
 				[]any{target.ID, canonicalJSON(ids)})
@@ -192,12 +195,17 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, c *compiled, rows
 				if err != nil {
 					return err
 				}
-				related[r.ID] = s.row(target, r, sc, false)
+				if target.rowAllowed(sc, sch.person, r.Data) {
+					records = append(records, r)
+				}
 				return nil
 			})
 			if err != nil {
 				return err
 			}
+		}
+		for _, record := range records {
+			related[record.ID] = s.rowWithSchema(sch, target, record, sc, false)
 		}
 		for _, row := range rows {
 			for _, name := range sel.related[link] {
@@ -258,6 +266,8 @@ type AggResult struct {
 // group, computed by SQLite. Groups come in order (an enum in its declared
 // order, values with none last), at most [GroupsMax].
 func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, ir.Type, false)
 	if err != nil {
@@ -403,7 +413,8 @@ func (c *compiled) groupColumn(sc Scope, name string) (string, *Field, error) {
 	if g == nil {
 		return "", nil, fieldErr(name, "%s records have no field %q", target.Name, tail)
 	}
-	if g.Masked && sc.App != "" {
+	if g.Masked && sc.App != "" || target.FieldPolicy(g) != "" || target.rowRule != nil || c.sch.withheldRef(g) {
+		c.sch.notePolicy(sc, target, "query_field_refused")
 		return "", nil, fieldErr(name, "%s is hidden until revealed, so it cannot be used to group by", name)
 	}
 	return "(SELECT " + jsonPath("x.data_json", g.ID) + " FROM records x WHERE x.id = " + c.col(f) + " AND x.deleted_at IS NULL)", g, nil
@@ -515,6 +526,7 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 	defer rows.Close()
 	page := &Page{Rows: []Row{}, Total: total}
 	var last *record
+	var projected []*record
 	var lastKey any
 	for rows.Next() {
 		var k any
@@ -522,13 +534,27 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 		if err != nil {
 			return nil, err
 		}
-		if len(page.Rows) == limit {
+		if len(page.Rows)+len(projected) == limit {
 			cur := cursor{Sort: signature, ID: last.ID, Key: normalizeKey(lastKey), Null: lastKey == nil}
 			page.Next = cur.encode()
 			break
 		}
-		page.Rows = append(page.Rows, s.row(t, r, sc, false))
+		if sch.hasRowPolicies {
+			// Close the scan before projecting links that need their own scoped reads.
+			projected = append(projected, r)
+		} else {
+			page.Rows = append(page.Rows, s.rowWithSchema(sch, t, r, sc, false))
+		}
 		last, lastKey = r, k
 	}
-	return page, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for _, r := range projected {
+		page.Rows = append(page.Rows, s.rowWithSchema(sch, t, r, sc, false))
+	}
+	return page, nil
 }

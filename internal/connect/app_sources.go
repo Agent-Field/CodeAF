@@ -1,8 +1,10 @@
 package connect
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -16,15 +18,21 @@ const appSourcePrefix = "app-source/"
 
 func appSourceCredential(id string) string { return appSourcePrefix + id + "/credential" }
 
-func (s AppSourceStore) Register(id string, definition json.RawMessage, key string) error {
+func (s AppSourceStore) Register(id string, definition json.RawMessage, key, person string) error {
 	ref := appSourceCredential(id)
+	if person != "" {
+		ref = personSourceCredential(id, person)
+	}
 	entry := appSourcePrefix + id
 	exists := false
 	err := newStore(s.Profile).replace(entry, func(entries map[string]stored) {
 		if _, exists = entries[entry]; exists {
 			return
 		}
-		entries[entry] = stored{Source: definition, SecretRef: ref}
+		entries[entry] = stored{Source: definition}
+		if person == "" {
+			entries[entry] = stored{Source: definition, SecretRef: ref}
+		}
 		entries[ref] = stored{Auth: AuthKey, Key: key}
 	})
 	if err != nil {
@@ -63,4 +71,30 @@ func (s AppSourceStore) Credential(id string) (string, error) {
 		}
 	}
 	return "", errors.New("the connection credential is unavailable")
+}
+
+func personSourceCredential(id, person string) string {
+	return fmt.Sprintf("%s%s/person/%x", appSourcePrefix, id, sha256.Sum256([]byte(person)))
+}
+
+// SetPersonCredential replaces only the credential of the authenticated person.
+func (s AppSourceStore) SetPersonCredential(id, person, key string) error {
+	if person == "" {
+		return errors.New("a personal source credential needs a person")
+	}
+	if err := newStore(s.Profile).replace(personSourceCredential(id, person), func(entries map[string]stored) {
+		entries[personSourceCredential(id, person)] = stored{Auth: AuthKey, Key: key}
+	}); err != nil {
+		return errors.New("the source credential could not be saved")
+	}
+	return nil
+}
+
+func (s AppSourceStore) PersonCredential(id, person string) (string, bool) {
+	if person == "" {
+		return "", false
+	}
+	entries, err := newStore(s.Profile).load()
+	entry := entries[personSourceCredential(id, person)]
+	return entry.Key, err == nil && entry.Auth == AuthKey && entry.Key != ""
 }

@@ -21,14 +21,17 @@ const (
 	MySQL    Kind = "mysql"
 )
 
+const CredentialPerson = "person"
+
 type Config struct {
-	ID       string           `json:"id"`
-	Kind     Kind             `json:"kind"`
-	App      string           `json:"app"`
-	Origin   string           `json:"origin,omitempty"`
-	TestPath string           `json:"test_path,omitempty"`
-	Reads    map[string]Read  `json:"reads"`
-	Writes   map[string]Write `json:"writes,omitempty"`
+	CredentialMode string           `json:"credential_mode,omitempty"`
+	ID             string           `json:"id"`
+	Kind           Kind             `json:"kind"`
+	App            string           `json:"app"`
+	Origin         string           `json:"origin,omitempty"`
+	TestPath       string           `json:"test_path,omitempty"`
+	Reads          map[string]Read  `json:"reads"`
+	Writes         map[string]Write `json:"writes,omitempty"`
 }
 
 // Read maps fields on a bound app type to source columns or JSON properties.
@@ -78,6 +81,9 @@ func (c Config) validate() error {
 	if !alias.MatchString(c.ID) || (!alias.MatchString(c.App) && !cell.ValidID(c.App)) {
 		return errors.New("a connection needs a local name and one app scope")
 	}
+	if c.CredentialMode != "" && c.CredentialMode != "shared" && c.CredentialMode != CredentialPerson {
+		return errors.New("a connection credential mode is shared or person")
+	}
 	switch c.Kind {
 	case HTTP:
 		u, err := url.Parse(c.Origin)
@@ -117,10 +123,10 @@ func (c Config) validate() error {
 		}
 		mapped := map[string]bool{read.Key: true, read.Version: true}
 		if r := read.Residency; r != nil {
-			if c.Kind != Postgres || read.Version == "" || !identifier.MatchString(r.UpdatedAt) ||
+			if c.Kind != Postgres || c.CredentialMode == CredentialPerson || read.Version == "" || !identifier.MatchString(r.UpdatedAt) ||
 				!identifier.MatchString(r.Tombstone) || mapped[r.UpdatedAt] || mapped[r.Tombstone] ||
 				r.UpdatedAt == r.Tombstone || r.FreshForSeconds < 1 || r.FreshForSeconds > 3600 {
-				return errors.New("residency needs PostgreSQL version, updated_at, tombstone and freshness columns or limits")
+				return errors.New("residency needs a shared PostgreSQL credential, version, updated_at, tombstone and freshness")
 			}
 			mapped[r.UpdatedAt], mapped[r.Tombstone] = true, true
 		}

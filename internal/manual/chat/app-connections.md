@@ -8,8 +8,7 @@ app and attach its type to a common type, for example
 The profile operator registers each connection for one app. Put its declaration in a local JSON file and pass the
 database connection string on standard input to `codeaf app connections register connection.json`. The profile's
 credential store keeps the connection string. Keep it out of the declaration, app files, command arguments and chat.
-Registration fixes the connection name, endpoint and credential in this version. A replacement needs a new name and
-gets a new source identity namespace.
+Registration fixes the connection name and endpoint. Replacing a shared credential requires a new registration and a new source identity namespace. A personal credential can be replaced for the same connection.
 
 A Postgres declaration for CRM contacts can look like this:
 
@@ -77,8 +76,9 @@ the broker leaves the run incomplete so it can be checked at the source before a
 Use a Personal PostgreSQL connection whose declared read includes
 `"residency": {"updated_at": "updated_at", "tombstone": "deleted", "fresh_for_seconds": 30}`.
 By registering this option, the profile operator approves the declared rows and fields as a fixed export to
-the type's existing audience. Use a role and table that export only that data. Delegated and per-user
-source permissions require a separate integration. Review masked fields before copying their values.
+the type's existing audience. Use a shared credential for a role and table that export only that
+data. Types with row policies and connections using per-person credentials stay on declared live
+reads. Review masked fields before copying their values.
 The source needs a unique stable key, a managed integer version, a non-null timestamp and a Boolean
 tombstone. Every source writer advances the version and timestamp, including on deletion. Keep tombstones
 for the mirror to observe. A declared reference may use `residency.references` to map source keys to
@@ -119,3 +119,19 @@ The preview includes the number of rows whose native edits need replay. Apply co
 those edits back before switching the read route. Upstream conflicts keep the native route and its
 edits in place. A mirror can return directly to live with a fresh preview and confirmation.
 Returning to live retires the copied values and keeps the identity crosswalk and audit receipts.
+
+## Use my own source credential or run the connection as me
+
+Put `"credential_mode":"person"` in the connection declaration and pass
+your credential on standard input when registering it. To connect or replace
+your credential later, pass it on standard input to
+`codeaf app connections credential APP CONNECTION`. A personal connection
+uses your own source account for reads, tests and approved sends. Source
+permissions determine which records can reach the app, and the app's record
+policy can narrow those results further.
+
+If the source rejects the request, the app says “the source refused access
+with your credential”. Attach or renew the source credential for the local
+profile if its access has expired. A live row-policy type can be read through
+a mapped owner field. Write-back for that type requires source support for
+checking the same row policy during the update.

@@ -123,6 +123,9 @@ func (s *Store) DeclareResidencies(bindings map[string]ResidencyBinding, registe
 			if err != nil {
 				return err
 			}
+			if t.HasRowPolicy() {
+				return errorf(CodeNotAllowed, "a row-policy type needs per-person live access")
+			}
 			state, err := residencyState(w.tx, t.ID)
 			if err != nil {
 				return err
@@ -169,6 +172,9 @@ func (s *Store) Cutover(ctx context.Context, binding ResidencyBinding, alias str
 		pub, err := readPublication(w.tx, binding.App)
 		if err != nil || pub.Archived || pub.Deleted {
 			return errorf(CodeNotAllowed, "cut-over needs a kept app")
+		}
+		if t.HasRowPolicy() {
+			return errorf(CodeNotAllowed, "a row-policy type needs per-person live access")
 		}
 		state, err := residencyState(w.tx, t.ID)
 		if err != nil {
@@ -388,6 +394,9 @@ func (s *Store) SyncResidency(sc Scope, alias string, expected TypeResidency, sn
 		t, err := w.schema.allow(sc, alias, true)
 		if err != nil {
 			return err
+		}
+		if t.HasRowPolicy() {
+			return errorf(CodeNotAllowed, "a row-policy type needs per-person live access")
 		}
 		state, err := residencyState(w.tx, t.ID)
 		if err != nil {

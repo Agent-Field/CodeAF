@@ -227,7 +227,7 @@ func allowedTransition(sc Scope, t *Type, name string) (*transition, error) {
 }
 
 func (w *writeTx) transitionReady(sc Scope, t *Type, tr *transition, ref TransitionRecord, opts TransitionOptions) (*record, error) {
-	before, err := w.live(t, ref.ID)
+	before, err := w.liveFor(sc, t, ref.ID)
 	if err != nil {
 		return nil, err
 	}

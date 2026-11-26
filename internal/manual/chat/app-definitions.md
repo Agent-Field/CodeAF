@@ -199,3 +199,11 @@ The writer checks the limit before committing. If a slot is full, the
 `booking_conflict` refusal names a conflicting record. Inspect that record
 or choose another slot. Record activity shows why a committed booking was
 accepted.
+
+
+## App row policy commands in the terminal
+
+With the app engine running, use
+`codeaf app data-query '{"app":"APP","type":"account"}'` or
+`codeaf app data-aggregate '{"app":"APP","type":"account","aggregate":[{"fn":"count"}]}'`.
+`codeaf app data-types` shows each field's declared class and visibility.

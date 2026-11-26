@@ -12,11 +12,26 @@ type QuerySource struct {
 	Read            string        `json:"read,omitempty"`
 	Residency       string        `json:"residency"`
 	Freshness       string        `json:"freshness"`
-	ObservedAt      time.Time     `json:"observed_at"`
+	ObservedAt      time.Time     `json:"observed_at,omitempty,omitzero"`
 	MappingEpoch    int64         `json:"mapping_epoch,omitempty"`
 	ResidencyEpoch  int64         `json:"residency_epoch,omitempty"`
 	FreshForSeconds int           `json:"fresh_for_seconds,omitempty"`
 	Contributors    []QuerySource `json:"contributors,omitempty"`
+}
+
+// ObserveNative uses the newest visible record commit as the observation.
+// Empty results keep their residency and freshness without inventing a time.
+func (source *QuerySource) ObserveNative(rows []Row) {
+	if source.Residency != string(ResidencyNative) {
+		return
+	}
+	for _, row := range rows {
+		updated, ok := row["updated_at"].(string)
+		at, err := time.Parse(stamp, updated)
+		if ok && err == nil && at.After(source.ObservedAt) {
+			source.ObservedAt = at
+		}
+	}
 }
 
 // SourceScan carries an authorized fragment to the shared query compiler.
@@ -90,7 +105,7 @@ func (s *Store) WithSourceScans(sc Scope, query QueryIR, scans []SourceScan) (Qu
 	}
 	raw := canonicalJSON(input)
 	query.external = &sourceQuery{types: types, raw: raw, cursor: fmt.Sprintf("%x",
-		sha256.Sum256([]byte(canonicalJSON([]any{sc.App, query, epochs, raw}))))}
+		sha256.Sum256([]byte(canonicalJSON([]any{sc.App, sc.Person.ID, sc.Principal.ID, query, epochs, raw}))))}
 	return query, nil
 }
 

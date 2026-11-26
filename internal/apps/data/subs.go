@@ -126,6 +126,7 @@ func (s *Store) watch(owner *SubscriptionOwner, sc Scope, spec SubSpec, fn func(
 		return Snapshot{}, errorf(CodeInvalid, "invalid subscription")
 	}
 	key := subscriptionKey{owner, spec.ID}
+	sc.policyLog = nil
 	sub := &subscription{key: key, spec: spec, sc: sc, fn: fn, related: map[string]bool{}, bindings: map[string]bool{}}
 	var snap Snapshot
 	err := s.write(func(w *writeTx) error {
@@ -186,12 +187,21 @@ func (s *Store) planWatch(sch *schema, sub *subscription) error {
 			return err
 		}
 		sub.typeID = t.ID
+		for _, name := range t.Order {
+			if f := t.field(name); f != nil && sch.withheldRef(f) {
+				if target, err := sch.allow(sub.sc, f.To, false); err == nil {
+					sub.related[target.ID] = true
+				}
+			}
+		}
 		if sp.Record == "" {
 			q, err := compileQuery(sch, t, sub.sc, sp.Query, s.now())
 			if err != nil {
 				return err
 			}
-			sub.related = q.related
+			for id := range q.related {
+				sub.related[id] = true
+			}
 		}
 	}
 	for _, id := range sp.TypeIDs {
@@ -313,7 +323,20 @@ func (s *Store) deliver(c *Change) {
 			reset = reset || typeMatch && (inv.binding == "" || sub.typeID == inv.typeID || sub.bindings[inv.binding])
 		}
 		touched := sub.spec.Table == "" && len(ids[sub.typeID]) > 0 || sub.spec.Table != "" && len(c.Items) > 0
-		if reset || sub.spec.InvalidateOnly && touched {
+		t := sch.byID[sub.typeID]
+		if sub.spec.Table != "" && sch.hasRowPolicies {
+			// A row change can revoke access to previously held work items.
+			for typeID := range ids {
+				source := sch.byID[typeID]
+				reset = reset || source != nil && source.HasRowPolicy()
+			}
+			for _, item := range c.Items {
+				if t := sch.types[item.Type]; t != nil && t.HasRowPolicy() {
+					reset = true
+				}
+			}
+		}
+		if reset || touched && (sub.spec.InvalidateOnly || t != nil && t.rowRule != nil) {
 			// A refetch covers everything committed up to this cursor.
 			cursor, err := s.Cursor()
 			if err == nil {
@@ -351,7 +374,8 @@ func (s *Store) resume(op *resumeOp) {
 		s.reset(sub, cursor)
 		return
 	}
-	if op.after > cursor || op.after < s.trimmed() {
+	t := s.schema.Load().byID[sub.typeID]
+	if t != nil && t.rowRule != nil || op.after > cursor || op.after < s.trimmed() {
 		s.reset(sub, cursor)
 		return
 	}
@@ -541,6 +565,11 @@ func (s *Store) tableTotal(sub *subscription) int {
 // A subscription its app may no longer read (its capabilities changed) or
 // whose query no longer compiles receives its reset at the policy change.
 func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
+	copy := *sub
+	sc, flushAudit := s.WithPolicyAudit(copy.sc)
+	defer flushAudit()
+	copy.sc = sc
+	sub = &copy
 	sch := s.schema.Load()
 	t, err := sch.allow(sub.sc, sub.spec.Type, false)
 	if err != nil {
@@ -559,7 +588,7 @@ func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
 		if err != nil {
 			return Diff{}, false
 		}
-		if r == nil || r.DeletedAt != "" || r.Type != t.Name {
+		if r == nil || r.DeletedAt != "" || r.Type != t.Name || !s.LiveRowAllowed(sub.sc, t, r.Data) {
 			d.Removes = append(d.Removes, sub.spec.Record)
 			return d, true
 		}

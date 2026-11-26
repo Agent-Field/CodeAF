@@ -106,6 +106,9 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 		route.state.Mode = data.ResidencyLive
 	}
 	if route.read.Residency != nil {
+		if typ.HasRowPolicy() && route.state.Mode != data.ResidencyNative {
+			return route, ErrSourcePermission
+		}
 		if _, _, err := store.LiveBinding(scope, route.read.Type, false); err != nil {
 			return route, err
 		}
@@ -208,7 +211,7 @@ func replaySQLRow(ctx context.Context, tx *sql.Tx, read Read, record data.Reside
 }
 
 func (s Service) openSnapshot(ctx context.Context, r residencyRoute, fence bool) (*sql.Tx, func(), error) {
-	credential, err := s.vault().Credential(r.config.ID)
+	credential, err := s.credential(r.config, s.person(ctx))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -260,7 +263,7 @@ func readResidencySnapshot(ctx context.Context, tx *sql.Tx, r residencyRoute, ch
 	if checkpoint == "" {
 		upper = ""
 	}
-	raw, err := scanSQLRows(ctx, tx, Postgres, r.read, nil, maxSyncRows+1, checkpoint, true, upper)
+	raw, err := scanSQLRows(ctx, tx, Postgres, r.read, nil, maxSyncRows+1, checkpoint, true, upper, "", "")
 	if err != nil {
 		return snapshot, err
 	}
@@ -293,7 +296,7 @@ func readResidencySnapshot(ctx context.Context, tx *sql.Tx, r residencyRoute, ch
 			// masks it under the same field grants used by native queries.
 			plain := *field
 			plain.Masked = false
-			value, err := mappedSourceValue(r.store, r.config.App, r.read, &plain, item[column])
+			value, err := mappedSourceValue(r.store, data.Scope{App: r.config.App}, r.read, &plain, item[column])
 			if err != nil {
 				return snapshot, err
 			}
@@ -335,7 +338,7 @@ func (r residencyRoute) source() Source {
 		FreshForSeconds: r.read.Residency.FreshForSeconds}
 }
 
-func (s Service) readResident(r residencyRoute, q Query) (Page, error) {
+func (s Service) readResident(r residencyRoute, sc data.Scope, q Query) (Page, error) {
 	ir := &data.QueryIR{Type: r.read.Type}
 	for name, value := range q.Args {
 		if _, allowed := r.read.Match[name]; !allowed || value == nil || !boundedScalar(value) {
@@ -349,7 +352,7 @@ func (s Service) readResident(r residencyRoute, q Query) (Page, error) {
 			ir.Sort = name
 		}
 	}
-	page, err := r.store.QueryRows(data.Scope{App: q.App}, ir, "", q.Limit)
+	page, err := r.store.QueryRows(sc, ir, "", q.Limit)
 	if err != nil {
 		return Page{}, err
 	}
@@ -361,7 +364,9 @@ func (s Service) readResident(r residencyRoute, q Query) (Page, error) {
 			return Page{}, err
 		}
 	}
-	return Page{Rows: page.Rows, Source: r.source(), HasMore: page.Next != ""}, nil
+	source := r.source()
+	source.ObserveNative(page.Rows)
+	return Page{Rows: page.Rows, Source: source, HasMore: page.Next != ""}, nil
 }
 
 func (r residencyRoute) checkEpoch() error {
@@ -440,7 +445,7 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 	if err != nil {
 		return ir, Source{}, nil, err
 	}
-	scop := data.Scope{App: app}
+	scop := data.Scope{App: app, Person: s.person(ctx)}
 	dependencies, err := r.store.QueryDependencies(scop, &ir)
 	if err != nil {
 		return ir, Source{}, nil, err
@@ -504,7 +509,7 @@ func textFilters(r residencyRoute, ir data.QueryIR) map[string]any {
 		if !cond.Literal {
 			value = strings.TrimSpace(value)
 		}
-		if col == "" || field == nil || field.Masked || (field.Type != data.TypeText && field.Type != data.TypeLongtext) ||
+		if col == "" || field == nil || field.Masked || r.typ.FieldPolicy(field) != "" || (field.Type != data.TypeText && field.Type != data.TypeLongtext) ||
 			(cond.Op != ":" && cond.Op != "=") || cond.Neg || value == "" || strings.TrimSpace(value) == "" ||
 			strings.ContainsAny(value, "*%_\\,\"\x00") || (!cond.Literal && strings.HasPrefix(value, "-")) {
 			continue
@@ -523,7 +528,7 @@ func sourceVersions(rows []data.Row) map[string]string {
 }
 
 func NativeSource() Source {
-	return Source{Residency: string(data.ResidencyNative), Freshness: string(data.ResidencyNative), ObservedAt: time.Now().UTC()}
+	return Source{Residency: string(data.ResidencyNative), Freshness: string(data.ResidencyNative)}
 }
 
 // GetRecord uses a source key lookup for a live row and the normal point
@@ -534,7 +539,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 		return nil, Source{}, err
 	}
 	if r.read.Residency == nil {
-		row, err := r.store.Get(data.Scope{App: app}, alias, id, reveal)
+		row, err := r.store.Get(data.Scope{App: app, Person: s.person(ctx)}, alias, id, reveal)
 		return row, NativeSource(), err
 	}
 	if r.state.Mode == data.ResidencyLive {
@@ -550,7 +555,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 		}
 		return p.Rows[0], p.Source, nil
 	}
-	row, err := r.store.Get(data.Scope{App: app}, alias, id, reveal)
+	row, err := r.store.Get(data.Scope{App: app, Person: s.person(ctx)}, alias, id, reveal)
 	if err != nil {
 		return nil, Source{}, err
 	}
@@ -602,7 +607,7 @@ func sourceField(read Read, typ *data.Type, name string) (*data.Field, error) {
 	return typ.LiveField(name, false)
 }
 
-func mappedSourceValue(store *data.Store, app string, read Read, field *data.Field, value any) (any, error) {
+func mappedSourceValue(store *data.Store, sc data.Scope, read Read, field *data.Field, value any) (any, error) {
 	if field.Type != data.TypeRef || value == nil {
 		return field.LiveValue(value, false)
 	}
@@ -611,7 +616,7 @@ func mappedSourceValue(store *data.Store, app string, read Read, field *data.Fie
 		return nil, err
 	}
 	id := read.Residency.References[field.Name][key]
-	row, err := store.Get(data.Scope{App: app}, field.To, id, false)
+	row, err := store.Get(sc, field.To, id, false)
 	if err != nil {
 		return nil, errors.New("a source reference has no permitted canonical record")
 	}

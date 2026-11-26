@@ -47,6 +47,10 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 	if err != nil {
 		return nil, err
 	}
+	if typ.HasRowPolicy() {
+		_ = store.AuditPolicy(app, typ.ID, "source_write_refused")
+		return nil, errors.New("this source write cannot enforce the record row policy")
+	}
 	id, _ := args["id"].(string)
 	set, _ := args["set"].(map[string]any)
 	version, _ := args["version"].(string)
@@ -71,6 +75,10 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 		field, err := typ.LiveField(name, true)
 		if err != nil {
 			return nil, err
+		}
+		if typ.FieldPolicy(field) != "" {
+			_ = store.AuditPolicy(app, typ.ID, "source_write_refused")
+			return nil, errors.New("this source write cannot set a protected field")
 		}
 		normalized, err := field.LiveValue(value, true)
 		if err != nil {
@@ -135,7 +143,24 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 		return Receipt{}, ErrRejected
 	}
 	c := e.config
-	secret, err := e.service.vault().Credential(c.ID)
+	store, _, typ, err := e.service.bind(c.Config, e.read, true)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if typ.HasRowPolicy() {
+		_ = store.AuditPolicy(c.App, typ.ID, "source_write_refused")
+		return Receipt{}, errors.New("this source write cannot enforce the record row policy")
+	}
+	for name, column := range e.read.Fields {
+		if _, writing := e.values[column]; writing {
+			field, err := typ.LiveField(name, true)
+			if err != nil || typ.FieldPolicy(field) != "" {
+				_ = store.AuditPolicy(c.App, typ.ID, "source_write_refused")
+				return Receipt{}, errors.New("this source write cannot set a protected field")
+			}
+		}
+	}
+	secret, err := e.service.credential(c, e.service.person(ctx))
 	if err != nil {
 		return Receipt{}, err
 	}
