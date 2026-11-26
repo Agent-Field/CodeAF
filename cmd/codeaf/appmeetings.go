@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -68,7 +70,15 @@ func (b *appBackend) TranscribeMeeting(in appwire.MeetingAudioParams) (*appwire.
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	const name = "meeting transcription"
+	ctx = provider.WithCallTag(ctx, name)
+	ctx, recorded := factoryAIAccounting(ctx, settings, model, name, nil)
 	reply, err := client.Transcribe(ctx, provider.TranscriptionRequest{Model: model, MIME: "audio/wav", Data: in.Wave})
+	var response *ai.Response
+	if reply != nil {
+		response = &ai.Response{Usage: reply.Usage}
+	}
+	recorded(response)
 	if err != nil {
 		if _, denied := errors.AsType[*provider.ModelDestinationDenied](err); denied {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "%s", errAppModelRestricted.Error())
