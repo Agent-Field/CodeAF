@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,8 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 			DataScope: appwire.DataScope{App: people.ID}, Type: "people", Set: map[string]any{"name": "Ada Example"},
 		}, &added)
 		ada := added.Rows[0]["id"]
+		var beforeInstall struct{ Apps []store.Summary }
+		wire.must("apps.list", struct{}{}, &beforeInstall)
 
 		var install builder.Proposal
 		wire.must("apps.install", map[string]string{"path": v1}, &install)
@@ -98,7 +101,7 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 			Builds []builder.Summary
 		}
 		wire.must("apps.list", map[string]string{}, &listing)
-		if len(listing.Apps) != 1 || len(listing.Builds) != 1 || listing.Builds[0].Proposal.ID != install.ID {
+		if !slices.Equal(listing.Apps, beforeInstall.Apps) || len(listing.Builds) != 1 || listing.Builds[0].Proposal.ID != install.ID {
 			t.Fatalf("install is missing from the pending builds: %+v", listing)
 		}
 		var applied struct{ Meta store.Meta }

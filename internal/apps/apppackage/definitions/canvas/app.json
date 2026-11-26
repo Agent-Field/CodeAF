@@ -1,0 +1,117 @@
+{
+  "id": "01KAVYH000C0DEAF0000000004",
+  "name": "Canvas",
+  "version": 1,
+  "kit": 2,
+  "agent": {"name": "Canvas agent", "file": "agent.md"},
+  "records": {
+    "canvas_board": {
+      "label": "Board",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext",
+          "default": "",
+          "label": "Contents"
+        },
+        "x": {
+          "type": "number",
+          "default": 40
+        },
+        "y": {
+          "type": "number",
+          "default": 120
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "canvas_board": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New board",
+      "do": [
+        {
+          "records.create": {
+            "type": "canvas_board",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "canvas_board",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "canvas_board"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "canvas_board",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "canvas_board"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "canvas_board",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "canvas_board",
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "pdf": {
+      "label": "Export PDF",
+      "format": "pdf",
+      "record": "canvas_board",
+      "body": "{{title}}\n\n{{body}}"
+    }
+  }
+}

@@ -2,9 +2,9 @@ package apppackage_test
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
-
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -133,6 +133,67 @@ func TestOfficialExamplePublisherRequiresSignatureVisual(t *testing.T) {
 	if _, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "codeaf examples"}); err == nil ||
 		!strings.Contains(err.Error(), "Add a visual tied to the job") {
 		t.Fatalf("example export must block missing signature visuals: %v", err)
+	}
+}
+
+func TestUnsignedPublisherCannotClaimCodeafIdentity(t *testing.T) {
+	app := `{"id":"docs","name":"Docs","version":1,"records":{"document":{"fields":{"title":{"type":"text"}}}}}`
+	files := map[string]string{"app.json": app}
+	if _, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "codeaf"}); err == nil {
+		t.Fatal("ordinary pack can impersonate the built-in publisher")
+	}
+}
+
+func TestReleaseSignatureAuthenticatesTheArchive(t *testing.T) {
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range archives {
+		if len(a.Signature) != ed25519.SignatureSize {
+			t.Fatalf("%s has no release signature", a.Manifest.Name)
+		}
+		a.Signature[0] ^= 1
+		raw, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := apppackage.Read(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "release signature") {
+			t.Fatalf("tampered %s signature: %v", a.Manifest.Name, err)
+		}
+	}
+}
+
+func TestShippedDefinitionsMatchSignedReleases(t *testing.T) {
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range archives {
+		def, err := schema.Load(filepath.Join("definitions", strings.ToLower(a.Manifest.Name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files := make(map[string]string, len(def.Files))
+		for name, raw := range def.Files {
+			files[name] = string(raw)
+		}
+		raw, err := apppackage.Pack(files, nil, apppackage.PackOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		prepared, err := apppackage.Read(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(prepared.Files) != len(a.Files) {
+			t.Fatalf("%s must be signed again after editing its definition files", a.Manifest.Name)
+		}
+		for name, raw := range prepared.Files {
+			if !bytes.Equal(raw, a.Files[name]) {
+				t.Fatalf("%s %s differs from its signed release", a.Manifest.Name, name)
+			}
+		}
 	}
 }
 

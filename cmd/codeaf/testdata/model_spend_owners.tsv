@@ -1,5 +1,6 @@
 # Exact production caller inventory. Exceptions are audit debt, not proof of missing charges.
 cmd/codeaf/appbuild.go:builderModelClient.CompleteWithMessages:CompleteWithMessages	owner: Scoped app session (ScopedCommandTurn -> Agent turn usage ledger)
+cmd/codeaf/appmeetings.go:appBackend.TranscribeMeeting:Transcribe	owner: Meeting transcription accounting (factoryAIAccounting -> session.RecordUsage)
 cmd/codeaf/carried.go:wireCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:consolidateFacts:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:digestTerritory:CompleteWithMessages	exception: untraced terminal helpers

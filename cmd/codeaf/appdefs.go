@@ -20,6 +20,12 @@ func (b *appBackend) AppDefinitions() *store.Store {
 	})
 }
 
+// InstallDefaultApps runs when the person opens Apps, so starting Desk for
+// pairing or chat alone leaves an unused profile eligible to join a device.
+func (b *appBackend) InstallDefaultApps() error {
+	return b.AppDefinitions().InstallBuiltins()
+}
+
 func (b *appBackend) dataRoot() string {
 	if b.data.home != "" {
 		return b.data.home
