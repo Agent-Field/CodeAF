@@ -164,8 +164,8 @@ func typeTabs(labels []string, records map[string]schema.RecordType) bool {
 }
 
 func zeroMetric(view schema.QueryIR, sample schema.Sample) bool {
-	rows := sample.Records[view.Type]
-	if len(rows) == 0 || len(view.Aggregate) != 1 || len(view.Args) != 0 || view.Relate != nil {
+	rows, sampled := sample.Records[view.Type]
+	if !sampled || len(view.Aggregate) != 1 || len(view.Args) != 0 || view.Relate != nil {
 		return false
 	}
 	for _, filter := range view.Filter {

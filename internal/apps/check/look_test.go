@@ -33,3 +33,17 @@ func TestLookFindsWeakCompositionAndKeepsPersonalWarningsNonBlocking(t *testing.
 		t.Fatal("personal layout warnings must allow the app to be kept")
 	}
 }
+
+func TestGalleryExamplesPassLook(t *testing.T) {
+	for _, name := range []string{"gallery-kyc", "gallery-hiring", "gallery-line", "gallery-support"} {
+		t.Run(name, func(t *testing.T) {
+			def, err := schema.Load("../schema/testdata/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if findings := LookFindings(def, nil); len(findings) != 0 {
+				t.Fatalf("gallery look: %+v", findings)
+			}
+		})
+	}
+}

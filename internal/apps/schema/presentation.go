@@ -83,7 +83,7 @@ func (c *checker) recordPresentation(record RecordType, fields map[string]Field,
 	})
 	p.Trailing = find(func(name string, field Field) bool {
 		return field.Type == "rating" || field.Type == "number" &&
-			(strings.Contains(name, "score") || strings.Contains(name, "rank") || name == "priority")
+			(strings.Contains(name, "score") || strings.Contains(name, "rank") || name == "priority" || name == "risk")
 	})
 	if p.Trailing == "" {
 		p.Trailing = p.Money

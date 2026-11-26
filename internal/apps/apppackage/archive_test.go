@@ -3,6 +3,7 @@ package apppackage_test
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -104,6 +105,17 @@ func TestPackageUpdatesFollowSemVerPrecedence(t *testing.T) {
 
 func TestOfficialExamplePublisherRequiresSignatureVisual(t *testing.T) {
 	def, err := schema.Load("../schema/testdata/gallery-support")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "screens/inbox.json"
+	screen, err := schema.ParseScreen(def.Files[name])
+	if err != nil {
+		t.Fatal(err)
+	}
+	panel := screen.Body.Children[1]
+	panel.Children = slices.DeleteFunc(panel.Children, func(child *schema.Node) bool { return child.Part == "Timeline" })
+	def.Files[name], err = json.Marshal(screen)
 	if err != nil {
 		t.Fatal(err)
 	}

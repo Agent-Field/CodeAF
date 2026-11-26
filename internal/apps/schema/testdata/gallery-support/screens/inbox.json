@@ -107,6 +107,16 @@
             "when": "$selection.work.count == 1"
           },
           {
+            "part": "Timeline",
+            "id": "activity",
+            "label": "Ticket activity",
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "ticket"
+            },
+            "when": "$selection.work.count == 1"
+          },
+          {
             "part": "Text",
             "id": "macros",
             "props": {
