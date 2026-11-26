@@ -227,3 +227,47 @@ func TestPackageReusesAnIdenticalSameNameType(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageKeepsDifferentSameNameTypesAndTheirLinksPrivate(t *testing.T) {
+	db, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	first := []byte(`{"id":"first","records":{"note":{"fields":{"title":{"type":"text"}}}},"capabilities":{"records":{"note":"rw"}}}`)
+	if err := db.RegisterApp(first); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := apppackage.Pack(map[string]string{schema.AppFile: `{"id":"second","name":"Second","version":1,"kit":2,
+		"records":{"note":{"fields":{"body":{"type":"longtext"}}},"task":{"fields":{"note":{"type":"ref","to":"note"}}}},
+		"capabilities":{"records":{"note":"rw","task":"rw"}}}`}, nil, apppackage.PackOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := apppackage.Read(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _, err := archive.Bind(db.TypeSet(), "second", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RegisterApp([]byte(files[schema.AppFile])); err != nil {
+		t.Fatal(err)
+	}
+	left, right := data.Scope{App: "first"}, data.Scope{App: "second"}
+	other, err := db.Create(left, "note", []map[string]any{{"title": "One"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := db.Create(right, "note", []map[string]any{{"body": "Two"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Create(right, "task", []map[string]any{{"note": local.Rows[0].ID()}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Create(right, "task", []map[string]any{{"note": other.Rows[0].ID()}}); err == nil {
+		t.Fatal("task linked to another app's private note")
+	}
+}

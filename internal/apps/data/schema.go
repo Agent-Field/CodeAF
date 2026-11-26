@@ -545,6 +545,16 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 		return nil, err
 	}
 	typeIDs := map[string]string{}
+	storageNames := make(map[string]string, len(resolved))
+	for alias, binding := range resolved {
+		if existing := current.byID[binding.TypeID]; existing != nil {
+			storageNames[alias] = existing.Name
+		} else if def.Records[alias].PackagePrivate {
+			storageNames[alias] = appschema.PrivateRecordName(app, alias)
+		} else {
+			storageNames[alias] = alias
+		}
+	}
 	for _, name := range def.typeOrder {
 		t := def.Records[name]
 		existing := current.byID[resolved[name].TypeID]
@@ -587,7 +597,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 		if id == "" {
 			id = w.s.ids.next(w.now)
 			if _, err := tx.Exec(`INSERT INTO types(id, name, created_by_app, def_app, def_json, created_at) VALUES(?, ?, ?, ?, '{}', ?)`,
-				id, name, app, app, at); err != nil {
+				id, storageNames[name], app, app, at); err != nil {
 				return nil, err
 			}
 		}
@@ -632,7 +642,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			if _, err := tx.Exec(`
 				INSERT INTO type_fields(field_id, app, def_json, pos, hidden) VALUES(?, ?, ?, ?, 0)
 				ON CONFLICT(field_id, app) DO UPDATE SET def_json = excluded.def_json, pos = excluded.pos, hidden = 0`,
-				fieldID, app, canonicalJSON(boundField(t.Fields[fname], resolved, current)), pos); err != nil {
+				fieldID, app, canonicalJSON(boundField(t.Fields[fname], storageNames)), pos); err != nil {
 				return nil, err
 			}
 		}

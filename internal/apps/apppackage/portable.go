@@ -31,7 +31,11 @@ func withPortableRecords(raw []byte, app schema.App, existing schema.TypeSet) ([
 	aliases := map[string]string{}
 	for _, alias := range queue {
 		decl := app.Records[alias]
+		delete(records[alias], "package_private")
 		target, ok := existing.ForRecord(alias, decl)
+		if decl.PackagePrivate {
+			target, ok = existing[schema.PrivateRecordName(app.ID, alias)]
+		}
 		if !ok {
 			continue
 		}

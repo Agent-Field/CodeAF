@@ -38,14 +38,23 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 		if entity.Common != "" {
 			records[alias]["common"], _ = json.Marshal(entity.Common)
 		}
+		record := records[alias]
+		delete(record, "package_private")
 		var name string
+		private := existing[schema.PrivateRecordName(appID, alias)]
+		if appID != "" && private.Owner == appID {
+			record["package_private"] = json.RawMessage("true")
+			continue
+		}
 		if entity.Common != "" {
 			if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); ok {
 				name = offer.Existing
 			}
 		} else if target, ok := existing[alias]; ok {
-			if entity.Uses || fork || samePrivateShape(records[alias], target) {
+			if entity.Uses || fork || samePrivateShape(record, target) {
 				name = alias
+			} else if appID != "" && target.Owner != appID {
+				record["package_private"] = json.RawMessage("true")
 			}
 		}
 		if name != "" {

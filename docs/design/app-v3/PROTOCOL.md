@@ -3263,7 +3263,10 @@ install binds compatible common keys to the receiving profile's records
 and adds missing declarations. When a shared type is missing, Apply
 creates it. Its local declaration keeps an optional `portable_reuse`
 flag so a subsequent export can offer the same binding. Older archives
-can supply those fields from the package manifest.
+can supply those fields from the package manifest. If two different
+private types use the same alias, Apply stores the new type separately
+and preserves the app's alias and its references. The local
+`package_private` flag records that choice and is omitted on export.
 
 Package proposals are emitted on `apps.change_proposed` and persist in
 `apps.build_state.proposal` and `apps.list.builds[].proposal`. The
