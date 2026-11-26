@@ -42,17 +42,19 @@ type Options struct {
 	CanLook func() bool
 	Look    func(context.Context, string, string) ([]string, error)
 
-	Home         string
-	Store        *store.Store
-	Model        func() (Completer, error)
-	Catalog      func(app string) (Catalog, error)
-	Check        func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
-	CheckPackage func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
-	SeedPreview  func(scope string, def schema.Definition, real bool) error
-	ClosePreview func(scope string)
-	Changed      func(Event)
-	Notify       func(Summary)
-	Proposed     func(Proposal)
+	Home  string
+	Store *store.Store
+	Model func() (Completer, error)
+	// OwnerNameAvailable lets drafts bind the owner without showing the builder the name.
+	OwnerNameAvailable bool
+	Catalog            func(app string) (Catalog, error)
+	Check              func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
+	CheckPackage       func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
+	SeedPreview        func(scope string, def schema.Definition, real bool) error
+	ClosePreview       func(scope string)
+	Changed            func(Event)
+	Notify             func(Summary)
+	Proposed           func(Proposal)
 }
 
 // Proposal identifies a requested change after its work is durable.

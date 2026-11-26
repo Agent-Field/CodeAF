@@ -689,6 +689,45 @@ func TestPlanRecoversFromAnInvalidToolReply(t *testing.T) {
 	}
 }
 
+func TestPlanRecoversWhenTheProviderTimesOut(t *testing.T) {
+	for _, saved := range []bool{false, true} {
+		t.Run(fmt.Sprint(saved), func(t *testing.T) {
+			opts := scriptedApp(t, t.TempDir())
+			const outline = `{"name":"Reading","plan":{"ask":"Track books","data":[{"id":"book","line":"Books"}],"screens":[{"id":"books","line":"Reading list"}]}}`
+			calls := 0
+			opts.Model = func() (builder.Completer, error) {
+				return script(func(ctx context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+					if _, ok := ctx.Deadline(); !ok {
+						return ai.Message{}, errors.New("the plan pass must have a deadline")
+					}
+					calls++
+					if saved && calls == 1 {
+						var args map[string]any
+						if err := json.Unmarshal([]byte(outline), &args); err != nil {
+							return ai.Message{}, err
+						}
+						return toolCalls(command("plan", args)), nil
+					}
+					prompt, _ := json.Marshal(messages)
+					if strings.Contains(string(prompt), "The previous plan failed:") {
+						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: outline}}}, nil
+					}
+					return ai.Message{}, context.DeadlineExceeded
+				}), nil
+			}
+			jobs, err := builder.OpenJobs(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer jobs.Close()
+			got, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Track my reading."})
+			if err != nil || !strings.Contains(string(got.Plan), "Reading list") || calls != 2 {
+				t.Fatalf("plan = %s, calls = %d, err = %v", got.Plan, calls, err)
+			}
+		})
+	}
+}
+
 func assertHumanBuilderCopy(t *testing.T, text string) {
 	t.Helper()
 	for _, internal := range []string{"node-", "RecordList", "board_by", `"views"`, "app check", "app look", "the deals screen"} {

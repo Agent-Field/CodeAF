@@ -181,6 +181,7 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 	files, reply, calls, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
+		OwnerNameAvailable: s.opts.OwnerNameAvailable,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {

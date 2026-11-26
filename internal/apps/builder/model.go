@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -24,6 +25,13 @@ import (
 type Completer interface {
 	CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error)
 }
+
+const (
+	planFirstPass      = 150 * time.Second
+	planCorrectionPass = 110 * time.Second
+	// PlanWait allows both model passes and time to persist the result.
+	PlanWait = planFirstPass + planCorrectionPass + 35*time.Second
+)
 
 const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
 at a time in the scoped executor. Finish when the requested edits are saved.
@@ -141,17 +149,18 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
-	Headless   bool
-	Editing    bool
-	Marks      []Mark
-	Stage      string
-	Request    string
-	Target     *Target
-	Types      []modelType
-	Using      []string
-	Definition map[string]string
-	Report     *schema.Report
-	Continued  bool
+	Headless           bool
+	Editing            bool
+	Marks              []Mark
+	Stage              string
+	Request            string
+	Target             *Target
+	Types              []modelType
+	Using              []string
+	Definition         map[string]string
+	Report             *schema.Report
+	Continued          bool
+	OwnerNameAvailable bool
 }
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
@@ -177,8 +186,10 @@ so record views can show them with the current record. For an app-wide
 action without a record parameter, use a Button with on-click='[{"runs.start":"review"}]'. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
-In drafts use {{params.deal.contact.name}} and {{owner.name}} if these values
-are needed. Use the actual declared relation and title field ids. Don't leave
+For a follow-up draft written on the person's behalf, address the bound
+contact and sign with the available owner name. Write the greeting and
+signature into the draft using {{params.deal.contact.name}} and {{owner.name}},
+using the actual declared relation and title field ids. Don't leave
 bracketed placeholders in draft prompts, template values or example replies.
 A collection recipe adds the creation control for a planned type with
 "create":true and write access. For a screen composed by hand, use a Button
@@ -549,6 +560,13 @@ tries the sample data and asks Desk to draw the screens after this turn.`
 	if in.Continued {
 		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
 	}
+	if in.Stage != Planning {
+		if in.OwnerNameAvailable {
+			prompt += "\nThe owner's name is available to run templates as {{owner.name}}."
+		} else {
+			prompt += "\nNo owner name is available. Omit the owner sign-off from drafts."
+		}
+	}
 	if look == nil {
 		prompt += "\nThe desktop renderer is unavailable. Skip look."
 	}
@@ -557,26 +575,46 @@ tries the sample data and asks Desk to draw the screens after this turn.`
 	}
 	limit := in.callBudget()
 	bounded := &boundedModel{model: model, stage: in.Stage, stopAt: limit, stats: BuildCalls{Limit: limit}}
-	run := func(prompt string) (string, error) {
-		return session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
+	run := func(prompt string, allowance time.Duration) (string, error) {
+		pass := ctx
+		if allowance > 0 {
+			var cancel context.CancelFunc
+			pass, cancel = context.WithTimeout(ctx, allowance)
+			defer cancel()
+			bounded.stopPass = cancel
+		}
+		reply, err := session.ScopedCommandTurn(pass, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
+		if allowance > 0 && (bounded.timedOut || errors.Is(pass.Err(), context.DeadlineExceeded)) {
+			err = context.DeadlineExceeded
+		}
+		return reply, err
 	}
-	reply, err := run(prompt)
+	var allowance time.Duration
+	if in.Stage == Planning {
+		// Leave time for one correction before the synchronous plan request expires.
+		allowance = planFirstPass
+	}
+	reply, err := run(prompt, allowance)
 	if in.Stage == Planning {
 		// The saved plan is the reply. Some providers end after the last tool
 		// call or omit the closing text, even though the plan was written.
-		if planSaved && (err == nil || bounded.hit || bounded.incomplete) {
+		timedOut := errors.Is(err, context.DeadlineExceeded)
+		if planSaved && (err == nil || bounded.hit || bounded.incomplete || timedOut) {
 			err = nil
-		} else if !planSaved && ctx.Err() == nil && (err == nil || bounded.incomplete) && !bounded.hit {
+		} else if !planSaved && ctx.Err() == nil && (err == nil || bounded.incomplete || timedOut) && !bounded.hit {
 			reason := "the reply did not save a plan object"
 			if planErr != nil {
 				reason = planErr.Error()
+			} else if timedOut {
+				reason = "the model did not finish in time"
 			} else if bounded.incomplete {
 				reason = "the model returned an empty or truncated reply"
 			}
 			bounded.incomplete = false
+			bounded.timedOut = false
 			bounded.stopAt = min(bounded.stats.Limit, bounded.stats.Total+4)
-			reply, err = run(prompt + "\nThe previous plan failed: " + reason +
-				". Save the plan with codeaf app plan. If tool calls are unavailable, return the same {\"name\",\"plan\"} arguments as a single JSON object.")
+			reply, err = run(prompt+"\nThe previous plan failed: "+reason+
+				". Save the plan with codeaf app plan. If tool calls are unavailable, return the same {\"name\",\"plan\"} arguments as a single JSON object.", planCorrectionPass)
 			if !planSaved && err == nil {
 				fallback := strings.TrimSpace(reply)
 				if body, ok := strings.CutPrefix(fallback, "```json"); ok {
@@ -588,9 +626,12 @@ tries the sample data and asks Desk to draw the screens after this turn.`
 					err = fmt.Errorf("the corrected reply did not contain a usable plan: %w", parseErr)
 				}
 			}
-			if planSaved && (bounded.incomplete || bounded.hit) {
+			if planSaved && (bounded.incomplete || bounded.hit || errors.Is(err, context.DeadlineExceeded)) {
 				err = nil
 			}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errors.New("the model did not finish in time")
 		}
 	}
 	if bounded.hit && !(in.Stage == Planning && planSaved && err == nil) {
@@ -652,6 +693,8 @@ type boundedModel struct {
 	stopAt     int
 	hit        bool
 	incomplete bool
+	timedOut   bool
+	stopPass   context.CancelFunc
 }
 
 var errModelCallLimit = errors.New("the Builder reached its model call limit")
@@ -669,6 +712,12 @@ func (b *boundedModel) CompleteWithMessages(ctx context.Context, messages []ai.M
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.stopPass != nil && errors.Is(err, context.DeadlineExceeded) {
+		// A planning timeout gets one clean correction pass. End this turn so
+		// the generic session retry ladder cannot spend the correction time.
+		b.timedOut = true
+		b.stopPass()
+	}
 	category := &b.stats.Other
 	if resp != nil && len(resp.Choices) > 0 {
 		choice := resp.Choices[0]

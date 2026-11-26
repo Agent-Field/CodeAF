@@ -125,7 +125,7 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 		}
 	}
 	owner := ""
-	if appOwnerDisplayName() != "" {
+	if b.appOwnerDisplayName() != "" {
 		owner = "Example Owner"
 	}
 	return runs.Open(runs.Config{

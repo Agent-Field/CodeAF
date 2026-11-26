@@ -92,7 +92,10 @@ func hasAppRunWork() bool {
 }
 
 // Use the display name portion of the local account, excluding contact information.
-func appOwnerDisplayName() string {
+func (b *appBackend) appOwnerDisplayName() string {
+	if name := config.AppOwnerNameAt(b.localProfile()); name != "" {
+		return name
+	}
 	if person, err := user.Current(); err == nil {
 		name, _, _ := strings.Cut(person.Name, ",")
 		return strings.TrimSpace(name)
@@ -124,7 +127,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		return harnesses.Run(ctx, call)
 	}
 	e, err := runs.Open(runs.Config{
-		OwnerName: appOwnerDisplayName(),
+		OwnerName: b.appOwnerDisplayName(),
 		Root:      home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
 		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: agent,
 		CheckAI: harnesses.Check, AppVersion: files.Version, Render: b.renderRunOutput,

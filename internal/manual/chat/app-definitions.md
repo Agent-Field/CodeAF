@@ -65,6 +65,11 @@ the app when it's ready to try or needs your input.
 A collection recipe adds an **Add** control when the plan asks to create
 that type and the app can write it. The form collects the record’s fields.
 
+A run drafting a note can use the bound contact and the name from
+`apps.owner_name` in the profile's `config.json`. Restart the engine after
+editing the profile. If the setting is empty, runs use the local account's
+display name when available.
+
 Try the screens with made-up records before choosing **Apply**. If the plan
 offers to use an existing type, ask to use it to share those records.
 The model that makes the app sees type names, fields and counts. It has
