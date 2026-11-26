@@ -643,7 +643,7 @@
       "name": "Menu",
       "tier": "primitive",
       "summary": "A menu of named actions.",
-      "children": "none",
+      "children": "nodes",
       "interactive": true,
       "bindings": [],
       "events": [
@@ -711,6 +711,9 @@
         "properties": {
           "title": {
             "type": "string"
+          },
+          "placement": {
+            "enum": ["side"]
           },
           "primary": {
             "type": "string"
@@ -1108,6 +1111,9 @@
               "end",
               "stretch"
             ]
+          },
+          "workspace": {
+            "enum": ["queue", "board"]
           },
           "wrap": {
             "type": "boolean"
@@ -2475,6 +2481,15 @@
           },
           "title": {
             "type": "string"
+          },
+          "format": {
+            "enum": ["number", "money", "percent"]
+          },
+          "target": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
           },
           "x": {
             "type": "string"

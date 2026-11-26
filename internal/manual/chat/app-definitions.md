@@ -258,6 +258,24 @@ access. Check renders the screen in Dark, Black and Light at 800 and 1120 px
 when the desktop is connected. The frame reports when it has drawn. If
 its deadline passes, Check names the part in a layout finding.
 
+A native editor part takes one element and one record binding. Use
+`<document field="body" />` for a Markdown document, or the `grid`, `board`
+or `slide` element with a visible longtext field. Map its optional `edit`
+intent to the screen's record Action. These elements use fixed Desk editors.
+Their declarations do not load package-supplied code into Desk.
+
+A Menu can use Button children for choices with different Actions. Give
+each Button an ID, a label and one or more `on.click` Actions. Leave its
+`items` list empty when using children. A Menu with an `items` list
+continues to emit `on.pick` with the selected ID.
+
+Put a Sheet with `props.placement: "side"` beside an editor or other record
+surface in a Row. An `open` Action targeting its ID opens a side panel and
+leaves the editor available. Ordinary Sheets open over the screen.
+
+Set `agent.dock` to `"closed"` in app.json to keep the agent panel folded
+when the app opens. The agent button in the header opens it.
+
 `codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
 into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
 session uses `codeaf app use-kit-part` with the part's ID and version, then
@@ -359,3 +377,30 @@ For a package you installed, **App** names the publisher and accepted package
 version. **Check for update** reads the Kit for a newer release. Choose a
 value for each competing edit, then **Check choices**. **Apply** publishes
 the update. The app keeps its existing version until you Apply.
+
+## Work a queue beside its record or shape the app
+
+A screen can keep a queue or board beside the selected record. Choose a row
+to see its details without leaving the queue. A queue row shows its title,
+the related facts on a second line, and a status or figure at the right.
+Choose **Shape** in the app header to open its Builder.
+
+A plan timeline on a checked screen reads the app's saved plan. A definition
+document can display its saved copy until it has a record to edit.
+`apps.content.read` serves the saved document or plan from the selected app
+or preview.
+
+## Dashboard targets and limits
+
+A metric in a dashboard can show a target or limit beside the current value.
+Use a number in the same units as the value. A percentage uses fractions in
+the data, so an 85% target is 0.85. A metric above its limit says so. A zero
+or unavailable metric keeps its figure and comparison quiet.
+
+## Filter and sort a saved view
+
+A saved view keeps its declared filters when you search or add a filter.
+Grouped lists and timelines keep every row and show it under its group.
+If the view has a limit, the display shows up to that many matches. Changing
+the sort picks that many matches in the new order. Clearing your sort restores
+the saved order.

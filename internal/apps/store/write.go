@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
@@ -368,7 +369,11 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 	app := filepath.Join(s.root, next.ID)
 	if s.openData != nil {
 		next.digest = f.digest()
-		if err := s.commitPublication(m, next, f[appFile], app, tx, snapshot); err != nil {
+		p := publication(next, f[appFile])
+		if pkg != nil {
+			p.Starter = pkg.starter
+		}
+		if err := s.commitPublication(m, p, app, tx, snapshot); err != nil {
 			return Meta{}, err
 		}
 		return next, nil
@@ -396,7 +401,7 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 // commitPublication makes the numbered snapshot durable before the data
 // writer points to it. An interrupted or refused write leaves only an
 // uncommitted snapshot, which a later attempt can replace.
-func (s *Store) commitPublication(before, next Meta, raw []byte, app, tx, snapshot string) error {
+func (s *Store) commitPublication(before Meta, p data.AppPublication, app, tx, snapshot string) error {
 	d, err := s.openData()
 	if err != nil {
 		return err
@@ -424,7 +429,7 @@ func (s *Store) commitPublication(before, next Meta, raw []byte, app, tx, snapsh
 	if err := stageVersion(app, tx, snapshot); err != nil {
 		return err
 	}
-	if err := d.PublishApp(publication(next, raw), before.Version); err != nil {
+	if err := d.PublishApp(p, before.Version); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	// Readers of an authoritative publication use the numbered snapshot.

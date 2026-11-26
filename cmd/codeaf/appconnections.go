@@ -128,7 +128,7 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
 			credential := ""
-			if cfg.Kind != connections.Google && cfg.Kind != connections.Microsoft365 {
+			if cfg.Kind != connections.Google && cfg.Kind != connections.Microsoft365 && cfg.CredentialMode != connections.CredentialPublic {
 				credential, err = readAppSourceCredential(in)
 				if err != nil {
 					return err

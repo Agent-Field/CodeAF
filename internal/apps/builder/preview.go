@@ -195,6 +195,20 @@ func (s *Jobs) ViewScreen(app, draft, screen string) ([]byte, error) {
 	return raw, nil
 }
 
+// ViewContent reads from the same app and isolated definition the preview draws.
+func (s *Jobs) ViewContent(app, draft, ref string) (string, error) {
+	files, err := s.previewFiles(draft)
+	if err != nil {
+		return "", err
+	}
+	manifest, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	text, found := files[ref]
+	if err != nil || manifest.ID != app || !found {
+		return "", store.ErrNotFound
+	}
+	return text, nil
+}
+
 func (s *Jobs) previewFiles(draft string) (map[string]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

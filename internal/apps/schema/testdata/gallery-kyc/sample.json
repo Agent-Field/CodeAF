@@ -1,0 +1,93 @@
+{
+  "records": {
+    "case": [
+      {
+        "title": "Arjun Mehta",
+        "case_number": "KYC-4471",
+        "review": "Periodic review",
+        "stage": "Checker",
+        "risk": 72,
+        "maker": "mona",
+        "reviewer": "me",
+        "pan": "TEST-PAN-001",
+        "identity": [
+          {
+            "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "name": "passport.pdf",
+            "mime": "application/pdf",
+            "masks": [
+              {
+                "page": 1,
+                "x": 0.15,
+                "y": 0.2,
+                "w": 0.4,
+                "h": 0.1
+              }
+            ]
+          }
+        ],
+        "id": "01KAT0000A0000000000000001"
+      },
+      {
+        "title": "Lakshmi Traders LLP",
+        "case_number": "KYC-4468",
+        "review": "Onboarding",
+        "stage": "Checker",
+        "risk": 64,
+        "maker": "jm",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000002"
+      },
+      {
+        "title": "Zenith Exports",
+        "case_number": "KYC-4466",
+        "review": "Onboarding",
+        "stage": "Checker",
+        "risk": 58,
+        "maker": "raj",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000003"
+      },
+      {
+        "title": "Rohan Kapoor",
+        "case_number": "KYC-4463",
+        "review": "Periodic review",
+        "stage": "Maker",
+        "risk": 41,
+        "maker": "jm",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000004"
+      },
+      {
+        "title": "Meera Iyer",
+        "case_number": "KYC-4459",
+        "review": "Address change",
+        "stage": "Done",
+        "risk": 35,
+        "maker": "mona",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000005"
+      },
+      {
+        "title": "Veda Foods",
+        "case_number": "KYC-4457",
+        "review": "Onboarding",
+        "stage": "New",
+        "risk": 26,
+        "maker": "raj",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000006"
+      },
+      {
+        "title": "Mira Shah",
+        "case_number": "KYC-4455",
+        "review": "Address change",
+        "stage": "Customer",
+        "risk": 38,
+        "maker": "jm",
+        "reviewer": "me",
+        "id": "01KAT0000A0000000000000007"
+      }
+    ]
+  }
+}

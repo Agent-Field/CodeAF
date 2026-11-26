@@ -1,13 +1,15 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"time"
+
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"io/fs"
-	"time"
 )
 
 type Lineage struct {
@@ -25,6 +27,7 @@ type ForkOrigin struct {
 type PackagePublication struct {
 	Lineage  Lineage
 	Baseline map[string]string
+	starter  map[string][]map[string]any
 }
 
 // PublishPackageBuild commits the lineage pointer with the same publication
@@ -80,6 +83,13 @@ func (s *Store) InstallBuiltins() error {
 		}
 		m := Meta{ID: source.ID, CreatedAt: time.Now().UTC()}
 		pkg := PackagePublication{Lineage: Lineage{Source: &source}, Baseline: baseline}
+		if raw := baseline[schema.SampleFile]; raw != "" {
+			var starter schema.Sample
+			if err := json.Unmarshal([]byte(raw), &starter); err != nil {
+				return fmt.Errorf("read %s examples: %w", source.Name, err)
+			}
+			pkg.starter = starter.Records
+		}
 		snapshot := make(files, len(baseline))
 		for name, content := range baseline {
 			snapshot[name] = []byte(content)

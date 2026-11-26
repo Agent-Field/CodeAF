@@ -1,0 +1,28 @@
+{
+  "ask": "Collect inbound email threads and show response deadlines.",
+  "data": [
+    {
+      "id": "ticket",
+      "line": "Customer conversations, status and response deadlines."
+    }
+  ],
+  "screens": [
+    {
+      "id": "inbox",
+      "line": "Shared inbox and selected conversation."
+    }
+  ],
+  "agent": {
+    "line": "Summarise the thread and draft a reply. Request approval before sending it."
+  },
+  "automation": [
+    {
+      "id": "ingest",
+      "line": "Record inbound threads"
+    },
+    {
+      "id": "reply",
+      "line": "Send a reply after approval"
+    }
+  ]
+}
