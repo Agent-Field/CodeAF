@@ -14,6 +14,8 @@ type ChecklistStep struct {
 	Label    string
 	Evidence string
 	Done     bool
+	Who      string
+	At       string
 	Attached *ChecklistEvidence
 }
 
@@ -97,7 +99,7 @@ func (w *writeTx) process(sc Scope, t *Type, r *record) (*ProcessSnapshot, error
 		checklist := ChecklistState{ID: c.ID}
 		for _, step := range c.Steps {
 			receipt, done := completedStep(r, c.ID, step)
-			state := ChecklistStep{ID: step.ID, Label: step.Label, Evidence: step.Evidence, Done: done}
+			state := ChecklistStep{ID: step.ID, Label: step.Label, Evidence: step.Evidence, Done: done, Who: receipt.Who, At: receipt.At}
 			if e := receipt.Evidence; done && e != nil {
 				copy := *e
 				state.Attached = &copy

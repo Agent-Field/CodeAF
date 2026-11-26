@@ -7,6 +7,7 @@
         "review": "Periodic review",
         "stage": "Checker",
         "risk": 72,
+        "risk_level": "High",
         "maker": "mona",
         "reviewer": "me",
         "pan": "TEST-PAN-001",
@@ -26,7 +27,11 @@
             ]
           }
         ],
-        "id": "01KAT0000A0000000000000001"
+        "id": "01KAT0000A0000000000000001",
+        "cash_business": 30,
+        "adverse_media": 22,
+        "source_of_funds": 20,
+        "risk_reason": "Cash receipts need independent review. Confirm the source-of-funds note before approval."
       },
       {
         "title": "Lakshmi Traders LLP",

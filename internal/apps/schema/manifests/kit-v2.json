@@ -954,7 +954,8 @@
               "body",
               "secondary",
               "meta",
-              "mono"
+              "mono",
+              "section"
             ]
           },
           "ink": {
@@ -1113,7 +1114,7 @@
             ]
           },
           "workspace": {
-            "enum": ["queue", "board"]
+            "enum": ["queue", "board", "brief", "brief-overview", "evidence"]
           },
           "wrap": {
             "type": "boolean"
@@ -2069,6 +2070,11 @@
             "minItems": 1,
             "uniqueItems": true
           },
+          "owner": { "type": "string" },
+          "due": { "type": "string" },
+          "reason": {
+            "type": "string"
+          },
           "board_by": {
             "type": "string"
           },
@@ -2497,6 +2503,9 @@
           "format": {
             "enum": ["number", "money", "percent"]
           },
+          "context": { "type": "string" },
+          "highlight": { "type": "string" },
+          "scale": { "enum": ["linear", "sqrt"] },
           "target": {
             "type": "number"
           },
@@ -4235,6 +4244,45 @@
           },
           "by": "board_by",
           "fields": "columns"
+        }
+      },
+      "agenda": {
+        "id": "agenda",
+        "version": 1,
+        "doc": "Today’s appointments in time order.",
+        "example": {
+          "start": "start",
+          "attendees": "attendees"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start"
+          ],
+          "properties": {
+            "start": {
+              "type": "string"
+            },
+            "attendees": {
+              "type": "string"
+            }
+          }
+        },
+        "rules": [
+          {
+            "check": "field",
+            "path": "start",
+            "options": "clock"
+          },
+          {
+            "check": "field",
+            "path": "attendees"
+          }
+        ],
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.agenda"
         }
       },
       "calendar": {

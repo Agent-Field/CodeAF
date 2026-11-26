@@ -449,3 +449,24 @@ the saved order.
 An inbox can offer saved replies beside the draft. Pick one to insert it into
 your draft. Edit the words before choosing **Reply**. Picking a saved reply
 keeps the message as a draft.
+
+## Day agendas, record scores and attachments
+
+A Brief can show today's meetings in local time order. Its agenda can name the
+meeting record type, start time and attendee field. The attention list can
+show a reason under each title. What's changed shows plain rows. Set
+`slots.metrics` and `slots.visual` to put counts and a chart under the summary.
+Each metric can add one dim line with `context`. For a status bar chart,
+`highlight` names the category to emphasize, and `scale: "sqrt"` gives small
+counts more room while keeping the exact values at the bar ends. The
+`slots.owner` and `slots.due` fields give each attention row its byline and due
+chip.
+
+A record panel can show the current state, related facts and bottom actions.
+A numeric score can name its component fields, a text explanation, and a
+text or choice field for the score label through `score_label`.
+A completed checklist step shows who finished it and when. Desk can preview
+visible PNG and JPEG attachments on the selected record. The file preview
+uses the same access rules as the record's attachments.
+In a record panel with a signing order, the roles appear in the bottom bar
+beside the record actions.
