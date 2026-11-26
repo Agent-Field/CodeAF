@@ -34,6 +34,10 @@ func (b *appBackend) invokeOutput(ctx context.Context, call outputs.Invocation) 
 	if err != nil {
 		return data.Output{}, err
 	}
+	return b.invokeKeptOutput(ctx, app, call)
+}
+
+func (b *appBackend) invokeKeptOutput(ctx context.Context, app schema.App, call outputs.Invocation) (data.Output, error) {
 	db, err := b.dataStore("")
 	if err != nil {
 		return data.Output{}, err
@@ -51,7 +55,11 @@ func (b *appBackend) RenderAppOutput(ctx context.Context, p appwire.AppRenderPar
 }
 
 func (b *appBackend) renderRunOutput(ctx context.Context, call runs.Call, action schema.RenderAction) (runs.Reply, error) {
-	result, err := b.invokeOutput(ctx, outputs.Invocation{
+	return renderRunFile(ctx, call, action, b.invokeOutput)
+}
+
+func renderRunFile(ctx context.Context, call runs.Call, action schema.RenderAction, invoke func(context.Context, outputs.Invocation) (data.Output, error)) (runs.Reply, error) {
+	result, err := invoke(ctx, outputs.Invocation{
 		Scope:  data.Scope{App: call.App, Flow: true, Actor: "run:" + call.ID},
 		Render: action, Run: call.ID, Step: call.Step, Key: call.Key,
 	})

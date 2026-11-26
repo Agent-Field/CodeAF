@@ -5,14 +5,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
-	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -33,6 +35,18 @@ func TestAppOutputActionParity(t *testing.T) {
 	w.must("apps.render", appwire.AppRenderParams{App: id, RenderAction: schema.RenderAction{Output: "contact-card", Record: record}}, &person)
 	if person.App != id || person.Version != 1 || len(person.Sources) != 1 || person.Sources[0] != (data.OutputSource{ID: record, Rev: 1}) {
 		t.Fatalf("direct render receipt: %+v", person)
+	}
+	// The CLI client reaches the same kept template on the private socket.
+	params, err := json.Marshal(appwire.AppRenderParams{App: id, RenderAction: schema.RenderAction{Output: "contact-card", Record: record}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := exec.CommandContext(t.Context(), os.Args[0], "app", "--home", root, "render", string(params))
+	client.Env = append(os.Environ(), carriedChildEnv+"=real")
+	reply, err := client.Output()
+	var cli data.Output
+	if err != nil || json.Unmarshal(reply, &cli) != nil || cli.Blob != person.Blob || cli.ID == person.ID {
+		t.Fatalf("codeaf app render: %s, %v", reply, err)
 	}
 	var started appwire.RunStarted
 	w.must("runs.start", appwire.RunStartParams{App: id, Run: "contact-card", Params: map[string]any{"contact": record}}, &started)
@@ -274,12 +288,53 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent, err := backend.invokeOutput(t.Context(), outputs.Invocation{
-		Scope:  data.Scope{App: id, Agent: true, Actor: "contact assistant"},
-		Render: action,
+	app, err := backend.outputApp(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "codeaf app render " + string(raw)
+	var calls int
+	client := pricingCompleter(func(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+		calls++
+		message := ai.Message{Role: "assistant"}
+		if calls == 1 {
+			for i, text := range []string{command, command, `codeaf app render {"app":"another-app","output":"contact-card"}`} {
+				args, _ := json.Marshal(map[string]string{"command": text})
+				message.ToolCalls = append(message.ToolCalls, ai.ToolCall{
+					ID: fmt.Sprintf("render-%d", i), Type: "function",
+					Function: ai.ToolCallFunction{Name: "bash", Arguments: string(args)},
+				})
+			}
+		} else {
+			var refused bool
+			for _, previous := range messages {
+				for _, part := range previous.Content {
+					refused = refused || strings.Contains(part.Text, "scope comes from this session")
+				}
+			}
+			if !refused {
+				return nil, fmt.Errorf("scoped executor did not refuse the supplied app")
+			}
+			message.Content = []ai.ContentPart{{Type: "text", Text: "Saved the contact card."}}
+		}
+		return &ai.Response{Choices: []ai.Choice{{Message: message}}}, nil
 	})
-	if err != nil || agent.Blob != person.Blob || agent.ActorKind != data.ByAI || agent.Actor != "contact assistant" {
-		t.Fatalf("engine-bound agent receipt: %+v, %v", agent, err)
+	call := runs.AgentCall{Call: runs.Call{App: id, ID: "run-for-contact", Step: "draft", Key: "run-for-contact-1"}}
+	answer, err := backend.completeOutputAgent(t.Context(), app, call, "openai/gpt-4o-mini", "Help with contact cards.", "Render the supplied contact.", client)
+	if err != nil || !strings.Contains(answer, "Saved the contact card.") {
+		t.Fatalf("scoped agent answer: %q, %v", answer, err)
+	}
+	page, err := db.Outputs(data.Scope{App: id}, call.ID, "", false)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("scoped agent outputs: %+v, %v", page, err)
+	}
+	agent := page.Items[0]
+	if agent.Blob != person.Blob || agent.ActorKind != data.ByAI || agent.Actor != "run:"+call.ID {
+		t.Fatalf("engine-bound agent receipt: %+v", agent)
 	}
 	_, bytes, err := db.OutputFile(data.Scope{App: id}, agent.ID)
 	if err != nil || string(bytes) != "Contact\nSam\n" {
@@ -287,5 +342,49 @@ func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
 	}
 	if _, _, err := db.OutputFile(data.Scope{App: "another-app"}, agent.ID); err == nil {
 		t.Fatal("another app read the output by id")
+	}
+}
+
+func TestAppOutputCheckUsesOnlySampleRecords(t *testing.T) {
+	root := resolvedTempDir(t)
+	id := keepOutputApp(t, root)
+	t.Setenv("CODEAF_HOME", root)
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	def, err := schema.Load(filepath.Join(root, "apps", id, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := backend.AppDefinitions().NewDraft(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sampleRows := map[string][]map[string]any{"contact": {{"name": "Example contact"}}}
+	if err := backend.seedBuildSample(draft.ID(), def.Files[schema.AppFile], sampleRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.CheckDraftRun(t.Context(), draft.ID(), "contact-card", def); err != nil {
+		t.Fatal(err)
+	}
+	scope := data.Scope{App: id}
+	sample, err := backend.dataStore(draft.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := sample.Outputs(scope, "", "", false)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("sample file receipts: %+v, %v", page, err)
+	}
+	_, content, err := sample.OutputFile(scope, page.Items[0].ID)
+	if err != nil || string(content) != "Contact\nExample contact\n" {
+		t.Fatalf("sample file content: %q, %v", content, err)
+	}
+	live, err := backend.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err = live.Outputs(scope, "", "", false)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("live file receipts after Check: %+v, %v", page, err)
 	}
 }

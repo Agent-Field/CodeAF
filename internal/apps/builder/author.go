@@ -134,7 +134,7 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 	return applyEdits(files, []DefinitionEdit{edit})
 }
 
-var appSettings = []string{"name", "icon", "agent", "capabilities", "triggers", "commands", "budget"}
+var appSettings = []string{"name", "icon", "agent", "capabilities", "triggers", "commands", "budget", "outputs"}
 
 func changeManifest(text, verb string, raw json.RawMessage) (string, error) {
 	var manifest map[string]json.RawMessage

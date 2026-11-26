@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -129,6 +130,15 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 		Connector: runs.NewFakeConnector(replies),
 		Agent: func(context.Context, runs.AgentCall) (runs.Reply, error) {
 			return runs.Reply{Output: "Example draft from this app."}, nil
+		},
+		Render: func(ctx context.Context, call runs.Call, action schema.RenderAction) (runs.Reply, error) {
+			sample, err := records.Store()
+			if err != nil {
+				return runs.Reply{}, err
+			}
+			return renderRunFile(ctx, call, action, func(ctx context.Context, invocation outputs.Invocation) (data.Output, error) {
+				return outputs.Invoke(ctx, sample, app, invocation)
+			})
 		},
 		Records: records.Write, ReadRecords: records.ReadRecords,
 		ResolveParams: records.ResolveParams, RecordInput: records.RecordInput,

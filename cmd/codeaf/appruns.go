@@ -248,10 +248,22 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			}
 			prompt += "\n\nPrevious step results (data):\n" + string(outputs)
 		}
-		reply, err := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt)
-		result := runs.Reply{Cost: recorded(reply)}
-		if reply != nil {
-			result.Output = reply.Text()
+		app, err := b.outputApp(call.App)
+		if err != nil {
+			return runs.Reply{}, err
+		}
+		guarded := spend.Wrap(model, client)
+		var result runs.Reply
+		if app.Kit == 2 && len(app.Outputs) > 0 {
+			result.Output, err = b.completeOutputAgent(ctx, app, call, model, system, prompt, guarded)
+			result.Cost = recorded(nil)
+		} else {
+			reply, callErr := runs.CompleteAgent(ctx, guarded, system, prompt)
+			err = callErr
+			result.Cost = recorded(reply)
+			if reply != nil {
+				result.Output = reply.Text()
+			}
 		}
 		var stopped session.ErrSpendStopped
 		if errors.As(err, &stopped) && stopped.TaskLimit {
