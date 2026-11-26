@@ -1,6 +1,6 @@
 ---
 kind: added
-title: An organization's own stack runs a relay for its people, and a hosted Team chat reconnects and is told who is typing by the server
+title: An organization runs its own relay, and a hosted Team chat reconnects and names who is typing
 pr: 2987
 surface: [remote, chat, docs, build]
 invalidates:
