@@ -4815,7 +4815,7 @@
       "data.process": {
         "id": "data.process",
         "version": 1,
-        "doc": "Reads a record's state, guards, checklist, work, timers and sign-offs.",
+        "doc": "Reads a record's state, guards, checklist, work, timers, approval steps and sign-offs.",
         "example": {"data.process": {"record": {"type": "deal", "id": "$row.id"}}},
         "schema": {
           "type": "object",
@@ -6898,7 +6898,7 @@
       "resource": {
         "id": "resource",
         "version": 1,
-        "doc": "Declares a booking range with an overlap constraint.",
+        "doc": "Rejects overlapping booking ranges or limits bookings per resource per UTC day.",
         "example": {
           "record": "room",
           "label": "Meeting rooms",
@@ -7092,7 +7092,7 @@
       "assignment": {
         "id": "assignment",
         "version": 1,
-        "doc": "Selects a work-item assignee using field, role, skill, round robin or load.",
+        "doc": "Creates a work item on create or transition using field match, linked owner, round robin, or fewest open work items.",
         "example": {
           "kind": "assignment",
           "record": "ticket",
@@ -7113,7 +7113,7 @@
       "approval-routing": {
         "id": "approval-routing",
         "version": 1,
-        "doc": "Routes decisions to a serial or parallel set of roles.",
+        "doc": "Selects the highest-priority matching rule and creates ordered sign-off steps. makerCannotSign requires a second person.",
         "example": {
           "kind": "approval-routing",
           "record": "expense",
@@ -7122,7 +7122,10 @@
             "finance",
             "admin"
           ],
-          "when": "amount > 10000"
+          "when": "amount > 10000",
+          "priority": 10,
+          "makerCannotSign": true,
+          "statement": "I approve this expense."
         },
         "schema": {
           "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/approval-routing"

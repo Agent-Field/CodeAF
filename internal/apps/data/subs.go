@@ -490,7 +490,7 @@ func (s *Store) tableDiff(sub *subscription, c *Change) (Diff, bool) {
 		if t := sch.types[it.Type]; t != nil {
 			typeID = t.ID
 		}
-		if !sch.seen(sub.sc, it.App, typeID) {
+		if !sch.seen(sub.sc, it.App, typeID) || !sch.canReadSource(sub.sc, it.sourceType) {
 			continue
 		}
 		d.Upserts = append(d.Upserts, Row(it.Row))

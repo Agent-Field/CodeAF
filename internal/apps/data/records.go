@@ -139,10 +139,12 @@ type record struct {
 // recordMeta is what a record keeps beside its values: who last set or
 // cleared each field, and a ledger entry's links.
 type recordMeta struct {
-	Checklists map[string]map[string]checkReceipt `json:"checklists,omitempty"`
-	By         map[string]string                  `json:"by,omitempty"`
-	Reverses   string                             `json:"reverses,omitempty"`
-	ReversedBy string                             `json:"reversed_by,omitempty"`
+	Maker          string                             `json:"maker,omitempty"`
+	LastTransition string                             `json:"last_transition,omitempty"`
+	Checklists     map[string]map[string]checkReceipt `json:"checklists,omitempty"`
+	By             map[string]string                  `json:"by,omitempty"`
+	Reverses       string                             `json:"reverses,omitempty"`
+	ReversedBy     string                             `json:"reversed_by,omitempty"`
 }
 
 // state is a record as a history row keeps it.
@@ -576,9 +578,29 @@ func changedFields(before, after *record) []string {
 	return out
 }
 
-// save writes r: an insert for a new record, else an update, with its values
-// and meta by field id.
-func (w *writeTx) save(t *Type, r *record, insert bool) error {
+// save enforces rules shared by all record changes before it writes the row.
+// The rule outcomes commit in the same transaction as the record.
+func (w *writeTx) save(t *Type, r *record, insert bool, sc Scope) error {
+	if t.rules.invalid != nil {
+		return t.rules.invalid
+	}
+	var before *record
+	if insert {
+		// Agent and flow writes in Personal are on behalf of the space's person.
+		r.Meta.Maker = w.schema.person
+	} else if len(t.rules.bookings) != 0 || len(t.rules.approvals) != 0 {
+		var err error
+		before, err = loadRecord(w.tx, w.schema, r.ID)
+		if err != nil {
+			return err
+		}
+	}
+	if err := w.recordApprovalRoute(sc, t, before, r); err != nil {
+		return err
+	}
+	if err := w.checkBookings(t, before, r, sc); err != nil {
+		return err
+	}
 	data, meta := canonicalJSON(t.encode(r.Data, r.unknown)), canonicalJSON(t.encodeMeta(r.Meta))
 	var deleted any
 	if r.DeletedAt != "" {
@@ -912,10 +934,13 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 	if err := w.checkRecord(t, r, nil); err != nil {
 		return nil, err
 	}
-	if err := w.save(t, r, true); err != nil {
+	if err := w.save(t, r, true, sc); err != nil {
 		return nil, err
 	}
-	return r, w.history(t, sc, op, "", nil, r)
+	if err := w.history(t, sc, op, "", nil, r); err != nil {
+		return nil, err
+	}
+	return r, w.assign(sc, t, r, "")
 }
 
 // nextNumber takes a sequence's next number, formatted, skipping any number
@@ -1031,7 +1056,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 			}
 			after.UpdatedAt = w.now.UTC().Format(stamp)
 			after.Rev++
-			if err := w.save(t, after, false); err != nil {
+			if err := w.save(t, after, false, sc); err != nil {
 				return err
 			}
 			if err := w.history(t, sc, OpUpdate, unfreezeNote(opts.Unfreeze, w.s, t, before), before, after); err != nil {
@@ -1086,7 +1111,7 @@ func (s *Store) Delete(sc Scope, typ string, ids []string, opts UpdateOptions) (
 			after.UpdatedAt = w.now.UTC().Format(stamp)
 			after.DeletedAt = after.UpdatedAt
 			after.Rev++
-			if err := w.save(t, after, false); err != nil {
+			if err := w.save(t, after, false, sc); err != nil {
 				return err
 			}
 			if err := w.history(t, sc, OpDelete, unfreezeNote(opts.Unfreeze, w.s, t, before), before, after); err != nil {
@@ -1314,7 +1339,7 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 					}
 				}
 			}
-			if err := w.save(t, restored, false); err != nil {
+			if err := w.save(t, restored, false, sc); err != nil {
 				return err
 			}
 			if err := w.history(t, sc, OpUndo, "undo "+batch, current, restored); err != nil {
