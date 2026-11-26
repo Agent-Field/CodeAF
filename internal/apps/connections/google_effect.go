@@ -40,6 +40,11 @@ func googleFields(object string, writing bool) []string {
 			return []string{"to", "cc", "subject", "body"}
 		}
 		return []string{"thread", "date", "subject", "snippet", "from", "to", "cc", "labels", "attachments", "sender_domain"}
+	case "attachments":
+		if writing {
+			return nil
+		}
+		return []string{"title", "mime_type", "size"}
 	case "calendar":
 		if writing {
 			return []string{"title", "start", "end", "description", "location"}
@@ -166,11 +171,11 @@ type googleEffect struct {
 func (s Service) prepareGoogleEffect(c registration, read Read, write Write, operation string, args map[string]any,
 	store *data.Store, binding data.TypeBinding, typ *data.Type) (*Effect, error) {
 	ctx := context.Background()
-	_, grant, err := s.workspace(ctx, c, read.Table, false)
+	source, grant, err := s.workspace(ctx, c, read.Table, false)
 	if err != nil {
 		return nil, err
 	}
-	c.googleGrant = grant
+	c.googleGrant, c.googleSubject = grant, source.subject
 	_, writeGrant, err := s.workspace(ctx, c, read.Table, true)
 	if err != nil {
 		return nil, err

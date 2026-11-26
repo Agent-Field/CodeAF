@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"time"
 
 	"context"
@@ -73,18 +74,13 @@ type scheduleClock struct {
 	Next time.Time `json:"next"`
 }
 
-func (e *Engine) schedules(ctx context.Context) error {
+func (e *Engine) schedules() error {
 	if e.cfg.Triggers == nil {
 		return nil
 	}
 	all, err := e.cfg.Triggers()
 	now := e.cfg.Now()
 	for _, t := range all {
-		if t.On == "connector" && e.cfg.GooglePoll != nil && schema.GoogleEvent(t.Connector, t.Event) {
-			if fireErr := e.fireGoogle(ctx, t, now); fireErr != nil {
-				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", t.App, t.ID, fireErr))
-			}
-		}
 		if t.On == "schedule" {
 			if fireErr := e.fire(t, now); fireErr != nil {
 				err = errors.Join(err, fmt.Errorf("%s schedule %s: %w", t.App, t.ID, fireErr))
@@ -310,6 +306,29 @@ func (e *Engine) commitTriggered(receipt triggerReceipt, run Run, raw json.RawMe
 	return claimed, err
 }
 
+// PollSources is separate from Dispatch so a slow source cannot block due
+// schedules or work already ready to run.
+func (e *Engine) PollSources(ctx context.Context) error {
+	if e.cfg.GooglePoll == nil || e.cfg.Triggers == nil {
+		return nil
+	}
+	e.googleClock.Lock()
+	defer e.googleClock.Unlock()
+	all, err := e.cfg.Triggers()
+	now := e.cfg.Now()
+	for _, trigger := range all {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if trigger.On == "connector" && schema.GoogleEvent(trigger.Connector, trigger.Event) {
+			if pollErr := e.fireGoogle(ctx, trigger, now); pollErr != nil {
+				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", trigger.App, trigger.ID, pollErr))
+			}
+		}
+	}
+	return err
+}
+
 func (e *Engine) fireGoogle(ctx context.Context, t Trigger, now time.Time) error {
 	if !validID(t.App) || !validID(t.ID) || t.When != "" {
 		return errors.New("invalid source trigger")
@@ -350,7 +369,7 @@ func (e *Engine) fireGoogle(ctx context.Context, t Trigger, now time.Time) error
 			}
 		}
 	}
-	if next == prev {
+	if reflect.DeepEqual(next, prev) {
 		return nil
 	}
 	e.mu.Lock()

@@ -108,6 +108,7 @@ type Engine struct {
 	journal *store.Store
 	lock    *os.File
 	// The clock serializes schedule scanning. Each runnable instance also
+	googleClock sync.Mutex
 	// claims a worker before it can make any effects.
 	clock       sync.Mutex
 	outbox      sync.Mutex
@@ -621,7 +622,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 	if err := e.lifetime.Err(); err != nil {
 		return nil, err
 	}
-	err := e.schedules(ctx)
+	err := e.schedules()
 	list := e.activeRuns()
 	return slices.DeleteFunc(list, func(r Run) bool { return !r.ready(e.cfg.Now()) }), err
 }

@@ -1,8 +1,11 @@
 package connections
 
 import (
+	"bytes"
 	"context"
+
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -105,28 +108,27 @@ func TestGoogleCalendarSyncAndStartWindow(t *testing.T) {
 	defer server.Close()
 	g := googleSource{client: server.Client(), origin: server.URL}
 	ctx := context.Background()
-	page, err := g.calendarChanges(ctx, "", "")
+	page, err := g.calendarChanges(ctx, "", "", time.Time{})
 	if err != nil || page.NextSyncToken != "calendar-1" || len(page.events()) != 1 {
 		t.Fatalf("first page=%+v err=%v", page, err)
 	}
-	page, err = g.calendarChanges(ctx, page.NextSyncToken, "")
+	page, err = g.calendarChanges(ctx, page.NextSyncToken, "", time.Time{})
 	if err != nil || page.NextSyncToken != "calendar-2" || len(page.events()) != 0 {
 		t.Fatalf("cancelled page=%+v err=%v", page, err)
 	}
-	if _, err := g.calendarChanges(ctx, "expired", ""); !errors.Is(err, ErrCursorExpired) {
+	if _, err := g.calendarChanges(ctx, "expired", "", time.Time{}); !errors.Is(err, ErrCursorExpired) {
 		t.Fatalf("expired cursor: %v", err)
 	}
-	for _, tc := range []struct {
-		now   string
-		count int
-	}{
-		{"2026-11-26T15:59:59Z", 0}, {"2026-11-26T16:00:00Z", 1}, {"2026-11-26T16:30:01Z", 0},
-	} {
-		now, _ := time.Parse(time.RFC3339, tc.now)
-		_, changes, err := g.upcomingEvents(ctx, GoogleCheckpoint{}, now, 30)
-		if err != nil || len(changes) != tc.count {
-			t.Errorf("%s: %+v %v", tc.now, changes, err)
-		}
+	before := time.Date(2026, 11, 26, 15, 59, 59, 0, time.UTC)
+	checkpoint, changes, err := g.calendarStarts(ctx, GoogleCheckpoint{}, before, 30)
+	if err != nil || len(changes) != 0 || len(checkpoint.Calendar) != 1 {
+		t.Fatalf("future event: %+v %v %v", checkpoint, changes, err)
+	}
+	// A stale client sleeping past the event still applies the incremental
+	// cancellation first, so it never starts an already cancelled meeting.
+	_, changes, err = g.calendarStarts(ctx, checkpoint, before.Add(time.Hour), 30)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("cancelled due event: %+v %v", changes, err)
 	}
 }
 
@@ -171,5 +173,94 @@ func TestGoogleBodyOnDemandAndDriveACL(t *testing.T) {
 	var service Service
 	if _, err := service.ReadGoogleContent(ctx, Query{}, "", 0); err == nil || !strings.Contains(err.Error(), "outside harness") {
 		t.Fatalf("outside harness read: %v", err)
+	}
+}
+
+func TestGoogleMailIndexRefreshesChangedMetadata(t *testing.T) {
+	var metadataReads int
+	var changed bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case gmailPath + "/profile":
+			_, _ = w.Write([]byte(`{"historyId":"19"}`))
+		case gmailPath + "/history":
+			if changed {
+				_, _ = w.Write([]byte(`{"historyId":"20","history":[{"labelsRemoved":[{"message":{"id":"m1"},"labelIds":["UNREAD"]}]}]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"historyId":"19"}`))
+			}
+		case gmailPath + "/messages":
+			_, _ = w.Write([]byte(`{"messages":[{"id":"m1"}]}`))
+		case gmailPath + "/messages/m1":
+			metadataReads++
+			raw := fixtureMessage
+			if changed {
+				raw = bytes.ReplaceAll(raw, []byte(`, "UNREAD"`), nil)
+			}
+			_, _ = w.Write(raw)
+		default:
+			t.Errorf("unexpected URL %s", req.URL.Path)
+			http.NotFound(w, req)
+		}
+	}))
+	defer server.Close()
+	place := data.NewPlace(t.TempDir(), data.Options{NoRefresh: true})
+	defer place.Close()
+	db, err := place.Main()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := googleSource{client: server.Client(), origin: server.URL}
+	ctx := context.Background()
+	read := func(want string, wantReads int) {
+		t.Helper()
+		index, key, prev, err := adapter.loadMailIndex(ctx, db, "brief", "google", "messages", "grant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _, err := adapter.indexedMail(ctx, &index, "", 10)
+		if err != nil || len(rows) != 1 || rows[0]["labels"] != want || metadataReads != wantReads {
+			t.Fatalf("rows=%+v metadata reads=%d err=%v", rows, metadataReads, err)
+		}
+		if err := saveMailIndex(db, key, prev, index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read("INBOX, UNREAD", 1)
+	read("INBOX, UNREAD", 1)
+	changed = true
+	read("INBOX", 2)
+}
+
+func TestGoogleDriveChangesRequireCurrentFileAccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/drive/v3/changes/startPageToken":
+			_, _ = w.Write([]byte(`{"startPageToken":"drive-1"}`))
+		case "/drive/v3/changes":
+			_, _ = w.Write([]byte(`{"newStartPageToken":"drive-2","changes":[
+				{"fileId":"hidden","file":{"id":"hidden","name":"Meet Transcript","mimeType":"application/vnd.google-apps.document","createdTime":"2026-11-26T10:01:00Z"}},
+				{"fileId":"visible","file":{"id":"visible","name":"Meet Transcript","mimeType":"application/vnd.google-apps.document","createdTime":"2026-11-26T10:01:00Z"}},
+				{"fileId":"removed","removed":true}
+			]}`))
+		case drivePath + "/hidden":
+			w.WriteHeader(http.StatusNotFound)
+		case drivePath + "/visible":
+			_, _ = w.Write([]byte(`{"id":"visible","name":"Meet Transcript","mimeType":"application/vnd.google-apps.document"}`))
+		default:
+			t.Errorf("unexpected URL %s", req.URL.Path)
+			http.NotFound(w, req)
+		}
+	}))
+	defer server.Close()
+	adapter := googleSource{client: server.Client(), origin: server.URL}
+	ctx := context.Background()
+	state, changes, err := adapter.driveChanges(ctx, GoogleCheckpoint{StartedAt: time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)})
+	if err != nil || state.Cursor != "drive-1" || len(changes) != 0 {
+		t.Fatalf("baseline=%+v %v %v", state, changes, err)
+	}
+	state, changes, err = adapter.driveChanges(ctx, state)
+	if err != nil || state.Cursor != "drive-2" || len(changes) != 1 || changes[0].id != "visible" {
+		t.Fatalf("changes=%+v %v %v", state, changes, err)
 	}
 }

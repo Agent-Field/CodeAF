@@ -32,7 +32,7 @@ func (s Service) ReadGoogleContent(ctx context.Context, q Query, id string, audi
 		return GoogleContent{}, err
 	}
 	read, ok := c.Reads[q.Read]
-	if c.Kind != Google || !ok || read.Table == "calendar" {
+	if c.Kind != Google || !ok || (read.Table == "calendar" || read.Table == "attachments") {
 		return GoogleContent{}, ErrRejected
 	}
 	store, binding, typ, err := s.bind(c.Config, read, false)
@@ -52,7 +52,7 @@ func (s Service) ReadGoogleContent(ctx context.Context, q Query, id string, audi
 	if err != nil {
 		return GoogleContent{}, err
 	}
-	c.googleGrant = grant
+	c.googleGrant, c.googleSubject = grant, source.subject
 	raw, err := effectKey(store, c, read, binding, id)
 	if err != nil {
 		return GoogleContent{}, err
@@ -74,6 +74,9 @@ func (s Service) ReadGoogleContent(ctx context.Context, q Query, id string, audi
 	}
 	if _, current, currentType, err := s.bind(c.Config, read, false); err != nil || current != binding || currentType != typ {
 		return GoogleContent{}, ErrSourcePermission
+	}
+	if err := store.AuditPolicy(q.App, typ.ID, "source_content_read"); err != nil {
+		return GoogleContent{}, err
 	}
 	return GoogleContent{Text: text, Class: "pii"}, nil
 }

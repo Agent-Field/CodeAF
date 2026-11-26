@@ -505,6 +505,7 @@ func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, fil
 // Effective text equality matches SQLite's ASCII-only case folding. Any
 // condition with additional syntax stays in the shared evaluator.
 func textFilters(r residencyRoute, ir data.QueryIR) map[string]any {
+	// Gmail search and the record evaluator have different semantics.
 	if r.config.Kind == Google {
 		return nil
 	}

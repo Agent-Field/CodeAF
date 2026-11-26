@@ -81,8 +81,8 @@ func (b *appBackend) appModelAuthorizer(app string) func(context.Context, provid
 			return classes, nil
 		},
 		personal: func(destination provider.ModelDestination) bool {
-			// A connected app can carry source data in its prior step results.
-			// Keep approvals explicit whenever that provenance is possible.
+			// Personal Google sources use the person's own model unless the
+			// operator sets a policy file. Other source routes need approval.
 			sources, err := b.appConnections().List(app)
 			return err == nil && !slices.ContainsFunc(sources, func(source connections.Summary) bool {
 				return source.Kind != connections.Google

@@ -36,6 +36,9 @@ func (g workspaceGoogle) Service() Service {
 		}
 	}
 	id := "google-workspace-" + g.source
+	if scope == "" {
+		return Service{}
+	}
 	if g.write {
 		id += "-write"
 	}
@@ -84,28 +87,28 @@ func (m *Manager) BeginWorkspaceAuth(ctx context.Context, source string, write b
 }
 
 // WorkspaceClient returns the renewed client and its opaque grant generation.
-func (m *Manager) WorkspaceClient(ctx context.Context, source string, write bool) (*http.Client, string, error) {
+func (m *Manager) WorkspaceClient(ctx context.Context, source string, write bool) (*http.Client, string, string, error) {
 	g := workspaceGoogle{source: source, write: write}
 	manager, err := m.workspace(g)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	entry, ok := manager.standing(g)
-	if !ok || entry.GrantID == "" {
-		return nil, "", fmt.Errorf("connect Google %s for this operation", source)
+	if !ok || entry.GrantID == "" || entry.Subject == "" {
+		return nil, "", "", fmt.Errorf("connect Google %s for this operation", source)
 	}
 	if write {
 		read := workspaceGoogle{source: source}
 		reader, readErr := m.workspace(read)
 		if readErr != nil {
-			return nil, "", readErr
+			return nil, "", "", readErr
 		}
 		if base, ok := reader.standing(read); !ok || entry.Subject == "" || base.Subject != entry.Subject {
-			return nil, "", errors.New("Connect write access with the same Google account as read access.")
+			return nil, "", "", errors.New("Connect write access with the same Google account as read access.")
 		}
 	}
 	client, err := manager.client(ctx, g, entry)
-	return client, entry.GrantID, err
+	return client, entry.GrantID, entry.Subject, err
 }
 
 func googleAuthError(err error) error {

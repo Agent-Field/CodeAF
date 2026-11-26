@@ -39,17 +39,19 @@ type Config struct {
 // Read maps fields on a bound app type to source columns or JSON properties.
 // Match maps arguments to SQL equality predicates or HTTP query parameters.
 type Read struct {
-	GoogleQuery string            `json:"google_query,omitempty"`
-	Type        string            `json:"type"`
-	Table       string            `json:"table,omitempty"`
-	Path        string            `json:"path,omitempty"`
-	Rows        string            `json:"rows,omitempty"`
-	Key         string            `json:"key"`
-	Version     string            `json:"version,omitempty"`
-	Fields      map[string]string `json:"fields"`
-	Match       map[string]string `json:"match,omitempty"`
-	Residency   *ResidencyConfig  `json:"residency,omitempty"`
-	OrderBy     string            `json:"order_by,omitempty"`
+	GoogleIndex          bool              `json:"google_index,omitempty"`
+	GoogleLinkIdentities bool              `json:"google_link_identities,omitempty"`
+	GoogleQuery          string            `json:"google_query,omitempty"`
+	Type                 string            `json:"type"`
+	Table                string            `json:"table,omitempty"`
+	Path                 string            `json:"path,omitempty"`
+	Rows                 string            `json:"rows,omitempty"`
+	Key                  string            `json:"key"`
+	Version              string            `json:"version,omitempty"`
+	Fields               map[string]string `json:"fields"`
+	Match                map[string]string `json:"match,omitempty"`
+	Residency            *ResidencyConfig  `json:"residency,omitempty"`
+	OrderBy              string            `json:"order_by,omitempty"`
 }
 
 // ResidencyConfig admits a Personal fixed export to the type's existing
@@ -124,10 +126,10 @@ func (c Config) validate() error {
 			return errors.New("a read needs a name, bound record type, key and field mapping")
 		}
 		if c.Kind == Google {
-			if !slices.Contains([]string{"gmail", "calendar", "drive", "transcripts"}, read.Table) ||
+			if !slices.Contains([]string{"gmail", "attachments", "calendar", "drive", "transcripts"}, read.Table) ||
 				read.Path != "" || read.Key != "id" || read.Version != "" && read.Version != "version" ||
 				read.Rows != "" || read.OrderBy != "" || read.Residency != nil ||
-				len(read.GoogleQuery) > maxCell || read.GoogleQuery != "" && read.Table != "gmail" ||
+				len(read.GoogleQuery) > maxCell || (read.GoogleIndex || read.GoogleQuery != "") && read.Table != "gmail" ||
 				len(read.Match) > 1 {
 				return errors.New("a Google read needs a known Workspace object and canonical field mapping")
 			}
@@ -136,7 +138,7 @@ func (c Config) validate() error {
 					return errors.New("only Gmail accepts a search query")
 				}
 			}
-		} else if read.GoogleQuery != "" {
+		} else if read.GoogleQuery != "" || read.GoogleIndex || read.GoogleLinkIdentities {
 			return ErrRejected
 		} else if c.Kind == HTTP {
 			if !fixedPath(read.Path) || read.Table != "" || read.OrderBy != "" || (read.Rows != "" && !identifier.MatchString(read.Rows)) {
@@ -196,7 +198,7 @@ func (c Config) validate() error {
 			return errors.New("a write needs a name, read binding and writable fields")
 		}
 		if c.Kind == Google {
-			if write.Path != "" || len(write.Response) != 0 || !googleOperation(read.Table, name) {
+			if write.Path != "" || len(write.Response) != 0 || !googleOperation(read.Table, name) || name == "update-event" && read.Version == "" {
 				return errors.New("choose a supported Google write for this read")
 			}
 		} else if c.Kind == HTTP {

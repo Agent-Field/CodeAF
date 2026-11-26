@@ -17,7 +17,7 @@ func appConnectCommand(profile string, args []string, out io.Writer) error {
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
-	if flags.NArg() != 2 || flags.Arg(0) != "google" {
+	if flags.NArg() < 1 || flags.NArg() > 2 || flags.Arg(0) != "google" || flags.NArg() == 1 && *write {
 		return errors.New("usage: codeaf app connect google <gmail|calendar|drive> [--write] [--no-browser]")
 	}
 	manager := v3Connect(profile)
@@ -26,23 +26,29 @@ func appConnectCommand(profile string, args []string, out io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	source := flags.Arg(1)
-	flow, err := manager.BeginWorkspaceAuth(ctx, source, *write)
-	if err != nil {
-		return err
+	sources := []string{flags.Arg(1)}
+	if flags.NArg() == 1 {
+		sources = []string{"gmail", "calendar"}
 	}
-	defer flow.Cancel()
-	fmt.Fprintln(out, flow.URL())
-	if !*noBrowser && connectOpen(flow.URL()) != nil {
-		fmt.Fprintln(out, opener.BrowserFailureWord)
-	}
-	if _, err := flow.Wait(ctx); err != nil {
-		return err
-	}
-	if *write {
-		fmt.Fprintf(out, "Google %s write access is connected.\n", source)
-	} else {
-		fmt.Fprintf(out, "Google %s read access is connected.\n", source)
+	for _, source := range sources {
+		flow, err := manager.BeginWorkspaceAuth(ctx, source, *write)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, flow.URL())
+		if !*noBrowser && connectOpen(flow.URL()) != nil {
+			fmt.Fprintln(out, opener.BrowserFailureWord)
+		}
+		_, err = flow.Wait(ctx)
+		flow.Cancel()
+		if err != nil {
+			return err
+		}
+		access := "read"
+		if *write {
+			access = "write"
+		}
+		fmt.Fprintf(out, "Google %s %s access is connected.\n", source, access)
 	}
 	return nil
 }

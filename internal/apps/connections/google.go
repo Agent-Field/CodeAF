@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -35,8 +36,9 @@ var (
 )
 
 type googleSource struct {
-	client *http.Client
-	origin string
+	client  *http.Client
+	origin  string
+	subject string
 }
 
 func (g googleSource) request(ctx context.Context, method, path string, query url.Values, body []byte, version string) ([]byte, int, error) {
@@ -122,7 +124,7 @@ func (s Service) workspace(ctx context.Context, c registration, object string, w
 		return googleSource{}, "", ErrSourcePermission
 	}
 	if c.GoogleFixture {
-		return googleSource{client: googleFixtureClient()}, "fixture", nil
+		return googleSource{client: googleFixtureClient(), subject: "fixture"}, "fixture", nil
 	}
 	if s.Google == nil {
 		return googleSource{}, "", ErrPersonCredential
@@ -131,16 +133,16 @@ func (s Service) workspace(ctx context.Context, c registration, object string, w
 	if err != nil {
 		return googleSource{}, "", ErrPersonCredential
 	}
-	client, grant, err := manager.WorkspaceClient(ctx, googleService(object), write)
+	client, grant, subject, err := manager.WorkspaceClient(ctx, googleService(object), write)
 	if err != nil {
-		return googleSource{}, "", ErrPersonCredential
+		return googleSource{}, "", fmt.Errorf("%w: %s", ErrPersonCredential, err)
 	}
-	return googleSource{client: client}, grant, nil
+	return googleSource{client: client, subject: subject}, grant, nil
 }
 
 func googleService(object string) string {
 	switch object {
-	case "gmail":
+	case "gmail", "attachments":
 		return "gmail"
 	case "calendar":
 		return "calendar"
@@ -167,9 +169,30 @@ func (g googleSource) rows(ctx context.Context, object string, args map[string]a
 		}
 		rows, err := g.messages(ctx, ids)
 		return rows, next != "", err
+	case "attachments":
+		ids, next, err := g.gmailIDs(ctx, "has:attachment", "", limit)
+		if err != nil {
+			return nil, false, err
+		}
+		messages, err := g.messages(ctx, ids)
+		if err != nil {
+			return nil, false, err
+		}
+		var docs []map[string]any
+		for _, message := range messages {
+			items, err := googleAttachments(message)
+			if err != nil {
+				return nil, false, err
+			}
+			docs = append(docs, items...)
+			if len(docs) > limit {
+				return docs[:limit], true, nil
+			}
+		}
+		return docs, next != "", nil
 	case "calendar":
 		now := time.Now().UTC()
-		page, err := g.calendar(ctx, url.Values{"maxResults": {strconv.Itoa(min(limit, 250))}, "singleEvents": {"true"},
+		page, err := g.calendar(ctx, url.Values{"maxResults": {strconv.Itoa(limit)}, "singleEvents": {"true"},
 			"timeMin": {now.Format(time.RFC3339)}, "timeMax": {now.AddDate(0, 0, 7).Format(time.RFC3339)}, "orderBy": {"startTime"}})
 		return page.events(), page.NextPageToken != "", err
 	case "drive", "transcripts":
@@ -177,27 +200,49 @@ func (g googleSource) rows(ctx context.Context, object string, args map[string]a
 		if object == "transcripts" {
 			q += " and mimeType = 'application/vnd.google-apps.document' and name contains 'Transcript'"
 		}
+		return g.driveRows(ctx, object, q, limit)
+	}
+	return nil, false, ErrRejected
+}
+
+func (g googleSource) driveRows(ctx context.Context, object, search string, limit int) ([]map[string]any, bool, error) {
+	var rows []map[string]any
+	var token string
+	for range 10 {
 		var page struct {
 			Files      []googleFile `json:"files"`
 			Next       string       `json:"nextPageToken"`
 			Incomplete bool         `json:"incompleteSearch"`
 		}
-		_, err := g.get(ctx, drivePath, url.Values{
-			"pageSize": {strconv.Itoa(min(limit, 100))}, "q": {q}, "fields": {"nextPageToken,incompleteSearch,files(" + driveFields + ")"},
+		query := url.Values{
+			"pageSize": {strconv.Itoa(min(limit-len(rows), 100))}, "q": {search},
+			"fields":                    {"nextPageToken,incompleteSearch,files(" + driveFields + ")"},
 			"includeItemsFromAllDrives": {"true"}, "supportsAllDrives": {"true"},
-		}, &page)
+		}
+		if token != "" {
+			query.Set("pageToken", token)
+		}
+		_, err := g.get(ctx, drivePath, query, &page)
+		if err != nil {
+			return nil, false, err
+		}
 		if page.Incomplete {
 			return nil, false, ErrUnavailable
 		}
-		var rows []map[string]any
 		for _, file := range page.Files {
 			if !file.Trashed && (object != "transcripts" || file.transcript()) {
 				rows = append(rows, file.row())
 			}
+			if len(rows) > limit {
+				return rows[:limit], true, nil
+			}
 		}
-		return rows, page.Next != "", err
+		token = page.Next
+		if len(rows) == limit || token == "" {
+			return rows, token != "", nil
+		}
 	}
-	return nil, false, ErrRejected
+	return nil, false, ErrTooLarge
 }
 
 func (g googleSource) point(ctx context.Context, object, id string) ([]map[string]any, bool, error) {
@@ -205,6 +250,25 @@ func (g googleSource) point(ctx context.Context, object, id string) ([]map[strin
 	var err error
 	var row map[string]any
 	switch object {
+	case "attachments":
+		parent, _, found := strings.Cut(id, ".")
+		if !found || !googleID.MatchString(parent) {
+			return nil, false, ErrRejected
+		}
+		messages, _, err := g.point(ctx, "gmail", parent)
+		if err != nil || len(messages) == 0 {
+			return nil, false, err
+		}
+		items, err := googleAttachments(messages[0])
+		if err != nil {
+			return nil, false, err
+		}
+		for _, item := range items {
+			if item["id"] == id {
+				return []map[string]any{item}, false, nil
+			}
+		}
+		return nil, false, nil
 	case "gmail":
 		var msg googleMessage
 		status, err = g.get(ctx, gmailPath+"/messages/"+id, gmailMetadataQuery(), &msg)
@@ -322,6 +386,27 @@ func (p googleMessagePart) attachments(out *[]map[string]any) {
 	for _, child := range p.Parts {
 		child.attachments(out)
 	}
+}
+
+func googleAttachments(message map[string]any) ([]map[string]any, error) {
+	var parts []struct {
+		Part     string `json:"part"`
+		Name     string `json:"name"`
+		MimeType string `json:"mime_type"`
+		Size     int    `json:"size"`
+	}
+	if json.Unmarshal([]byte(googleText(message, "attachments")), &parts) != nil {
+		return nil, ErrInvalidRows
+	}
+	items := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		if part.Part != "" {
+			id := googleText(message, "id") + "." + part.Part
+			items = append(items, map[string]any{"id": id, "version": message["version"],
+				"title": part.Name, "mime_type": part.MimeType, "size": part.Size})
+		}
+	}
+	return items, nil
 }
 
 func (m googleMessage) row() map[string]any {

@@ -83,7 +83,7 @@ type Page struct {
 // The profile alias is selected by callers. The immutable registration ID
 // names the identity namespace even when a second profile uses the same alias.
 type registration struct {
-	googleGrant string
+	googleGrant, googleSubject string
 	Config
 	Binding string `json:"binding"`
 }
@@ -320,10 +320,15 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			return Page{}, ErrSourcePermission
 		}
 		google, c.googleGrant, err = s.workspace(ctx, c, read.Table, false)
+		c.googleSubject = google.subject
 		if err != nil {
 			return Page{}, err
 		}
-		if _, ok := args["q"]; !ok && read.GoogleQuery != "" {
+		if query, ok := args["q"]; ok {
+			if _, ok := query.(string); !ok {
+				return Page{}, ErrRejected
+			}
+		} else if read.GoogleQuery != "" {
 			args["q"] = read.GoogleQuery
 		}
 	}
@@ -345,9 +350,18 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	observed := time.Now().UTC()
 	var rows []map[string]any
 	var more bool
+	var index mailIndex
+	var indexKey, previous string
 	switch c.Kind {
 	case Google:
-		rows, more, err = google.rows(ctx, read.Table, args, q.Limit)
+		if read.Table == "gmail" && q.id == "" && read.GoogleIndex {
+			index, indexKey, previous, err = google.loadMailIndex(ctx, store, c.App, c.ID, q.Read, c.Binding+"/"+c.googleGrant)
+			if err == nil {
+				rows, more, err = google.indexedMail(ctx, &index, googleText(args, "q"), q.Limit)
+			}
+		} else {
+			rows, more, err = google.rows(ctx, read.Table, args, q.Limit)
+		}
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
@@ -381,6 +395,11 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	current, currentType, err := store.LiveBinding(data.Scope{App: q.App}, read.Type, false)
 	if err != nil || current != binding || currentType != typ {
 		return Page{}, errors.New("the type binding changed during the read")
+	}
+	if indexKey != "" {
+		if err := saveMailIndex(store, indexKey, previous, index); err != nil {
+			return Page{}, err
+		}
 	}
 	page := Page{
 		HasMore: more,
@@ -520,7 +539,7 @@ func encodeSourceKey(value any) (string, error) {
 func externalKey(c registration, read Read, key string) data.ExternalKey {
 	object := read.Table
 	if c.Kind == Google {
-		object += "#" + c.googleGrant
+		object += "#" + c.googleSubject
 	}
 	if c.Kind == HTTP {
 		object = read.Path + "#" + read.Rows

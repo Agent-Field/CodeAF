@@ -2,7 +2,6 @@ package connections
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -27,7 +26,7 @@ func googleReferenceColumn(object, column string) data.CommonTypeKey {
 
 func googleSourceField(read Read, typ *data.Type, name string) (*data.Field, error) {
 	f := typ.Fields[name]
-	if f != nil && (f.Type == data.TypeRef || f.Type == data.TypeRefs) &&
+	if read.GoogleLinkIdentities && f != nil && (f.Type == data.TypeRef || f.Type == data.TypeRefs) &&
 		!f.Hidden && !f.Masked && f.Computed == "" && googleReferenceColumn(read.Table, read.Fields[name]) != "" {
 		return f, nil
 	}
@@ -37,8 +36,11 @@ func googleSourceField(read Read, typ *data.Type, name string) (*data.Field, err
 func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read Read, f *data.Field, raw map[string]any) (any, error) {
 	column := read.Fields[f.Name]
 	common := googleReferenceColumn(read.Table, column)
-	_, target, err := store.LiveBinding(sc, f.To, false)
-	if err != nil || target.Common != common || target.HasRowPolicy() || googleProtectedFields(target) {
+	target, err := store.Type(sc, f.To)
+	if err != nil {
+		return nil, ErrSourcePermission
+	}
+	if target.Common != common || target.HasRowPolicy() || googleProtectedFields(target) {
 		return nil, ErrSourcePermission
 	}
 	var keys []data.ExternalKey
@@ -55,14 +57,16 @@ func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read
 			}
 		}
 	default:
-		var attachments []struct{ Part string }
-		if json.Unmarshal([]byte(googleText(raw, column)), &attachments) != nil {
-			return nil, ErrInvalidRows
+		attachments, err := googleAttachments(raw)
+		if err != nil {
+			return nil, err
 		}
 		for _, attachment := range attachments {
-			if attachment.Part != "" {
-				keys = append(keys, externalKey(c, read, "attachment:"+googleText(raw, "id")+":"+attachment.Part))
+			key, err := encodeSourceKey(attachment["id"])
+			if err != nil {
+				return nil, err
 			}
+			keys = append(keys, externalKey(c, Read{Table: "attachments", Key: "id"}, key))
 		}
 	}
 	ids := make([]string, 0, len(keys))
@@ -77,6 +81,9 @@ func googleReferenceValue(store *data.Store, sc data.Scope, c registration, read
 			return nil, err
 		}
 		if !found {
+			if err := store.AuditPolicy(c.App, target.ID, "source_identity_linked"); err != nil {
+				return nil, err
+			}
 			id, err = store.LinkIdentity(common, key, "")
 			if err != nil {
 				return nil, err

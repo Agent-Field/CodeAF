@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -16,8 +18,12 @@ const googlePollInterval = 30 * time.Second
 // GoogleCheckpoint is stored by the run clock. Page cursors and grants are
 // opaque. No source bodies or rows are retained by the run clock.
 type GoogleCheckpoint struct {
-	Grant, Cursor, Page, Window string
-	StartedAt, CheckedAt        time.Time
+	Grant     string               `json:"grant,omitempty"`
+	Cursor    string               `json:"cursor,omitempty"`
+	Page      string               `json:"page,omitempty"`
+	Calendar  map[string]time.Time `json:"calendar,omitempty"`
+	StartedAt time.Time            `json:"started_at,omitzero"`
+	CheckedAt time.Time            `json:"checked_at,omitzero"`
 }
 
 type GoogleEvent struct {
@@ -37,13 +43,15 @@ type googleChange struct {
 // It returns only record references so runs cannot transport source PII as
 // trigger payloads to an outside harness.
 func (s Service) PollGoogle(ctx context.Context, trigger GoogleTrigger, checkpoint GoogleCheckpoint, now time.Time) (GoogleCheckpoint, []GoogleEvent, error) {
+	now = now.UTC()
 	c, err := s.scoped(trigger.App, trigger.Connection)
 	if err != nil {
 		return checkpoint, nil, err
 	}
 	read, ok := c.Reads[trigger.Read]
 	if c.Kind != Google || !ok || googleService(read.Table) != trigger.Source ||
-		trigger.Event == "transcript.created" && read.Table != "transcripts" {
+		trigger.Event == "transcript.created" && read.Table != "transcripts" ||
+		trigger.Event == "message.received" && read.Table != "gmail" {
 		return checkpoint, nil, ErrRejected
 	}
 	if !checkpoint.CheckedAt.IsZero() && now.Before(checkpoint.CheckedAt.Add(googlePollInterval)) && checkpoint.Page == "" {
@@ -62,7 +70,7 @@ func (s Service) PollGoogle(ctx context.Context, trigger GoogleTrigger, checkpoi
 	if err != nil {
 		return checkpoint, nil, err
 	}
-	c.googleGrant = grant
+	c.googleGrant, c.googleSubject = grant, source.subject
 	grantKey := fmt.Sprintf("%x", sha256.Sum256([]byte(c.Binding+"/"+grant+"/"+trigger.Query+"/"+strconv.Itoa(trigger.LeadMinutes))))
 	if checkpoint.Grant != grantKey {
 		checkpoint = GoogleCheckpoint{Grant: grantKey, StartedAt: now}
@@ -71,7 +79,11 @@ func (s Service) PollGoogle(ctx context.Context, trigger GoogleTrigger, checkpoi
 	if errors.Is(err, ErrCursorExpired) {
 		// Expired authority requires a fresh baseline. Existing remote rows
 		// must not be mistaken for new records after that reset.
-		next = GoogleCheckpoint{Grant: grantKey, StartedAt: now}
+		since := now
+		if trigger.Source == "calendar" && !checkpoint.CheckedAt.IsZero() {
+			since = checkpoint.CheckedAt
+		}
+		next = GoogleCheckpoint{Grant: grantKey, StartedAt: since}
 		next, changes, err = source.poll(ctx, trigger, next, now)
 	}
 	if err != nil {
@@ -109,7 +121,7 @@ func (g googleSource) poll(ctx context.Context, t GoogleTrigger, c GoogleCheckpo
 	case "gmail.message.received":
 		return g.gmailChanges(ctx, c, t.Query)
 	case "calendar.event.starts":
-		return g.upcomingEvents(ctx, c, now, t.LeadMinutes)
+		return g.calendarStarts(ctx, c, now, t.LeadMinutes)
 	case "drive.transcript.created":
 		return g.driveChanges(ctx, c)
 	default:
@@ -161,7 +173,7 @@ func (g googleSource) gmailChanges(ctx context.Context, c GoogleCheckpoint, quer
 		// new-message history can start a run, even for a broad query.
 		var after string
 		for range 5 {
-			ids, next, err := g.gmailIDs(ctx, query+" after:"+strconv.FormatInt(c.StartedAt.Unix(), 10), after, maxRows)
+			ids, next, err := g.gmailIDs(ctx, query, after, maxRows)
 			if err != nil {
 				return c, nil, err
 			}
@@ -190,43 +202,65 @@ func (g googleSource) gmailChanges(ctx context.Context, c GoogleCheckpoint, quer
 	return c, matched, nil
 }
 
-func (g googleSource) upcomingEvents(ctx context.Context, c GoogleCheckpoint, now time.Time, leadMinutes int) (GoogleCheckpoint, []googleChange, error) {
+const maxTrackedCalendarEvents = 5000
+
+// calendarStarts applies a page of events and keeps only their start times.
+// A change or cancellation replaces prior timing before any due event fires.
+func (g googleSource) calendarStarts(ctx context.Context, c GoogleCheckpoint, now time.Time, leadMinutes int) (GoogleCheckpoint, []googleChange, error) {
 	if leadMinutes < 1 || leadMinutes > 1440 {
 		return c, nil, ErrRejected
 	}
-	if c.Page == "" {
-		c.Window = now.UTC().Format(time.RFC3339)
+	if c.StartedAt.IsZero() {
+		c.StartedAt = now
 	}
-	from, err := time.Parse(time.RFC3339, c.Window)
-	if err != nil {
-		return c, nil, ErrInvalidRows
-	}
-	to := from.Add(time.Duration(leadMinutes)*time.Minute + time.Second)
-	query := url.Values{"singleEvents": {"true"}, "timeMin": {from.Format(time.RFC3339)}, "timeMax": {to.Format(time.RFC3339)}, "maxResults": {"100"}}
-	if c.Page != "" {
-		query.Set("pageToken", c.Page)
-	}
-	page, err := g.calendar(ctx, query)
+	page, err := g.calendarChanges(ctx, c.Cursor, c.Page, c.StartedAt)
 	if err != nil {
 		return c, nil, err
 	}
-	var changes []googleChange
-	for _, e := range page.Items {
-		at, err := time.Parse(time.RFC3339, e.Start.DateTime)
-		if err == nil && e.Status != "cancelled" && !at.Before(now) && at.Before(to) {
-			changes = append(changes, googleChange{id: e.ID, version: at.UTC().Format(time.RFC3339)})
+	tracked := maps.Clone(c.Calendar)
+	if tracked == nil {
+		tracked = make(map[string]time.Time)
+	}
+	for _, event := range page.Items {
+		at, err := time.Parse(time.RFC3339, event.Start.DateTime)
+		if err != nil || event.Status == "cancelled" || at.Before(c.StartedAt) {
+			delete(tracked, event.ID)
+		} else {
+			tracked[event.ID] = at
 		}
 	}
-	c.Page = page.NextPageToken
+	if len(tracked) > maxTrackedCalendarEvents {
+		return c, nil, ErrTooLarge
+	}
+	c.Calendar, c.Page = tracked, page.NextPageToken
+	if c.Page != "" {
+		// A later page can cancel an event in this batch. Wait for the
+		// final page before evaluating which events are due.
+		return c, nil, nil
+	}
+	if page.NextSyncToken == "" {
+		return c, nil, ErrInvalidRows
+	}
+	c.Cursor = page.NextSyncToken
+	due := now.Add(time.Duration(leadMinutes) * time.Minute)
+	var changes []googleChange
+	for _, id := range slices.Sorted(maps.Keys(tracked)) {
+		if at := tracked[id]; !at.After(due) {
+			changes = append(changes, googleChange{id: id, version: at.UTC().Format(time.RFC3339Nano)})
+			delete(tracked, id)
+		}
+	}
 	return c, changes, nil
 }
 
-// calendarChanges supports an independent full or incremental calendar scan.
-// The caller must commit the final nextSyncToken only after all pages apply.
-func (g googleSource) calendarChanges(ctx context.Context, syncToken, pageToken string) (googleCalendarPage, error) {
+// calendarChanges keeps the initial query frozen until its last page;
+// Google rejects timeMin on incremental requests.
+func (g googleSource) calendarChanges(ctx context.Context, syncToken, pageToken string, since time.Time) (googleCalendarPage, error) {
 	q := url.Values{"singleEvents": {"true"}, "showDeleted": {"true"}, "maxResults": {"100"}}
 	if syncToken != "" {
 		q.Set("syncToken", syncToken)
+	} else {
+		q.Set("timeMin", since.UTC().Format(time.RFC3339))
 	}
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)
