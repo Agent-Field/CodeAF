@@ -61,6 +61,9 @@ func (c *checker) designCollection(s *Screen, n *Node, q *QueryIR, r Recipe) {
 		q.Select = slices.Clone(columns)
 	}
 	views := []string{r.As}
+	if r.As == "table" {
+		views[0] = "list"
+	}
 	if managed && r.As != "board" {
 		views = append(views, "board")
 		n.Props["board_by"] = life.Field

@@ -8,23 +8,15 @@ import (
 )
 
 // The same instruction fragment is available to the Builder and its harness.
-const archetypeInstructions = `Start each work screen with an archetype. Use recipe with kind "add-screen",
-as the archetype, id and title for the job, record for the main type, fields for
-record facts, and slots for the remaining inputs. Call parts with
-{"for":"add-screen/<archetype>"} to read the nearest checked example.
+const archetypeInstructions = `Start work screens with an add-screen recipe. Set as to queue-detail (triage),
+brief (today's priorities), board-detail (stages), dashboard (metrics),
+record (details), inbox-thread (messages), agenda (schedule), or canvas-visual
+(visual workspace). Read parts with {"for":"add-screen/<archetype>"} for the
+nearest gallery example. Use slots for each job's inputs.
 
-Choose queue-detail for ranked triage, brief for a morning summary and what
-needs attention, board-detail for work that moves through stages, dashboard
-for metrics and exceptions, record for a full record workspace, inbox-thread
-for customer conversations, agenda for a schedule, and canvas-visual for work
-centered on a map, timeline, diagram, or canvas.
-
-For a Brief, lead with one useful summary. Put a ranked queue beside the
-agenda and what changed. Use the sort slot to rank the queue by a field. Give short collections a compact section and a
-specific name. Sections describe jobs such as Needs review or Handover. Use
-one signature visual tied to the work, such as evidence, a schedule, or a
-trend with its target. Keep the rows readable in Dark, Black, and Light at
-both 800 and 1120 px.`
+Name sections for jobs. Give each app a visual fitted to its data. For a brief,
+lead with a summary and pair a ranked attention list with the day agenda and
+recent changes. Check Dark, Black, and Light at 800 and 1120 px.`
 
 func archetypeExample(archetype string) (json.RawMessage, error) {
 	var example, screen string
