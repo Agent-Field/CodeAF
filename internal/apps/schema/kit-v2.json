@@ -2067,6 +2067,8 @@
             "minItems": 1,
             "uniqueItems": true
           },
+          "owner": { "type": "string" },
+          "due": { "type": "string" },
           "reason": {
             "type": "string"
           },
@@ -2498,6 +2500,9 @@
           "format": {
             "enum": ["number", "money", "percent"]
           },
+          "context": { "type": "string" },
+          "highlight": { "type": "string" },
+          "scale": { "enum": ["linear", "sqrt"] },
           "target": {
             "type": "number"
           },

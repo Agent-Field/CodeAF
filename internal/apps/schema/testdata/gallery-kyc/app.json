@@ -135,7 +135,7 @@
           },
           {
             "id": "checker",
-            "label": "Independent reviewer",
+            "label": "Checker",
             "person": "$record.reviewer"
           }
         ],

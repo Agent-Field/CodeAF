@@ -10,6 +10,8 @@ import (
 type ScreenSlots struct {
 	Agenda      *ScreenAgenda     `json:"agenda,omitempty"`
 	Reason      string            `json:"reason,omitempty"`
+	Owner       string            `json:"owner,omitempty"`
+	Due         string            `json:"due,omitempty"`
 	Summary     string            `json:"summary,omitempty"`
 	State       string            `json:"state,omitempty"`
 	Start       string            `json:"start,omitempty"`
@@ -47,22 +49,25 @@ type ScreenCollection struct {
 }
 
 type ScreenMetric struct {
-	Format string           `json:"format,omitempty"`
-	Target *float64         `json:"target,omitempty"`
-	Limit  *float64         `json:"limit,omitempty"`
-	Label  string           `json:"label"`
-	Op     string           `json:"op"`
-	Field  string           `json:"field,omitempty"`
-	Where  []QueryPredicate `json:"where,omitempty"`
+	Context string           `json:"context,omitempty"`
+	Format  string           `json:"format,omitempty"`
+	Target  *float64         `json:"target,omitempty"`
+	Limit   *float64         `json:"limit,omitempty"`
+	Label   string           `json:"label"`
+	Op      string           `json:"op"`
+	Field   string           `json:"field,omitempty"`
+	Where   []QueryPredicate `json:"where,omitempty"`
 }
 
 type ScreenVisual struct {
-	Kind    string `json:"kind"`
-	Title   string `json:"title"`
-	Group   string `json:"group,omitempty"`
-	Value   string `json:"value,omitempty"`
-	Content string `json:"content,omitempty"`
-	Field   string `json:"field,omitempty"`
+	Highlight string `json:"highlight,omitempty"`
+	Scale     string `json:"scale,omitempty"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	Group     string `json:"group,omitempty"`
+	Value     string `json:"value,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Field     string `json:"field,omitempty"`
 }
 
 func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
@@ -177,6 +182,9 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			}
 			key := fmt.Sprintf("metric-%d", i+1)
 			props := map[string]any{"kind": "metric", "title": metric.Label}
+			if metric.Context != "" {
+				props["context"] = metric.Context
+			}
 			if metric.Format != "" {
 				props["format"] = metric.Format
 			}
@@ -209,6 +217,20 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		queue := collection("work", view, mode, true)
 		if r.As == "brief" {
 			queue.Label = "Needs you"
+			if slots.Owner != "" {
+				field := fields[slots.Owner]
+				if field.Masked || (field.Type != "person" && field.Type != "ref" && field.Type != "text") {
+					return nil, fmt.Errorf("choose a readable person, reference or text field for the owner slot")
+				}
+				queue.Props["owner"] = slots.Owner
+			}
+			if slots.Due != "" {
+				field := fields[slots.Due]
+				if field.Masked || (field.Type != "date" && field.Type != "datetime") {
+					return nil, fmt.Errorf("choose a readable date for the due slot")
+				}
+				queue.Props["due"] = slots.Due
+			}
 			reason := slots.Reason
 			if reason == "" && fields["reason"].Type != "" {
 				reason = "reason"
@@ -378,6 +400,12 @@ func (c *checker) screenVisual(s *Screen, record, selected string, v ScreenVisua
 		n.Part = "Chart"
 		n.Bind = &Bind{Records: record, View: n.ID}
 		n.Props = map[string]any{"kind": v.Kind, "x": v.Group, "title": v.Title}
+		if v.Highlight != "" {
+			n.Props["highlight"] = v.Highlight
+		}
+		if v.Scale != "" {
+			n.Props["scale"] = v.Scale
+		}
 		if v.Value != "" {
 			n.Props["y"] = v.Value
 		}
