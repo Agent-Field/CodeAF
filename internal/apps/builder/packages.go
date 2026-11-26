@@ -183,6 +183,8 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 		if err != nil {
 			return Proposal{}, err
 		}
+		// Show the signed upstream even though the fork itself is packed locally.
+		source = *fork.Source
 	}
 	if app != "" {
 		files, card.Package.Conflicts, err = apppackage.Merge(edit.Base, live.Files(), upstream, nil)

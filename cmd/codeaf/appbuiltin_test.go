@@ -37,6 +37,10 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 		if live.Meta.Name != entry.Name || live.Meta.Lineage.Source.Hash != entry.Hash {
 			t.Fatalf("installed %s has lineage %+v", entry.Name, live.Meta.Lineage)
 		}
+		app, _, err := b.appAssistantDefinition(entry.ID)
+		if err != nil || app.Agent.Name != entry.Name+" agent" {
+			t.Fatalf("installed %s has no named assistant: %v", entry.Name, err)
+		}
 	}
 	if !slices.Equal(names, []string{"Canvas", "Docs", "Sheets", "Slides"}) {
 		t.Fatalf("Kit templates: %v", names)
@@ -100,9 +104,17 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 	if !found {
 		t.Fatalf("record edit has no agent provenance: edit %s, history %+v", edited, history.History)
 	}
+	call("agent_grant", appwire.AppAgentGrant{App: docs, Agent: docs, Group: "data", ID: "library/listed", Allowed: true})
+	read := call("query", map[string]any{"app": docs, "params": map[string]string{"view": "library/listed"}})
+	if !strings.Contains(string(read), "The figures agree.") {
+		t.Fatalf("agent view did not return the kept edit: %s", read)
+	}
 
 	var fork builder.Proposal
 	wire.must("apps.fork", map[string]string{"app": docs}, &fork)
+	if len(fork.SummaryLines) != 1 || !strings.HasSuffix(fork.SummaryLines[0], "from codeaf.") {
+		t.Fatalf("fork card lost its publisher: %v", fork.SummaryLines)
+	}
 	var kept struct{ Meta store.Meta }
 	wire.must("apps.apply", map[string]string{"draft": fork.Draft}, &kept)
 	if kept.Meta.Lineage.ForkedFrom.App != docs {

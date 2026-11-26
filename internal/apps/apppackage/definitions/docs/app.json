@@ -3,6 +3,7 @@
   "name": "Docs",
   "version": 1,
   "kit": 2,
+  "agent": {"name": "Docs agent", "file": "agent.md"},
   "records": {
     "docs_document": {
       "label": "Document",

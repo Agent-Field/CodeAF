@@ -16,6 +16,6 @@ Choose Check for update for a codeaf package. The update card compares the saved
 
 ## Edit documents with codeaf app and export a copy
 
-`codeaf app show` lists the app's declared views and Actions. `codeaf app query` reads a declared view with its required data grant. `codeaf app invoke` can call the registered edit, duplicate and export Actions with the exact action grant. A record edit takes an expected revision and leaves the actor and changed fields in that record's history. A person-authored value holds against an AI edit.
+Open the app's agent in Desk or use `codeaf app` from the terminal. `codeaf app show` lists the app's declared views and Actions. `codeaf app query` reads a declared view with its required data grant. `codeaf app invoke` can call the registered edit, duplicate and export Actions with the exact action grant. A record edit takes an expected revision and leaves the actor and changed fields in that record's history. A person-authored value holds against an AI edit.
 
 Open a record for its export controls. Docs exports PDF and DOCX. Sheets exports CSV with calculated values. `codeaf app worksheet-window` reads a scoped cell range with its record revision. Slides exports PPTX and PDF. Canvas exports board text to PDF. Exports use the current scoped record values and carry an output receipt. On Desk, choose a destination in the native Save panel. To share outside Desk, send the exported file through your usual channel.
