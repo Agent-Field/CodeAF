@@ -8,6 +8,7 @@ import (
 )
 
 func TestCheckIdentifiesInvalidDraftReplyReference(t *testing.T) {
+	// The first baseline build could not read replies from an untyped agent.
 	const file = "runs/draft-thread.yaml"
 	recorded, err := os.ReadFile("testdata/marketing-approval-reference/" + file)
 	if err != nil {
@@ -47,6 +48,9 @@ func TestCheckIdentifiesInvalidDraftReplyReference(t *testing.T) {
 	// Replay the same unresolved output in the approval payload itself.
 	start := bytes.Index(recorded, []byte("  - id: save"))
 	end := bytes.Index(recorded, []byte("  - id: approve"))
+	if start == -1 || end <= start {
+		t.Fatal("recorded run should save drafts before approval")
+	}
 	gateOnly := append(bytes.Clone(recorded[:start]), recorded[end:]...)
 	def.Files[file] = bytes.Replace(gateOnly, []byte("text: $steps.draft.output"), []byte("text: '{{steps.draft.replies}}'"), 1)
 	assertFinding("/steps/1/args/text", "steps.draft.replies", "$steps.draft.output")

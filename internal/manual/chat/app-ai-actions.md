@@ -50,10 +50,10 @@ shows the operation, destination, payload and app version. A standalone
 `args`. Read an earlier `agent` step's text at `$steps.<id>.output`. For
 structured results, declare an `ai` output schema and example, then reference
 a declared field such as `$steps.draft.output.replies` in the gate's args or
-a loop. Check points to the binding when it reads a missing step or tries
-to read a field from plain agent text. An approval applies to that displayed
-effect only. A stopped or
-uncertain delivery stays incomplete. A connection must be available to
+a loop. In approval arguments and loop inputs, Check points to the binding
+when it reads a missing step or tries to read a field from plain agent text.
+An approval applies to that displayed effect only. A stopped or uncertain
+delivery stays incomplete. A connection must be available to
 deliver an approved connector step.
 
 ## Connect my agent via MCP
