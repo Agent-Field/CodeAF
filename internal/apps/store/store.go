@@ -130,6 +130,8 @@ type Version struct {
 type versionReceipt struct {
 	Version
 	Types schema.TypeSet `json:"types,omitempty"`
+	// A revert restores the original manifest bytes under a new publication number.
+	ManifestVersion int `json:"manifest_version,omitempty"`
 }
 
 // lock keeps a reader from seeing a partial publication and a writer from

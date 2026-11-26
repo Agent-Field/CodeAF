@@ -52,7 +52,13 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 	}
 	rows, err := Sample(def)
 	if err != nil {
-		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", err.Error()))
+		problems := []error{err}
+		if rows, ok := err.(interface{ Unwrap() []error }); ok {
+			problems = rows.Unwrap()
+		}
+		for _, issue := range problems {
+			report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", issue.Error()))
+		}
 		return report
 	}
 	if len(rows) == 0 {
@@ -139,17 +145,23 @@ func Sample(def schema.Definition) (map[string][]map[string]any, error) {
 	}
 	// The sample store shares its record ID space across all types.
 	used := map[string]string{}
+	var problems []error
 	for _, typ := range slices.Sorted(maps.Keys(sample.Records)) {
 		for i, row := range sample.Records[typ] {
 			id, _ := row["id"].(string)
 			if !cell.ValidID(id) {
-				return nil, fmt.Errorf("Example %s row %d needs a 26-character ULID for its id, such as 00000000000000000000000001.", typ, i+1)
+				problems = append(problems, fmt.Errorf("Example %s row %d needs a 26-character ULID for its id, such as 00000000000000000000000001.", typ, i+1))
+				continue
 			}
 			if previous, ok := used[id]; ok {
-				return nil, fmt.Errorf("Example %s row %d reuses id %s from %s. Use a unique id across all types.", typ, i+1, id, previous)
+				problems = append(problems, fmt.Errorf("Example %s row %d reuses id %s from %s. Use a unique id across all types.", typ, i+1, id, previous))
+				continue
 			}
 			used[id] = typ
 		}
+	}
+	if err := errors.Join(problems...); err != nil {
+		return nil, err
 	}
 	return sample.Records, nil
 }
