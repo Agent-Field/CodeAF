@@ -127,6 +127,8 @@ type (
 	}
 	DataItemsResult struct {
 		Items []DataRow `json:"items"`
+		// Viewer is the current person when listing comments.
+		Viewer string `json:"viewer,omitempty"`
 	}
 )
 

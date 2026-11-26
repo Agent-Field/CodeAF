@@ -643,7 +643,7 @@
       "name": "Menu",
       "tier": "primitive",
       "summary": "A menu of named actions.",
-      "children": "none",
+      "children": "nodes",
       "interactive": true,
       "bindings": [],
       "events": [
@@ -711,6 +711,9 @@
         "properties": {
           "title": {
             "type": "string"
+          },
+          "placement": {
+            "enum": ["side"]
           },
           "primary": {
             "type": "string"

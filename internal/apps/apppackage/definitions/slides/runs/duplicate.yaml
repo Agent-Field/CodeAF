@@ -16,7 +16,8 @@
           "title": "{{params.source.title}} copy",
           "body": "$params.source.body",
           "x": "$params.source.x",
-          "y": "$params.source.y"
+          "y": "$params.source.y",
+          "deck": "$params.source.deck"
         }
       }
     }

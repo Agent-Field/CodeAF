@@ -62,6 +62,9 @@
         },
         "model": {
           "type": "string"
+        },
+        "dock": {
+          "enum": ["open", "closed"]
         }
       }
     },

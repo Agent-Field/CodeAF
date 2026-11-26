@@ -17,6 +17,7 @@ type AppPublication struct {
 	Metadata   json.RawMessage
 	Definition []byte
 	Bindings   map[string]CommonTypeKey
+	Starter    map[string][]map[string]any
 }
 
 // Publication reads the data writer's authoritative publication pointer.
@@ -60,6 +61,9 @@ func (s *Store) PublishApp(p AppPublication, previousVersion int) error {
 			return errorf(CodeInvalid, "the declaration does not belong to the publication")
 		}
 	}
+	if len(p.Starter) != 0 && (previousVersion != 0 || p.Version != 1 || p.Archived || def == nil) {
+		return errorf(CodeInvalid, "starter records require a first publication")
+	}
 	return s.write(func(w *writeTx) error {
 		before, err := readPublication(w.tx, p.App)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -84,6 +88,12 @@ func (s *Store) PublishApp(p AppPublication, previousVersion int) error {
 		if err != nil {
 			return err
 		}
+		if len(p.Starter) != 0 {
+			w.schema = w.next
+			if err := w.seedStarter(p.App, p.Starter); err != nil {
+				return err
+			}
+		}
 		if _, err := w.tx.Exec(`INSERT INTO app_publications VALUES(?, ?, ?, ?, ?)
 			ON CONFLICT(app) DO UPDATE SET version = excluded.version, archived = excluded.archived,
 			deleted = excluded.deleted, metadata = excluded.metadata`, p.App, p.Version, p.Archived, p.Deleted, string(p.Metadata)); err != nil {
@@ -96,4 +106,23 @@ func (s *Store) PublishApp(p AppPublication, previousVersion int) error {
 		}
 		return w.invalidate(EventPolicyChanged, "", "")
 	})
+}
+
+// Starter rows share the publication transaction so a retry cannot re-create
+// an example the person already changed or deleted.
+func (w *writeTx) seedStarter(app string, rows map[string][]map[string]any) error {
+	scope := Scope{App: app, Actor: "codeaf"}
+	for _, alias := range sortedKeys(rows) {
+		t, err := w.schema.allow(scope, alias, true)
+		if err != nil {
+			return err
+		}
+		if t.DefinedBy != app {
+			return errorf(CodeInvalid, "starter records must belong to the new app")
+		}
+		if err := w.seedRows(t, scope, rows[alias]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

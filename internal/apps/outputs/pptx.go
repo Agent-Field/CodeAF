@@ -16,7 +16,7 @@ func presentationXML(tag, body string) string {
 	return fmt.Sprintf(`<p:%s xmlns:p="%s" xmlns:a="%s" xmlns:r="%s">%s</p:%s>`, tag, presNS, drawNS, officeRels, body, tag)
 }
 
-func writePPTX(w io.Writer, title string, sections []string) error {
+func writePPTX(w io.Writer, title string, sections []string, slideTitles bool) error {
 	const main = "ppt/presentation.xml"
 	const master = "ppt/slideMasters/slideMaster1.xml"
 	const layout = "ppt/slideLayouts/slideLayout1.xml"
@@ -38,6 +38,10 @@ func writePPTX(w io.Writer, title string, sections []string) error {
 		sections = []string{""}
 	}
 	for _, section := range sections {
+		heading := title
+		if slideTitles {
+			heading, section, _ = strings.Cut(section, "\n")
+		}
 		for _, lines := range slidePages(section) {
 			n := len(links)
 			if n > 2000 {
@@ -46,7 +50,7 @@ func writePPTX(w io.Writer, title string, sections []string) error {
 			file := fmt.Sprintf("slides/slide%d.xml", n)
 			fmt.Fprintf(&ids, `<p:sldId id="%d" r:id="rId%d"/>`, 255+n, n+1)
 			links = append(links, relationship{"slide", file})
-			shapes := slideText(2, "Title", 480000, 720000, 3200, []string{title}) +
+			shapes := slideText(2, "Title", 480000, 720000, 3200, []string{heading}) +
 				slideText(3, "Body", 1320000, 4790000, 2000, lines)
 			parts = append(parts, officePart{"ppt/" + file, pptType + "slide+xml",
 				presentationXML("sld", "<p:cSld><p:spTree>"+group+shapes+"</p:spTree></p:cSld>")},

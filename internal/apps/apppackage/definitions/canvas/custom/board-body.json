@@ -1,8 +1,8 @@
 {
   "name": "custom/board-body",
   "version": 1,
-  "summary": "Displays the body of a board record.",
-  "reason": "The frame uses the shared canvas viewer for text placement, editing and presentation.",
+  "summary": "Open and edit a planning board.",
+  "reason": "The shared canvas stage displays and moves objects and their connectors.",
   "example": {},
   "props": {
     "type": "object",
@@ -32,6 +32,7 @@
     "body",
     "title",
     "x",
-    "y"
+    "y",
+    "objects"
   ]
 }

@@ -3,10 +3,14 @@
   "name": "Slides",
   "version": 1,
   "kit": 2,
-  "agent": {"name": "Slides agent", "file": "agent.md"},
+  "agent": {
+    "name": "Slides agent",
+    "file": "agent.md",
+    "dock": "closed"
+  },
   "records": {
     "slides_slide": {
-      "label": "Slide",
+      "label": "Presentation",
       "title": "title",
       "fields": {
         "title": {
@@ -25,6 +29,11 @@
         "y": {
           "type": "number",
           "default": 120
+        },
+        "deck": {
+          "type": "longtext",
+          "label": "Slides",
+          "default": ""
         }
       }
     }
@@ -37,7 +46,7 @@
   "commands": [
     {
       "id": "new",
-      "label": "New slide",
+      "label": "New presentation",
       "do": [
         {
           "records.create": {
@@ -98,6 +107,19 @@
       "params": {
         "source": "$record.id"
       }
+    },
+    {
+      "id": "delete",
+      "label": "Delete\u2026",
+      "for": "slides_slide",
+      "do": [
+        {
+          "records.delete": {
+            "type": "slides_slide",
+            "id": "$record.id"
+          }
+        }
+      ]
     }
   ],
   "outputs": {
@@ -110,25 +132,16 @@
     "pptx": {
       "label": "Export PPTX",
       "format": "pptx",
-      "query": {
-        "type": "slides_slide",
-        "select": [
-          "title",
-          "body"
-        ],
-        "window": {
-          "order_by": [
-            "created_at"
-          ]
-        }
-      },
-      "body": "{{title}}\n\n{{body}}"
+      "body": "{{title}}\n\n{{body}}",
+      "record": "slides_slide",
+      "slides": "deck"
     },
     "pdf": {
       "label": "Export PDF",
       "format": "pdf",
       "record": "slides_slide",
-      "body": "{{title}}\n\n{{body}}"
+      "body": "{{title}}\n\n{{body}}",
+      "slides": "deck"
     }
   }
 }
