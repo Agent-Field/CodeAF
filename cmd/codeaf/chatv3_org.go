@@ -459,6 +459,68 @@ func (d *orgDoor) open(ctx context.Context, id string) (net.Conn, error) {
 	return conn, nil
 }
 
+// attach opens the chat's wire and says hello on it, and answers the client and the one call that shuts it and its
+// link. A WINDOW REDIALS BY ITSELF when its link drops (a laptop that slept, a network that changed, the server that
+// restarted): the chat goes on running on the server whether anyone is looking, so the window comes back to it with
+// nothing lost and the keyboard where it was, exactly as a window on another of the person's own computers does.
+//
+// THE FIRST DIAL IS NOT ROAMED, so everything that can go wrong before the surface owns the screen (no sign-in, an
+// address that is down, a chat that is not theirs) is still said at once on a terminal that is still the person's. A
+// headless run (roam false) is one message in a script and is never retried, because a script that waits half an hour
+// for a server is worse than one that fails. A no that will not change ([orgRefusesAgain]) ends the redialling with the
+// server's own words.
+func (d *orgDoor) attach(ctx context.Context, id string, hello remote.Hello, roam bool) (*remote.Client, func() error, error) {
+	if !roam {
+		conn, err := d.open(ctx, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		client, err := remote.Dial(conn, d.host, hello)
+		if err != nil {
+			_ = conn.Close()
+			return nil, nil, err
+		}
+		return client, func() error {
+			err := client.Close()
+			if shutErr := conn.Close(); err == nil {
+				err = shutErr
+			}
+			return err
+		}, nil
+	}
+	client, err := remote.Roam(d.host, hello, remote.Roaming{
+		Dial: func() (io.ReadWriteCloser, error) {
+			conn, err := d.open(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			return conn, nil
+		},
+		// A server that restarts drops every window at one moment, so their first retries are spread out.
+		SpreadReturns: true,
+		EndsOn:        orgRefusesAgain,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, client.Close, nil
+}
+
+// orgRefusesAgain is whether a dial the server answered with a refusal will be refused the same way again: the sign-in
+// was not accepted or was taken away (401, 403) or the chat is not there for this person (404). Anything else is a
+// moment's trouble (the server down, a restart, no room yet) and is tried again.
+func orgRefusesAgain(err error) bool {
+	var refused *orgDoorError
+	if !errors.As(err, &refused) || !refused.serverSaid {
+		return false
+	}
+	switch refused.status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+		return true
+	}
+	return false
+}
+
 // ── the surface ─────────────────────────────────────────────────────────────
 
 // hello is the hello this door says on a connection. THE WORKSPACE STAYS
@@ -506,20 +568,8 @@ func openChatV3Org(launch orgLaunch) error {
 	if err != nil {
 		return err
 	}
-	conn, err := door.open(ctx, id)
+	client, shutBoot, err := door.attach(ctx, id, launch.hello(true), launch.once == "")
 	if err != nil {
-		return err
-	}
-	client, err := remote.Dial(conn, door.host, launch.hello(true))
-	if err != nil {
-		_ = conn.Close()
-		return err
-	}
-	shutBoot := func() error {
-		err := client.Close()
-		if shutErr := conn.Close(); err == nil {
-			err = shutErr
-		}
 		return err
 	}
 	closeLink := func() { _ = shutBoot() }
@@ -535,28 +585,17 @@ func openChatV3Org(launch orgLaunch) error {
 	// ANOTHER CONVERSATION IS ANOTHER WEBSOCKET TO THE SAME CHAT'S WIRE, with
 	// the same bearer, and says no window of its own for [besideHello]'s reason.
 	fleet := newEngineFleet(door.host, client, shutBoot, func(ask engineAsk) (*engineConn, error) {
-		next, err := door.open(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		beside, err := remote.Dial(next, door.host, remote.Hello{
+		beside, shut, err := door.attach(ctx, id, remote.Hello{
 			Workspace: "",
 			Session:   ask.session,
 			New:       ask.mint,
 			Model:     launch.model,
 			Level:     launch.level,
-		})
+		}, true)
 		if err != nil {
-			_ = next.Close()
 			return nil, err
 		}
-		return &engineConn{client: beside, shut: func() error {
-			err := beside.Close()
-			if shutErr := next.Close(); err == nil {
-				err = shutErr
-			}
-			return err
-		}}, nil
+		return &engineConn{client: beside, shut: shut}, nil
 	})
 	closeLink = fleet.closeAll
 	options, _ := hostOptions(fleet, client.Welcome(), launch.pick)
