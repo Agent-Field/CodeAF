@@ -8,8 +8,8 @@ defines the type declares `policy.fields`, for example
 the type inherit the same policy. A hidden field is omitted. A masked field
 shows `••••`. Searches, sorts and groups cannot use masked or hidden
 fields. In a person's view, sum and average can use a masked numeric field
-over rows that person can access. Agents and automations need an unmasked
-field for their totals. Hidden fields are unavailable to totals. Choose an accessible
+over native Personal rows they can access. Agents, automations, and
+connected-source totals need an unmasked field. Hidden fields are unavailable to totals. Choose an accessible
 field if the app refuses a total. A record's reveal button does not bypass
 an explicit hide or mask.
 

@@ -234,6 +234,16 @@ func TestPersonalAmountAndMaskedTotals(t *testing.T) {
 		}
 	}
 
+	live, err := s.WithSourceScans(viewer, QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "amount"}}}, []SourceScan{{
+		Type: "transaction", Rows: []Row{{"id": "source-row", "owner": "viewer", "amount": masked}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Aggregate(viewer, &live); err == nil || !strings.Contains(err.Error(), "Choose an unmasked field") {
+		t.Errorf("masked source total: %v", err)
+	}
+
 	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "secret"}}})
 	if err == nil || !strings.Contains(err.Error(), "Choose a field you can access") {
 		t.Errorf("denied total: %v", err)
