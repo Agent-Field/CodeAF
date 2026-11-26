@@ -1,6 +1,6 @@
 {
   "screen": "open",
-  "title": "Slide",
+  "title": "Presentation",
   "params": [
     "id"
   ],
@@ -15,9 +15,9 @@
           {
             "part": "Button",
             "id": "back",
-            "label": "Slides",
+            "label": "Presentations",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -28,65 +28,76 @@
             }
           },
           {
-            "part": "Button",
-            "id": "export-pptx",
-            "label": "Export PPTX",
+            "part": "Menu",
+            "id": "file",
+            "label": "File",
             "props": {
-              "kind": "secondary"
+              "items": []
             },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "pptx"
-                  }
+            "children": [
+              {
+                "part": "Button",
+                "id": "export-pptx",
+                "label": "Export PPTX",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "pptx",
+                        "record": "$params.id"
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          },
-          {
-            "part": "Button",
-            "id": "export-pdf",
-            "label": "Export PDF",
-            "props": {
-              "kind": "secondary"
-            },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "pdf",
-                    "record": "$params.id"
-                  }
+              },
+              {
+                "part": "Button",
+                "id": "export-pdf",
+                "label": "Export PDF",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "pdf",
+                        "record": "$params.id"
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          },
-          {
-            "part": "Button",
-            "id": "share",
-            "label": "Copy text",
-            "props": {
-              "kind": "secondary"
-            },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "share",
-                    "record": "$params.id",
-                    "clipboard": true
-                  }
+              },
+              {
+                "part": "Button",
+                "id": "share",
+                "label": "Copy text",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "share",
+                        "record": "$params.id",
+                        "clipboard": true
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
+              }
+            ]
           },
           {
             "part": "Button",
             "id": "details-button",
             "label": "Details",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -114,8 +125,7 @@
                 "id": "$record.id",
                 "set": {
                   "body": "$input.value",
-                  "x": "$input.x",
-                  "y": "$input.y"
+                  "deck": "$input.deck"
                 }
               }
             }
@@ -141,7 +151,9 @@
               ],
               "history": true,
               "actions": [
-                "rename"
+                "rename",
+                "duplicate",
+                "delete"
               ]
             }
           }
@@ -151,5 +163,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Presentations",
+    "props": {
+      "items": [
+        {
+          "label": "Presentations",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

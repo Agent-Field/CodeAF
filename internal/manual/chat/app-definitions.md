@@ -258,6 +258,17 @@ access. Check renders the screen in Dark, Black and Light at 800 and 1120 px
 when the desktop is connected. The frame reports when it has drawn. If
 its deadline passes, Check names the part in a layout finding.
 
+A native editor part takes one element and one record binding. Use
+`<document field="body" />` for a Markdown document, or the `grid`, `board`
+or `slide` element with a visible longtext field. Map its optional `edit`
+intent to the screen's record Action. These elements use fixed Desk editors.
+Their declarations do not load package-supplied code into Desk.
+
+A Menu can use Button children for choices with different Actions. Give
+each Button an ID, a label and one or more `on.click` Actions. Leave its
+`items` list empty when using children. A Menu with an `items` list
+continues to emit `on.pick` with the selected ID.
+
 `codeaf app promote-part '{"app":"APP","id":"NAME"}'` copies a kept part
 into the person's Kit. `codeaf app kit-parts` lists the versions. An editing
 session uses `codeaf app use-kit-part` with the part's ID and version, then

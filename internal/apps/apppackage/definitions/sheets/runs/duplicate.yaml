@@ -14,7 +14,8 @@
         "type": "sheets_worksheet",
         "set": {
           "title": "{{params.source.title}} copy",
-          "body": "$params.source.body"
+          "body": "$params.source.body",
+          "column_formats": "$params.source.column_formats"
         }
       }
     }

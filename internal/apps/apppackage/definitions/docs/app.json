@@ -3,7 +3,10 @@
   "name": "Docs",
   "version": 1,
   "kit": 2,
-  "agent": {"name": "Docs agent", "file": "agent.md"},
+  "agent": {
+    "name": "Docs agent",
+    "file": "agent.md"
+  },
   "records": {
     "docs_document": {
       "label": "Document",
@@ -90,6 +93,19 @@
       "params": {
         "source": "$record.id"
       }
+    },
+    {
+      "id": "delete",
+      "label": "Delete…",
+      "for": "docs_document",
+      "do": [
+        {
+          "records.delete": {
+            "type": "docs_document",
+            "id": "$record.id"
+          }
+        }
+      ]
     }
   ],
   "outputs": {

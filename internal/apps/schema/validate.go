@@ -875,6 +875,13 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 	if part.Children == "none" && len(n.Children) > 0 {
 		c.add(ctx.file, at+"/children", CodePartChildren, "%s takes no parts inside it.", n.Part)
 	}
+	if n.Part == "Menu" {
+		for i, child := range n.Children {
+			if child == nil || child.Part != "Button" || child.ID == "" || len(child.On["click"]) == 0 {
+				c.add(ctx.file, fmt.Sprintf("%s/children/%d", at, i), CodePartChildren, "A menu child needs a Button with an ID and a click Action.")
+			}
+		}
+	}
 	if part.Interactive && strings.TrimSpace(n.Label) == "" {
 		c.add(ctx.file, at, CodeLabelMissing, "This %s can be acted on, so it needs a label: screen readers, tooltips and ⌘K say it.", n.Part)
 	}

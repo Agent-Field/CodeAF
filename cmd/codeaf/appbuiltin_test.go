@@ -39,6 +39,23 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 		if live.Meta.Name != entry.Name || live.Meta.Lineage.Source.Hash != entry.Hash {
 			t.Fatalf("installed %s has lineage %+v", entry.Name, live.Meta.Lineage)
 		}
+		var starter schema.Sample
+		kept, err := defs.Get(entry.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(kept.Files()[schema.SampleFile]), &starter); err != nil {
+			t.Fatal(err)
+		}
+		for kind, rows := range starter.Records {
+			for _, want := range rows {
+				var record struct{ Row map[string]any }
+				wire.must("data.get", map[string]any{"app": entry.ID, "type": kind, "id": want["id"]}, &record)
+				if record.Row["body"] != want["body"] || record.Row["title"] != want["title"] {
+					t.Fatalf("%s did not install an editable example", entry.Name)
+				}
+			}
+		}
 		app, _, err := b.appAssistantDefinition(entry.ID)
 		if err != nil || app.Agent.Name != entry.Name+" agent" {
 			t.Fatalf("installed %s has no named assistant: %v", entry.Name, err)
@@ -212,7 +229,7 @@ func TestBuiltinPublisherUpdatePreservesTheLocalVersionUntilApply(t *testing.T) 
 		t.Fatal(err)
 	}
 	screen, _ := got.Screen("library")
-	if got.Meta.Lineage.Source.Version != "1.1.0" || !strings.Contains(string(screen), "Team documents") || !slices.Contains(got.Runs, "duplicate") {
+	if got.Meta.Lineage.Source.Version != update.Package.Manifest.Version || !strings.Contains(string(screen), "Team documents") || !slices.Contains(got.Runs, "duplicate") {
 		t.Fatalf("kept definition has wrong publisher or changes: %+v", got.Meta)
 	}
 }

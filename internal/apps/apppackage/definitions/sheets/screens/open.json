@@ -15,9 +15,9 @@
           {
             "part": "Button",
             "id": "back",
-            "label": "Sheets",
+            "label": "Worksheets",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -28,48 +28,58 @@
             }
           },
           {
-            "part": "Button",
-            "id": "export-csv",
-            "label": "Export CSV",
+            "part": "Menu",
+            "id": "file",
+            "label": "File",
             "props": {
-              "kind": "secondary"
+              "items": []
             },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "csv",
-                    "record": "$params.id"
-                  }
+            "children": [
+              {
+                "part": "Button",
+                "id": "export-csv",
+                "label": "Export CSV",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "csv",
+                        "record": "$params.id"
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          },
-          {
-            "part": "Button",
-            "id": "share",
-            "label": "Copy CSV",
-            "props": {
-              "kind": "secondary"
-            },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "share",
-                    "record": "$params.id",
-                    "clipboard": true
-                  }
+              },
+              {
+                "part": "Button",
+                "id": "share",
+                "label": "Copy CSV",
+                "props": {
+                  "kind": "secondary"
+                },
+                "on": {
+                  "click": [
+                    {
+                      "render": {
+                        "output": "share",
+                        "record": "$params.id",
+                        "clipboard": true
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
+              }
+            ]
           },
           {
             "part": "Button",
             "id": "details-button",
             "label": "Details",
             "props": {
-              "kind": "secondary"
+              "kind": "quiet"
             },
             "on": {
               "click": [
@@ -96,7 +106,8 @@
                 "type": "sheets_worksheet",
                 "id": "$record.id",
                 "set": {
-                  "body": "$input.value"
+                  "body": "$input.value",
+                  "column_formats": "$input.column_formats"
                 }
               }
             }
@@ -122,7 +133,9 @@
               ],
               "history": true,
               "actions": [
-                "rename"
+                "rename",
+                "duplicate",
+                "delete"
               ]
             }
           }
@@ -132,5 +145,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Worksheets",
+    "props": {
+      "items": [
+        {
+          "label": "Worksheets",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }
