@@ -1,0 +1,15 @@
+{
+  "screen": "offers",
+  "title": "Offer letter",
+  "body": {
+    "part": "Text",
+    "label": "Offer letter",
+    "props": {
+      "mergeFields": true
+    },
+    "bind": {
+      "content-part": "docs/offer.md"
+    },
+    "id": "text"
+  }
+}

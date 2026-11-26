@@ -1,0 +1,20 @@
+{
+  "$schema": "https://codeaf.dev/schema/plan/1.json",
+  "ask": "A CRM for my deals, companies and contacts. Remind me about stale deals and draft follow-ups from Gmail, and tell #sales when a deal is won.",
+  "data": [
+    { "id": "deal", "line": "Deal · name, company, stage (Lead → Won/Lost), amount, close, owner" },
+    { "id": "company", "line": "Company · name, domain, size, owner" },
+    { "id": "contact", "line": "Contact · name, email, phone (hidden until revealed), title, company" }
+  ],
+  "automation": [
+    { "id": "follow-up", "line": "Weekdays 9:00 · deals untouched 14 days → draft a follow-up, send after you approve" },
+    { "id": "won-handoff", "line": "Deal won → a short handoff posted to #sales after you approve" }
+  ],
+  "screens": [
+    { "id": "deals", "line": "Deals · list and board by stage, deal in the panel, bulk moves" },
+    { "id": "companies", "line": "Companies · list with each company's deals; add a company" },
+    { "id": "contacts", "line": "Contacts · list, contact in the panel" }
+  ],
+  "agent": { "line": "CRM agent · drafts emails, updates deals, answers pipeline questions" },
+  "needs": "computed"
+}

@@ -1,0 +1,65 @@
+{
+  "id": "support-inbox",
+  "name": "Support inbox",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Support inbox agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "ticket": {
+      "title": "subject",
+      "fields": {
+        "subject": {
+          "type": "text"
+        },
+        "external_id": {
+          "type": "text",
+          "unique": true
+        },
+        "body": {
+          "type": "longtext"
+        },
+        "received_at": {
+          "type": "datetime"
+        },
+        "reply_by": {
+          "type": "datetime",
+          "computed": "timestamp(received_at) + duration(\"2h\")",
+          "timer": {
+            "field": "reply_by",
+            "direction": "down",
+            "amber": "PT30M",
+            "red": "PT0S"
+          }
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "ticket": "rw"
+    },
+    "connectors": {
+      "gmail": {
+        "can": [
+          "thread.received",
+          "reply"
+        ],
+        "approve": [
+          "reply"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "new-thread",
+      "on": "connector",
+      "connector": "gmail",
+      "event": "thread.received",
+      "run": "ingest"
+    }
+  ]
+}

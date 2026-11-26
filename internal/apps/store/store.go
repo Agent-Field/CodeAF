@@ -1,5 +1,5 @@
 // Package store keeps app definitions and their history under the engine home.
-// Personal records belong to a different store and have no path through here.
+// Personal records stay in their data store. Publication updates its grants.
 package store
 
 import (
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -36,8 +37,9 @@ type TypeCatalog func(appID string) (schema.TypeSet, error)
 // Store is a handle to one engine home's definitions. Handles and processes
 // sharing that home take the same filesystem lock.
 type Store struct {
-	root  string
-	types TypeCatalog
+	root     string
+	types    TypeCatalog
+	openData func() (*data.Store, error)
 }
 
 // New opens the engine home's app store. Saved versions carry the type
@@ -62,6 +64,7 @@ type Meta struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Archived  bool      `json:"archived"`
 	Deleted   bool      `json:"deleted,omitempty"`
+	digest    string
 }
 
 // Definition is one validated live version. Meta describes the served version
@@ -76,6 +79,16 @@ type Definition struct {
 
 	files files
 	types schema.TypeSet
+}
+
+// Files returns a copy of the definition so an editing job can capture its
+// base without reading anything from the personal record store.
+func (d Definition) Files() map[string]string {
+	out := make(map[string]string, len(d.files))
+	for path, raw := range d.files {
+		out[path] = string(raw)
+	}
+	return out
 }
 
 // Screen returns a screen from the same version as App and Plan.
@@ -155,6 +168,16 @@ func (s *Store) readMeta(id string) (Meta, error) {
 	if !cell.ValidID(id) {
 		return Meta{}, ErrBadInput
 	}
+	if m, ok, err := s.publishedMeta(id); ok || err != nil {
+		return m, err
+	}
+	return s.readFileMeta(id)
+}
+
+func (s *Store) readFileMeta(id string) (Meta, error) {
+	if !cell.ValidID(id) {
+		return Meta{}, ErrBadInput
+	}
 	dir := filepath.Join(s.root, id)
 	if err := checkDir(dir); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -187,6 +210,16 @@ func (s *Store) liveMeta(id string) (Meta, error) {
 		return Meta{}, ErrNotFound
 	}
 	return m, err
+}
+
+// Prepare creates the publication lock before the Builder creates drafts.
+func (s *Store) Prepare() error {
+	unlock, err := s.lock(true, true)
+	if err != nil {
+		return err
+	}
+	unlock()
+	return nil
 }
 
 // List leaves out deleted apps and isolates corrupt metadata to its own app.

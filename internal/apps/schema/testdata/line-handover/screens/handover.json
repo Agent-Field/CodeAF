@@ -1,0 +1,13 @@
+{
+  "screen": "handover",
+  "title": "Handover",
+  "body": {
+    "part": "Text",
+    "label": "Handover notes",
+    "props": {},
+    "bind": {
+      "content-part": "docs/handover.md"
+    },
+    "id": "text"
+  }
+}

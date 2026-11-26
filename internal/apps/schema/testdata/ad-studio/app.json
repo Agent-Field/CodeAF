@@ -1,0 +1,32 @@
+{
+  "id": "ad-studio",
+  "name": "Ad studio",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Ad studio agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "campaign": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "cut": {
+          "type": "file"
+        },
+        "amount": {
+          "type": "money",
+          "currency": "USD"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "campaign": "rw"
+    }
+  }
+}

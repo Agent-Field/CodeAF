@@ -1,0 +1,45 @@
+{
+  "id": "course-builder",
+  "name": "Course builder",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Course builder agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "lesson": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "video": {
+          "type": "file"
+        }
+      }
+    },
+    "attempt": {
+      "title": "name",
+      "fields": {
+        "name": {
+          "type": "text"
+        },
+        "format": {
+          "type": "enum",
+          "values": [
+            "json",
+            "pdf",
+            "png"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "lesson": "rw",
+      "attempt": "rw"
+    }
+  }
+}

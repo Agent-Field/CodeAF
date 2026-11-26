@@ -1,0 +1,18 @@
+{
+  "ask": "Review numbered clauses, record redlines and approve sharing.",
+  "data": [
+    {
+      "id": "contract",
+      "line": "Title and counterparty, draft"
+    }
+  ],
+  "screens": [
+    {
+      "id": "contracts",
+      "line": "Contracts"
+    }
+  ],
+  "agent": {
+    "line": "Flag substantive changes to the agreement and request approval before sharing a redline."
+  }
+}

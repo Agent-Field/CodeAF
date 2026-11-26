@@ -1,0 +1,42 @@
+{
+  "screen": "orders",
+  "title": "Purchase orders",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Purchase queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "purchase",
+          "view": "purchase-list"
+        },
+        "id": "purchase-list"
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Approve sending the order",
+        "props": {
+          "kind": "send"
+        },
+        "bind": {
+          "record": "$selection.purchase-list.id",
+          "type": "purchase"
+        },
+        "id": "approvalcard"
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "purchase-list": {
+      "type": "purchase"
+    }
+  }
+}

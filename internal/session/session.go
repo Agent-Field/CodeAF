@@ -1401,6 +1401,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// scopedCommand executes the only allowed command for an isolated
+	// turn. It never receives a process environment, shell or file handle.
+	scopedCommand func(context.Context, string) (string, error)
+
 	// ConversationModels is the desktop conversation's explicit main/fallback pair.
 	// Nil retains the terminal's existing routing policy.
 	ConversationModels *ConversationModels

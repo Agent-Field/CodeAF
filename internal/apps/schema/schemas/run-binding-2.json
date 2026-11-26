@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/run-binding-2.json",
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "state"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+        "state": {"type": "string", "minLength": 1},
+        "round": {"type": "integer", "minimum": 1},
+        "started_at": {"type": "string", "minLength": 1},
+        "ended_at": {"type": "string", "minLength": 1},
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+            "state": {"type": "string", "minLength": 1}
+          },
+          "required": ["id", "kind", "state"]
+        },
+        "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}}
+      }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "at": {"type": "string", "minLength": 1},
+        "step": {"type": "string", "minLength": 1},
+        "text": {"type": "string"},
+        "stream": {"enum": ["stdout", "stderr", "event"]},
+        "round": {"type": "integer", "minimum": 1}
+      },
+      "required": ["at", "step", "text"]
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "patch": {"type": "string"},
+        "added": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0}
+      },
+      "required": ["path", "patch"]
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claim": {"type": "string", "minLength": 1},
+        "state": {"enum": ["supported", "incomplete", "your_call"]},
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+              "ref": {"type": "string", "minLength": 1}
+            },
+            "required": ["kind", "ref"]
+          }
+        }
+      },
+      "required": ["claim", "state", "evidence"]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "run": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+    "state": {"type": "string", "minLength": 1},
+    "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+    "log": {"type": "array", "items": {"$ref": "#/$defs/log"}},
+    "diff": {"type": "array", "items": {"$ref": "#/$defs/diff"}},
+    "proof": {"type": "array", "items": {"$ref": "#/$defs/proof"}},
+    "files": {"type": "array", "items": {"$ref": "https://codeaf.dev/schema/file-1.json"}},
+    "series": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"at": {"type": "string", "minLength": 1}, "value": {"type": "number"}},
+          "required": ["at", "value"]
+        }
+      }
+    }
+  },
+  "required": ["id", "run", "state"]
+}

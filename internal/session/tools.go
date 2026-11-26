@@ -146,6 +146,9 @@ func (a *Agent) belt() []bare.Tool {
 	if a.config.AppScope != nil {
 		return append([]bare.Tool(nil), a.config.AppScope.Tools...)
 	}
+	if a.config.scopedCommand != nil {
+		return []bare.Tool{a.scopedCommandTool()}
+	}
 	// THE EXPERIMENT'S SECOND BELT, AND THE ONE DELEGATION THIS FUNCTION MAKES.
 	// A task worker built with CODEAF_TASK_BELT=bash reads a belt of one shell
 	// and the hands that cannot be a shell command, under a strict one-action

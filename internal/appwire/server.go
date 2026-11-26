@@ -197,6 +197,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello.Contract = Contract
 	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
+	hello = withDataFeature(hello, engine)
 	hello = withKnowledgeFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
 	hello = withEntryAuthorFeature(hello, engine)
@@ -417,6 +418,9 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 			return
 		}
 		s.send(frame{id: id, result: result})
+		if sub, ok := result.(*DataSubscribeResult); ok && sub != nil && sub.ReleaseEvents != nil {
+			sub.ReleaseEvents()
+		}
 	}()
 	return false
 }

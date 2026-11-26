@@ -315,6 +315,114 @@ keeps the value in a private file the agent's commands read (the model's own
 | `collections.remove` | `{id, refs}` | `CollectionRemoveResult` |
 | `collections.rename` | `in.collectionNameParams` | `CollectionResult` |
 
+## data methods
+
+The person's data for fluid apps: one store of records per person, every
+type any app made, and the space's work tables (`internal/apps/data`). Every
+call may carry `app` (checked against that app's record capabilities; none is
+the person in the Data place) and `draft` (a Builder draft's sample file).
+Types and fields have stable ids (`data.types` answers them); a type belongs
+to the person, and `created_by_app` is provenance only. A row is a flat
+object: `id`, the field values by name, `type`, `created_at`, `updated_at`,
+`_rev` (its revision), and `_meta` (`{ai, by, masked, frozen, writable,
+reverses, reversed_by}`; `by` names the kind of writer — `person`, `ai`,
+`flow`, `import` — that last set each field). A capability refusal is
+`not_allowed` with `detail.need` (`records.contact.rw`); a refused value is
+`bad_params` with `detail.field`; a frozen record is `frozen`; a repeated
+unique value is `duplicate`; an undo of a batch whose records changed since,
+or a `rev` the record has moved past, is `stale`; a raw write to a
+lifecycle's state field, or a transition that cannot fire, is `lifecycle`; a
+change, delete or undo of a ledger entry is `ledger`. A value the person set
+holds against an AI write until the person resets it (`data.update` with
+`reset`); the write answers what it left alone in `held`. Queries are
+QueryField tokens (`company.industry:SaaS` reaches one link away) or the IR's
+structured `where`; values are always bound, never spliced. Hello carries
+`data` when the engine serves these.
+
+| method | params | result |
+|---|---|---|
+| `data.activity` | `in.DataRecordParams` | `DataItemsResult` |
+| `data.aggregate` | `in.DataAggregateParams` | `DataAggregateResult` |
+| `data.checklist_set` | `in.ChecklistSetParams` | `DataProcessResult` |
+| `data.comments.create` | `in.DataCommentParams` | `DataItemResult` |
+| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` |
+| `data.count` | `in.DataCountParams` | `DataCountResult` |
+| `data.create` | `in.DataCreateParams` | `DataWriteResult` |
+| `data.delete` | `in.DataDeleteParams` | `DataWriteResult` |
+| `data.get` | `in.DataRecordParams` | `DataRowResult` |
+| `data.history` | `in.DataRecordParams` | `DataHistoryResult` |
+| `data.import_csv` | `in.DataImportParams` | `DataImportResult` |
+| `data.process` | `in.ProcessParams` | `DataProcessResult` |
+| `data.query` | `in.DataQueryParams` | `DataQueryResult` |
+| `data.reverse` | `in.DataReverseParams` | `DataWriteResult` |
+| `data.signoffs.create` | `in.DataSignParams` | `DataItemResult` |
+| `data.signoffs.list` | `in.DataRecordParams` | `DataItemsResult` |
+| `data.subscribe` | `in.DataSubscribeParams` | `DataSubscribeResult` |
+| `data.timers.cancel` | `in.DataIDParams` | `Empty` |
+| `data.timers.create` | `in.DataTimerCreateParams` | `DataItemResult` |
+| `data.timers.list` | `in.DataTimerListParams` | `DataItemsResult` |
+| `data.transition` | `in.DataTransitionParams` | `DataWriteResult` |
+| `data.transition_batch` | `in.TransitionBatchParams` | `DataWriteResult` |
+| `data.transitions` | `in.DataRecordParams` | `DataTransitionsResult` |
+| `data.types` | `in.DataScope` | `DataTypesResult` |
+| `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
+| `data.unsubscribe` | `{sub}` | `Empty` |
+| `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
+| `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
+| `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
+| `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
+| `work_items.claim` | `in.DataIDParams` | `DataItemResult` |
+| `work_items.complete` | `in.WorkCompleteParams` | `DataItemResult` |
+| `work_items.list` | `in.DataScope` | `DataItemsResult` |
+| `work_items.reassign` | `in.WorkReassignParams` | `DataItemResult` |
+
+`data.subscribe` starts a live query (`query`), a one-record watch (`id`), or
+a watch on a work table (`table`: `work_items`, `timers`, `signoffs`,
+`comments`, all of it or one record's with `type` and `id`) under the
+caller's `sub`, and answers the `cursor` the store stands at. After every
+committed write the engine sends `data.changed` `{sub, upserts, removes,
+total, cursor}` with the rows of the change that match now and the ids that
+matched before and no longer do — row diffs, never pages. A client that
+reconnects subscribes again with `cursor` (the last one it saw) and is sent
+one diff of everything since, or `data.reset` `{sub, cursor}` when that
+cannot be told as a diff, after which it refetches. Subscriptions end with
+`data.unsubscribe` or the connection.
+
+A type with a lifecycle (declared under `process.lifecycles` or on the
+type) moves its state only by `data.transition` `{type, id, transition, rev,
+reason}` (or `{record: {type, id}, transition, expected_rev}`), which checks the record's state, the guard
+(CEL, with `signed()` and `open_work()`), the kind of writer and the
+revision, records the move in history with its reason, and hands the
+transition's effects to the engine's outbox. `data.transitions` lists the
+moves a record may take now. A ledger type's entries are never changed or
+deleted; `data.reverse` books the reversing entry. Only the person signs
+(`data.signoffs.create`), against the record's current version.
+
+`data.process` takes `{app?, draft?, record: {type, id}}` and returns the
+current revision and state, candidate transitions with guard and actor
+results and a display reason when blocked, checklist progress, open work
+items, timers, sign-offs with their current-version status, and a timeline.
+The process returns `checklists` and a `checklist` shorthand for the first
+declared checklist. The single-transition result also includes `row`.
+`data.checklist_set` adds `{checklist, step, done, expected_rev, evidence?}`
+and returns the updated snapshot. Note and record-reference evidence are
+accepted. File evidence requires the app blob store. `checklist_done("id")` tests the named
+checklist and `checklist_done()` tests all declared checklists. Both are
+false when the requested checklist does not exist.
+
+`data.transition_batch` takes `{app?, draft?, transition, records:
+[{record: {type, id}, expected_rev}], reason?, unfreeze?}`. Every selected
+record is distinct and its type must declare the move. Each revision, actor and guard
+must pass. The returned `batch` and `rows` name one committed change, with
+no undo receipt for lifecycle moves. Revisions may also be decimal strings.
+
+`work_items.list` defaults to the person's open assignments and those of
+their agents. `work_items.claim` claims an unassigned item, `work_items.complete`
+saves `values` and closes the item, and `work_items.reassign` sets `assignee`
+(an empty string releases it). Each mutation takes `id` and returns the
+updated `item`. A committed work-item change emits `work_items.changed`. The kit 2 Action
+registry declares these calls under their wire method names.
+
 ## competence methods
 
 | method | params | result |
@@ -1963,6 +2071,21 @@ $0.10 goes out as `0.1`.
 | `rules.list` | `{}` | `RulesResult` |
 | `rules.remove` | `in.crewID` | `Empty` |
 
+## runs methods
+
+| method | params | result |
+|---|---|---|
+| `runs.start` | `{app, run, params?, draft?}` | `{id}` |
+| `runs.list` | `{app?, run?}` | `{runs: [Run]}` |
+| `runs.get` | `{app?, id}` | `Run` |
+
+`run` names the saved definition and `id` names an individual execution.
+`Run` includes `{app, run, id, state, step, started_at, updated_at}` and can
+include `{caught_up, cost, approval, wake_at, ended_at, error}`. A timer or
+retry carries `state: "running"` and `wake_at`. A pending approval carries
+`state: "your_call"` and `approval`. Use `runs.changed` to refresh a displayed run. Draft starts are refused until a
+preview engine can supply its sample store and connector fakes.
+
 ## search methods
 
 | method | params | result |
@@ -2209,6 +2332,9 @@ and the reply is empty.
 | `chat.removed` | `ChatRemoved` |
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
+| `work_items.changed` | `WorkItemsChanged` |
+| `data.changed` | `DataChanged` |
+| `data.reset` | `DataReset` |
 | `compaction.ended` | `CompactionEnded` |
 | `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
@@ -2242,6 +2368,7 @@ and the reply is empty.
 | `process.output` | `ProcessOutput` |
 | `provider.changed` | `ProviderChanged` |
 | `queue.changed` | `QueueChanged` |
+| `runs.changed` | `{app, run, id, state, step}` |
 | `quick.changed` | `QuickChangedEvent` |
 | `render.changed` | `RenderChanged` |
 | `settings.changed` | `SettingsChanged` |
@@ -3037,3 +3164,34 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
 | `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
 | `apps.kit` | `{}` | The embedded kit catalog object, including its version and parts. |
+
+### App building and Desk Look
+
+| method | params | result |
+|---|---|---|
+| `apps.new` | `{name?}` | `{draft}` for an empty draft. |
+| `apps.plan` | `{ask}` or `{draft,request}` | `{draft,plan,needs,offers}`. |
+| `apps.build` | `{draft}` | Starts a durable build and returns `{draft}`. |
+| `apps.change` | `{app,request?,target?}` | `{draft}`. |
+| `apps.say` | `{draft,text,target?}` | Queues feedback. |
+| `apps.build_state` | `{draft}` | Build state, progress, transcript and checkpoints. |
+| `apps.check` | `{draft}` | Checks the current snapshot and returns its build state. |
+| `apps.checkpoints` | `{draft}` | `{checkpoints}`. |
+| `apps.restore_checkpoint` | `{draft,id}` | Restores a saved checkpoint as a new step. |
+| `apps.preview` | `{draft,checkpoint?,data?}` | `{app,sample,screens,scope}`. |
+| `apps.apply`, `apps.keep` | `{draft}` | Publishes the passing snapshot and returns `{meta}`. |
+| `apps.discard` | `{draft}` | Discards pending editing work. |
+| `apps.parts` | `{for?}` | A kit index or the descriptor for an intent or part. |
+| `apps.reference` | `{}` | Worked definitions and schemas. |
+| `apps.mark` | `{draft,text,target}` | Pins feedback and queues the request. |
+| `apps.presence` | `{draft}` | The current claim. |
+| `apps.look` | `{app?,draft?,screen,checkpoint?,theme?,viewport?}` | `{png_path,problems}`, or `desk_unavailable`. |
+| `apps.look_ready` | `{ready}` | Announces a Desk renderer. |
+| `apps.look_result` | `{id,png?,problems?,problem?}` | Completes a Look request. |
+
+Events include `apps.build` and `apps.look_requested`. The latter carries `{id,scope,app,screen,theme?,viewport?,fixture}`. The issued scope
+pins the definition and synthetic fixture. With Desk connected, Check requests
+Dark and Light at widths 800 and 1120. Each Desk problem fails the current
+Check round. When the renderer is absent, the report carries
+`look: "skipped (desk not running)"`, and the checkpoint summary shows the
+same notice. A structurally valid app can be applied.

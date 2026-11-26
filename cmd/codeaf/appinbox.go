@@ -388,7 +388,11 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 	}
 	// Validate outside the Inbox lock because finding a crew owner can emit.
 	words := strings.TrimSpace(strings.TrimSpace(text) + "\n" + strings.TrimSpace(why))
-	if episode, service := strings.CutPrefix(ask, "service:"); service {
+	if appRunAsk(ask) {
+		if err := b.checkRunAnswer(agent, ask, option, text); err != nil {
+			return time.Time{}, err
+		}
+	} else if episode, service := strings.CutPrefix(ask, "service:"); service {
 		if err := appValidateServiceAnswer(option); err != nil {
 			return time.Time{}, err
 		}

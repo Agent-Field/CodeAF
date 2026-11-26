@@ -18,10 +18,10 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["part"],
+      "required": ["part", "id"],
       "properties": {
         "part": { "type": "string", "minLength": 1 },
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+        "id": { "type": "string", "pattern": "^([a-z][a-z0-9_-]{0,47}|[0-9A-HJKMNP-TV-Z]{26})$" },
         "label": { "type": "string", "minLength": 1 },
         "props": { "type": "object" },
         "bind": { "$ref": "#/$defs/bind" },

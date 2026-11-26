@@ -504,6 +504,12 @@ CREATE TABLE IF NOT EXISTS events (
     payload   JSON NOT NULL CHECK (json_valid(payload))
 );
 
+CREATE TABLE IF NOT EXISTS app_run_receipts (
+    seq         INTEGER NOT NULL,
+    trigger_id  TEXT NOT NULL,
+    PRIMARY KEY (seq, trigger_id)
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
     id             TEXT PRIMARY KEY,
     parent_id      TEXT REFERENCES nodes(id),

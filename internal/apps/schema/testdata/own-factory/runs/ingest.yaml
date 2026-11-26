@@ -1,0 +1,6 @@
+run: ingest
+steps:
+  - id: capture
+    records.create:
+      type: job
+      set: {title: $event.title, issue: $event.number, repo: $event.repo, state: queued}

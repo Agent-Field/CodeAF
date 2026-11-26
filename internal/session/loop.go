@@ -3938,6 +3938,16 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	if a.config.scopedCommand != nil {
+		if call.Function.Name != "bash" {
+			return a.finishToolResult(ep, call, toolResult{text: "Only the scoped command is available.", isError: true, harness: true})
+		}
+		text, isError, err := a.scopedCommandTool().Execute(ctx, json.RawMessage(call.Function.Arguments))
+		if err != nil {
+			text = err.Error()
+		}
+		return a.finishToolResult(ep, call, toolResult{text: text, isError: isError || err != nil})
+	}
 	if err := a.jobBudgetBlock(); err != nil {
 		return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
 	}

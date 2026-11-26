@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -33,12 +35,19 @@ type appHeader struct {
 	Name    string           `json:"name"`
 	Icon    string           `json:"icon"`
 	Version int              `json:"version"`
+	Kit     int              `json:"kit"`
 	Agent   *schema.AgentRef `json:"agent"`
 }
 
 // files holds only definition files by their slash-separated names. The
 // draft's sample database and store-owned version metadata stay separate.
 type files map[string][]byte
+
+func (f files) digest() string {
+	// JSON orders map keys and frames the file names and bytes.
+	raw, _ := json.Marshal(f)
+	return fmt.Sprintf("%x", sha256.Sum256(raw))
+}
 
 func checkDir(dir string) error {
 	fi, err := os.Lstat(dir)
@@ -103,11 +112,21 @@ func readDefinition(dir string, extra ...string) (files, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	if err := f.readGroup(root, schema.ScreensDir, ".json"); err != nil {
-		return nil, err
+	groups := schema.DefinitionGroups(a.Kit)
+	names := make([]string, 0, len(groups))
+	for name := range groups {
+		names = append(names, name)
 	}
-	if err := f.readGroup(root, schema.RunsDir, ".yaml", ".yml"); err != nil {
-		return nil, err
+	sort.Strings(names)
+	for _, name := range names {
+		if err := f.readGroup(root, name, groups[name]...); err != nil {
+			return nil, err
+		}
+	}
+	if a.Kit == 0 {
+		for _, name := range (schema.Definition{Files: f}).ScreenFiles() {
+			f[name] = schema.WithLegacyNodeIDs(f[name])
+		}
 	}
 	if err := f.checkEntries(root.FS(), extra); err != nil {
 		return nil, err
@@ -160,7 +179,7 @@ func (f files) readGroup(root *os.Root, dir string, exts ...string) error {
 			continue
 		}
 		id := strings.TrimSuffix(entry.Name(), ext)
-		if !fileID(id) || seen[id] {
+		if !fileID(id) || dir == schema.RunsDir && seen[id] {
 			return fmt.Errorf("invalid or duplicate %s filename %q", dir, entry.Name())
 		}
 		seen[id] = true
@@ -256,6 +275,11 @@ func validateDefinition(f files, existing schema.TypeSet) error {
 }
 
 func (s *Store) loadCurrent(m Meta) (Definition, error) {
+	if _, ok, err := s.publishedMeta(m.ID); err != nil {
+		return Definition{}, err
+	} else if ok {
+		return s.loadSnapshot(m, m.Version)
+	}
 	v, err := s.readReceipt(m.ID, m.Version)
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -267,6 +291,9 @@ func (s *Store) loadLive(m Meta) (Definition, error) {
 	d, err := s.loadCurrent(m)
 	if err == nil {
 		return d, nil
+	}
+	if _, ok, readErr := s.publishedMeta(m.ID); ok || readErr != nil {
+		return Definition{}, err
 	}
 	nums, listErr := s.versionNumbers(m)
 	if listErr != nil {
@@ -285,6 +312,9 @@ func (s *Store) loadSnapshot(m Meta, n int) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	if m.Version != n {
+		m.digest = ""
+	}
 	m.Version = n
 	m.UpdatedAt = v.At
 	return load(s.snapshot(m.ID, n), m, v.Types, versionFile)
@@ -298,6 +328,9 @@ func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definit
 	a, err := f.header()
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if m.digest != "" && m.digest != f.digest() {
+		return Definition{}, fmt.Errorf("%w: files differ from the published snapshot", ErrCorrupt)
 	}
 	if a.ID != m.ID || a.Version != m.Version {
 		return Definition{}, fmt.Errorf("%w: app.json does not match the app ID and version", ErrInvalid)

@@ -1,0 +1,16 @@
+{
+  "records": {
+    "delivery": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Northwind depot",
+        "position": [
+          -79.38,
+          43.65
+        ],
+        "eta": "2026-11-25T15:00:00Z",
+        "customer": "+14165550100"
+      }
+    ]
+  }
+}

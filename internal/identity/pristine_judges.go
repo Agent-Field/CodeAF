@@ -113,28 +113,30 @@ func appStartupState(path string) (bool, error) {
 	return noncanonicalJSON(raw, state)
 }
 
-// bundledCanvasSkill recognizes the exact install location and version marker
+// bundledSkill recognizes a managed skill by its own name and version marker
 // used by WorkAF. A custom skill, or extra files in this skill's folder, still
 // count as use. Ordinary pairing leaves the managed skill in place.
-func bundledCanvasSkill(path string) (bool, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return true, err
+func bundledSkill(name string) judge {
+	return func(path string) (bool, error) {
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return true, err
+		}
+		raw, err := skills.ReadRegularHead(path, 4096)
+		if err != nil {
+			return true, err
+		}
+		text := strings.TrimPrefix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\ufeff")
+		front, body, found := strings.Cut(text, "\n---\n")
+		if !found || !strings.HasPrefix(front, "---\nname: "+name+"\n") {
+			return true, nil
+		}
+		line, _, _ := strings.Cut(body, "\n")
+		version, prefix := strings.CutPrefix(strings.TrimSpace(line), "<!-- "+name+" v")
+		version, suffix := strings.CutSuffix(version, " -->")
+		_, err = strconv.ParseUint(version, 10, 32)
+		return !prefix || !suffix || err != nil, nil
 	}
-	raw, err := skills.ReadRegularHead(path, 4096)
-	if err != nil {
-		return true, err
-	}
-	text := strings.TrimPrefix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\ufeff")
-	front, body, found := strings.Cut(text, "\n---\n")
-	if !found || !strings.HasPrefix(front, "---\nname: workaf-canvas\n") {
-		return true, nil
-	}
-	line, _, _ := strings.Cut(body, "\n")
-	version, prefix := strings.CutPrefix(strings.TrimSpace(line), "<!-- workaf-canvas v")
-	version, suffix := strings.CutSuffix(version, " -->")
-	_, err = strconv.ParseUint(version, 10, 32)
-	return !prefix || !suffix || err != nil, nil
 }
 
 func serviceStartup(path string) (bool, error) {
