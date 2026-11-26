@@ -31,6 +31,7 @@ type RenderAction struct {
 }
 
 const OutputRowsMax = 500
+const WorksheetColumnsMax = 32
 
 var outputField = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_-]*$`)
 

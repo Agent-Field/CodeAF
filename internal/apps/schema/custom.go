@@ -99,7 +99,7 @@ func compilePart(p Part, source []byte) (PartProgram, error) {
 			return fail("Custom source only accepts presentation elements.")
 		}
 	}
-	native := slices.ContainsFunc(elements, func(element PartElement) bool { return nativeRecordPart(element.Kind) }) || len(elements) == 1 && elements[0].Kind == "document" && elements[0].Field != ""
+	native := slices.ContainsFunc(elements, func(element PartElement) bool { return usesNativeEditor(element, len(elements)) })
 	if native && (len(elements) != 1 || len(p.Bindings) != 1 || p.Bindings[0] != "record" ||
 		len(p.Events) > 1 || (len(p.Events) == 1 && p.Events[0] != "edit")) {
 		return fail("A native editor part binds one record and may declare an edit event.")
@@ -117,6 +117,10 @@ func compilePart(p Part, source []byte) (PartProgram, error) {
 
 // Native editors are fixed Desk renderers. A custom declaration supplies
 // only a field address and its registered Action.
+func usesNativeEditor(element PartElement, siblings int) bool {
+	return nativeRecordPart(element.Kind) || siblings == 1 && element.Kind == "document" && element.Field != ""
+}
+
 func nativeRecordPart(kind string) bool {
 	return kind == "grid" || kind == "board" || kind == "slide"
 }
@@ -167,7 +171,7 @@ func (c *checker) checkCustomPart(ctx actionCtx, n *Node, program PartProgram, a
 	if typ != "" {
 		fields, _ := c.typeFields(typ)
 		for _, element := range program.Elements {
-			if (nativeRecordPart(element.Kind) || len(program.Elements) == 1 && element.Kind == "document" && element.Field != "") && fields[element.Field].Type != "longtext" {
+			if usesNativeEditor(element, len(program.Elements)) && fields[element.Field].Type != "longtext" {
 				c.add(ctx.file, at+"/bind", CodeBindNotAccepted, "An editor needs a longtext field.")
 			}
 		}

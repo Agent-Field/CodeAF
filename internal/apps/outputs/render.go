@@ -129,8 +129,8 @@ func renderWorksheet(table string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read worksheet: %w", err)
 		}
-		if n >= schema.OutputRowsMax || len(row) > 32 {
-			return nil, errors.New("a worksheet export takes up to 500 rows and 32 columns")
+		if n >= schema.OutputRowsMax || len(row) > schema.WorksheetColumnsMax {
+			return nil, fmt.Errorf("a worksheet export takes up to %d rows and %d columns", schema.OutputRowsMax, schema.WorksheetColumnsMax)
 		}
 		for i, value := range row {
 			row[i] = csvCell(value)

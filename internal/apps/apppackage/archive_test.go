@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -128,6 +129,27 @@ func TestReleaseSignatureAuthenticatesTheArchive(t *testing.T) {
 		}
 		if _, err := apppackage.Read(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "release signature") {
 			t.Fatalf("tampered %s signature: %v", a.Manifest.Name, err)
+		}
+	}
+}
+
+func TestShippedDefinitionsMatchSignedReleases(t *testing.T) {
+	archives, err := apppackage.Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range archives {
+		def, err := schema.Load(filepath.Join("definitions", strings.ToLower(a.Manifest.Name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(def.Files) != len(a.Files) {
+			t.Fatalf("%s must be signed again after editing its definition files", a.Manifest.Name)
+		}
+		for name, raw := range def.Files {
+			if !bytes.Equal(raw, a.Files[name]) {
+				t.Fatalf("%s %s differs from its signed release", a.Manifest.Name, name)
+			}
 		}
 	}
 }
