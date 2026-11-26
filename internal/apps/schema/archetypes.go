@@ -8,6 +8,8 @@ import (
 // ScreenSlots supplies the parts of the job that the compiler cannot infer.
 // The archetype owns the resulting layout and the references between its parts.
 type ScreenSlots struct {
+	Agenda      *ScreenAgenda     `json:"agenda,omitempty"`
+	Reason      string            `json:"reason,omitempty"`
 	Summary     string            `json:"summary,omitempty"`
 	State       string            `json:"state,omitempty"`
 	Start       string            `json:"start,omitempty"`
@@ -28,6 +30,12 @@ type ScreenSlots struct {
 type ReplyMacro struct {
 	Label string `json:"label"`
 	Text  string `json:"text"`
+}
+
+type ScreenAgenda struct {
+	Record    string `json:"record"`
+	Start     string `json:"start"`
+	Attendees string `json:"attendees,omitempty"`
 }
 
 type ScreenCollection struct {
@@ -175,6 +183,19 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			mode = "timeline"
 		}
 		queue := collection("work", view, mode, true)
+		if r.As == "brief" {
+			queue.Label = "Needs you"
+			reason := slots.Reason
+			if reason == "" && fields["reason"].Type != "" {
+				reason = "reason"
+			}
+			if reason != "" {
+				if field := fields[reason]; field.Masked || (field.Type != "text" && field.Type != "longtext") {
+					return nil, fmt.Errorf("choose a readable text field for the reason slot")
+				}
+				queue.Props["reason"] = reason
+			}
+		}
 		if mode == "board" {
 			queue.Props["board_by"] = state
 		} else if mode == "timeline" {
@@ -233,22 +254,43 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		}
 		hero := node("summary", "Text", "", map[string]any{"text": summary, "size": "large", "tone": "primary"})
 		var supporting []*Node
-		if slots.Start != "" {
-			timeline := collection("agenda", ScreenCollection{Record: r.Record, Title: "Agenda", Filter: slots.Filter}, "timeline", false)
-			if err := schedule(timeline); err != nil {
-				return nil, err
+		agenda := slots.Agenda
+		if agenda == nil && slots.Start != "" {
+			agenda = &ScreenAgenda{Record: r.Record, Start: slots.Start}
+		}
+		if agenda != nil {
+			agendaFields, _ := c.typeFields(agenda.Record)
+			start := agendaFields[agenda.Start]
+			if start.Masked || (start.Type != "date" && start.Type != "datetime") {
+				return nil, fmt.Errorf("choose a readable date for the day agenda")
 			}
-			supporting = append(supporting, timeline)
+			dates := map[string]any{"start": agenda.Start}
+			if agenda.Attendees != "" {
+				people := agendaFields[agenda.Attendees]
+				if people.Type == "" || people.Masked {
+					return nil, fmt.Errorf("choose a readable attendee field for the day agenda")
+				}
+				dates["attendees"] = agenda.Attendees
+			}
+			today := collection("agenda", ScreenCollection{Record: agenda.Record, Title: "Today’s agenda", Sort: agenda.Start}, "agenda", false)
+			today.Props["search"] = false
+			today.Props["viewOptions"] = map[string]any{"agenda": dates}
+			supporting = append(supporting, today)
 		}
 		if changed := slots.Changed; changed != nil {
 			recent := collection("changed", *changed, "list", false)
 			recent.Props["search"] = false
-			supporting = append(supporting, recent)
+			label := changed.Title
+			if label == "" {
+				label = "What changed"
+			}
+			supporting = append(supporting, node("changed-title", "Text", "", map[string]any{"text": label, "role": "section", "tone": "primary"}), recent)
 		}
-		work := pair
+		needs := stack("needs-attention", node("needs-title", "Text", "", map[string]any{"text": "Needs you", "role": "section", "tone": "primary"}), pair)
+		work := needs
 		if len(supporting) != 0 {
 			work = node("brief-work", "Row", "", map[string]any{"wrap": true, "gap": 2},
-				stack("needs-attention", pair), stack("around-the-queue", supporting...))
+				needs, stack("around-the-queue", supporting...))
 		}
 		s.Body = stack("brief", hero, work)
 	case "dashboard":

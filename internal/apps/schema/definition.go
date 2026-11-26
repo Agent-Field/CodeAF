@@ -252,24 +252,26 @@ type RecordType struct {
 
 // Field is one field of a record type and its rules.
 type Field struct {
-	Class      DataClass  `json:"class,omitempty"`
-	ID         string     `json:"id,omitempty"`
-	Sequence   *Sequence  `json:"sequence,omitempty"`
-	Type       string     `json:"type"`
-	Timer      *TimerRule `json:"timer,omitempty"`
-	Blind      *BlindRule `json:"blind,omitempty"`
-	Label      string     `json:"label,omitempty"`
-	Required   bool       `json:"required,omitempty"`
-	Unique     bool       `json:"unique,omitempty"`
-	Default    any        `json:"default,omitempty"`
-	Index      bool       `json:"index,omitempty"`
-	Masked     bool       `json:"masked,omitempty"`
-	Computed   string     `json:"computed,omitempty"`
-	AI         string     `json:"ai,omitempty"`
-	AIOnChange bool       `json:"ai_on_change,omitempty"`
-	Values     []string   `json:"values,omitempty"`
-	To         string     `json:"to,omitempty"`
-	Currency   string     `json:"currency,omitempty"`
+	Class           DataClass  `json:"class,omitempty"`
+	ID              string     `json:"id,omitempty"`
+	Sequence        *Sequence  `json:"sequence,omitempty"`
+	Type            string     `json:"type"`
+	Timer           *TimerRule `json:"timer,omitempty"`
+	Blind           *BlindRule `json:"blind,omitempty"`
+	Label           string     `json:"label,omitempty"`
+	Required        bool       `json:"required,omitempty"`
+	Unique          bool       `json:"unique,omitempty"`
+	Default         any        `json:"default,omitempty"`
+	Index           bool       `json:"index,omitempty"`
+	Masked          bool       `json:"masked,omitempty"`
+	Computed        string     `json:"computed,omitempty"`
+	AI              string     `json:"ai,omitempty"`
+	ScoreComponents []string   `json:"score_components,omitempty"`
+	ScoreReason     string     `json:"score_reason,omitempty"`
+	AIOnChange      bool       `json:"ai_on_change,omitempty"`
+	Values          []string   `json:"values,omitempty"`
+	To              string     `json:"to,omitempty"`
+	Currency        string     `json:"currency,omitempty"`
 }
 
 // Freeze is one freeze rule: a condition, or a period that locks after a delay.

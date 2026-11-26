@@ -376,7 +376,10 @@ func actorBlocked(tr *transition, kind string) string {
 }
 
 func guardBlocked(tr *transition) string {
-	return fmt.Sprintf("%s cannot happen yet: %s does not hold", label(tr), tr.Guard)
+	if strings.TrimSpace(tr.Guard) == "signed()" {
+		return "An approval signature is required."
+	}
+	return fmt.Sprintf("Finish the required steps before you can choose %s.", label(tr))
 }
 
 func staleTransition(t *Type, expected, actual int64) error {

@@ -560,6 +560,8 @@
           "type": "string",
           "minLength": 1
         },
+        "score_components": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "score_reason": { "type": "string", "minLength": 1 },
         "ai_on_change": { "type": "boolean" },
         "ai": {
           "type": "string",

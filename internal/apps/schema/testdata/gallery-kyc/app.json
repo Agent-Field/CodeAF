@@ -49,8 +49,62 @@
         },
         "risk": {
           "type": "number",
-          "label": "Risk score"
+          "label": "Risk score",
+          "score_components": [
+            "cash_business",
+            "adverse_media",
+            "source_of_funds"
+          ],
+          "score_reason": "risk_reason"
+        },
+        "cash_business": {
+          "type": "number",
+          "label": "Cash business"
+        },
+        "adverse_media": {
+          "type": "number",
+          "label": "Adverse media"
+        },
+        "source_of_funds": {
+          "type": "number",
+          "label": "Source of funds"
+        },
+        "risk_reason": {
+          "type": "longtext",
+          "label": "Review note"
         }
+      },
+      "present": {
+        "title": "title",
+        "meta": [
+          "case_number",
+          "review",
+          "maker"
+        ],
+        "state": "stage",
+        "trailing": "risk"
+      },
+      "lifecycle": {
+        "field": "stage",
+        "transitions": [
+          {
+            "id": "approve",
+            "label": "Approve",
+            "from": [
+              "Checker"
+            ],
+            "to": "Done",
+            "guard": "signed()"
+          },
+          {
+            "id": "return",
+            "label": "Return",
+            "from": [
+              "Checker"
+            ],
+            "to": "Maker"
+          }
+        ]
       }
     }
   },

@@ -951,7 +951,8 @@
               "body",
               "secondary",
               "meta",
-              "mono"
+              "mono",
+              "section"
             ]
           },
           "ink": {
@@ -2065,6 +2066,9 @@
             },
             "minItems": 1,
             "uniqueItems": true
+          },
+          "reason": {
+            "type": "string"
           },
           "board_by": {
             "type": "string"
@@ -4232,6 +4236,45 @@
           },
           "by": "board_by",
           "fields": "columns"
+        }
+      },
+      "agenda": {
+        "id": "agenda",
+        "version": 1,
+        "doc": "Today’s appointments in time order.",
+        "example": {
+          "start": "start",
+          "attendees": "attendees"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start"
+          ],
+          "properties": {
+            "start": {
+              "type": "string"
+            },
+            "attendees": {
+              "type": "string"
+            }
+          }
+        },
+        "rules": [
+          {
+            "check": "field",
+            "path": "start",
+            "options": "clock"
+          },
+          {
+            "check": "field",
+            "path": "attendees"
+          }
+        ],
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.agenda"
         }
       },
       "calendar": {

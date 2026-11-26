@@ -3222,6 +3222,7 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.get` | `{app}` | `{meta,app,plan,screens:[ids],runs:[ids],agent_md}` for the same checked version. Falls back to the newest valid saved version when needed. |
 | `apps.screen` | `{app,screen}` | `{screen}` containing the screen JSON from the live checked version. |
 | `apps.content.read` | `{app,draft?,ref}` | `{text}` for a saved `docs/*.md` or `plan/*.json` file in the checked app or its draft. |
+| `files.preview` | `{app,draft?,record:{type,id},blob}` | `{file,pages:[{mime,base64}]}` for a visible PNG or JPEG attachment from the selected record. |
 | `apps.versions` | `{app}` | `{versions:[{n,at,request,summary}]}`, newest first. |
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
