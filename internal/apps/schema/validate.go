@@ -57,7 +57,7 @@ const (
 	CodeToolNotAllowed    = "tool_not_allowed"    // a tool the app's capabilities do not list
 	CodeSendGateMissing   = "send_gate_missing"   // something leaves the computer without an approval
 	CodeStepTypeUnknown   = "step_type_unknown"   // a records step whose type cannot be worked out
-	CodeStepRefUnknown    = "step_ref_unknown"    // $steps.<id> names no step
+	CodeStepRefUnknown    = "step_ref_unknown"    // a run step reference cannot resolve
 	CodeWaitV0            = "wait_v0"             // a wait on an outside event, which v0 does not have
 	CodeRunBudgetOver     = "run_budget_over"     // a run may spend more than the app allows
 	CodePlanUnknownID     = "plan_unknown_id"     // a plan line names something the files do not have
@@ -979,6 +979,7 @@ func (c *checker) checkRun(file string, r Run) {
 	}
 
 	stepIDs := map[string]bool{}
+	textOutputs := map[string]bool{}
 	var collect func(steps []Step, at string)
 	collect = func(steps []Step, at string) {
 		for i, s := range steps {
@@ -987,6 +988,7 @@ func (c *checker) checkRun(file string, r Run) {
 				c.add(file, sat+"/id", CodeDuplicateID, "Two steps are called %q.", s.ID)
 			}
 			stepIDs[s.ID] = true
+			textOutputs[s.ID] = s.Agent != ""
 			collect(s.Steps, sat+"/steps")
 		}
 	}
@@ -1004,13 +1006,7 @@ func (c *checker) checkRun(file string, r Run) {
 	if j, err := RunJSON(c.def.Files[file]); err == nil {
 		_ = json.Unmarshal(j, &raw)
 	}
-	for _, str := range stringsIn(raw) {
-		for _, m := range stepsRef.FindAllStringSubmatch(str, -1) {
-			if !stepIDs[m[1]] {
-				c.add(file, "", CodeStepRefUnknown, "%q reads the output of the step %q, but the run has no step by that id.", str, m[1])
-			}
-		}
-	}
+	c.checkRunReferences(file, raw, stepIDs, textOutputs)
 }
 
 func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType string, loopVars map[string]string) {
@@ -1286,23 +1282,26 @@ func stringList(v any) []string {
 // stringsIn returns every string value in a decoded JSON value, keys excluded.
 func stringsIn(v any) []string {
 	var out []string
-	var walk func(any)
-	walk = func(v any) {
-		switch t := v.(type) {
-		case string:
-			out = append(out, t)
-		case map[string]any:
-			for _, k := range sortedKeys(t) {
-				walk(t[k])
-			}
-		case []any:
-			for _, x := range t {
-				walk(x)
-			}
+	walkStrings(v, "", func(_, value string) { out = append(out, value) })
+	return out
+}
+
+var pointerToken = strings.NewReplacer("~", "~0", "/", "~1")
+
+func walkStrings(v any, path string, visit func(path, value string)) {
+	switch value := v.(type) {
+	case string:
+		visit(path, value)
+	case map[string]any:
+		for _, key := range sortedKeys(value) {
+			token := pointerToken.Replace(key)
+			walkStrings(value[key], path+"/"+token, visit)
+		}
+	case []any:
+		for i, item := range value {
+			walkStrings(item, fmt.Sprintf("%s/%d", path, i), visit)
 		}
 	}
-	walk(v)
-	return out
 }
 
 // jsonValue round-trips a decoded value through JSON with numbers kept as
