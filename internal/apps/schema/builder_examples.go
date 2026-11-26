@@ -9,6 +9,7 @@ import (
 // The same examples that pin the validator teach the Builder the shipped formats.
 //
 //go:embed testdata/crm testdata/hiring testdata/draft-review
+//go:embed testdata/gallery-*/screens/*.json
 var builderExamples embed.FS
 
 // BuilderReference renders the schemas and worked examples in file order for

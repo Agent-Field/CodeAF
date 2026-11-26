@@ -1,4 +1,7 @@
-# What is on the screen
+# Chat screen
+
+The chat screen shows the conversation, the task column when it is open, and
+the message box. The bottom row shows which keys work right now.
 
 ## Why is there a line next to my task
 

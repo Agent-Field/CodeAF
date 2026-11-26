@@ -81,6 +81,9 @@ func (kit partsCatalog) part(intent string) (json.RawMessage, error) {
 	if !appcmd.ValidIntent(intent) {
 		return nil, fmt.Errorf("choose one view intent or part name")
 	}
+	if archetype, found := strings.CutPrefix(intent, "add-screen/"); found {
+		return archetypeExample(archetype)
+	}
 	if intent == "" || intent == "add-view" {
 		view := struct {
 			Kit         int                      `json:"kit"`

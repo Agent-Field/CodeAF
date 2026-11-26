@@ -243,6 +243,7 @@ type RecordType struct {
 	ID             string           `json:"id,omitempty"`
 	Ledger         *Ledger          `json:"ledger,omitempty"`
 	Title          string           `json:"title,omitempty"`
+	Present        *Presentation    `json:"present,omitempty"`
 	Label          string           `json:"label,omitempty"`
 	Uses           bool             `json:"uses,omitempty"`
 	Fields         map[string]Field `json:"fields"`
