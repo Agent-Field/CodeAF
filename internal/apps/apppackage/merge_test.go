@@ -53,7 +53,7 @@ func TestMergeKeepsUnrelatedNodeEditsAndReportsDeletion(t *testing.T) {
 }
 
 func TestMergeRequiresAChoiceBeforeRelaxingRecordPolicy(t *testing.T) {
-	base := map[string]string{"app.json": `{"records":{"contact":{"policy":{"row":"assignee == $me"},"fields":{"email":{"type":"email","class":"pii","masked":true}}}}}`}
+	base := map[string]string{"app.json": `{"records":{"contact":{"policy":{"row":{"field":"assignee","attribute":"id"}},"fields":{"email":{"type":"email","class":"pii","masked":true}}}}}`}
 	upstream := map[string]string{"app.json": `{"records":{"contact":{"fields":{"email":{"type":"email","class":"public"},"website":{"type":"url"}}}}}`}
 	merged, conflicts, err := apppackage.Merge(base, base, upstream, nil)
 	if err != nil || len(conflicts) != 3 {
@@ -67,7 +67,7 @@ func TestMergeRequiresAChoiceBeforeRelaxingRecordPolicy(t *testing.T) {
 	}
 	var app struct {
 		Records map[string]struct {
-			Policy map[string]string
+			Policy struct{ Row struct{ Field string } }
 			Fields map[string]struct {
 				Type   string
 				Class  string
@@ -80,7 +80,20 @@ func TestMergeRequiresAChoiceBeforeRelaxingRecordPolicy(t *testing.T) {
 	}
 	contact := app.Records["contact"]
 	if contact.Fields["website"].Type != "url" || contact.Fields["email"].Class != "pii" ||
-		!contact.Fields["email"].Masked || contact.Policy["row"] != "assignee == $me" {
+		!contact.Fields["email"].Masked || contact.Policy.Row.Field != "assignee" {
 		t.Fatalf("candidate lost protection or blocked an unrelated field: %s", merged["app.json"])
+	}
+}
+
+func TestMergeRequiresAChoiceBeforeRemovingAProtectedField(t *testing.T) {
+	base := map[string]string{"app.json": `{"records":{"contact":{"fields":{"email":{"type":"email","class":"pii","masked":true},"old":{"type":"text"}}}}}`}
+	upstream := map[string]string{"app.json": `{"records":{"contact":{"fields":{}}}}`}
+	_, conflicts, err := apppackage.Merge(base, base, upstream, nil)
+	if err != nil || len(conflicts) != 1 || conflicts[0].Path != "/records/contact/fields/email" || conflicts[0].Upstream != nil {
+		t.Fatalf("protected field removal: %v, %+v", err, conflicts)
+	}
+	merged, _, err := apppackage.Merge(base, base, upstream, map[string]string{conflicts[0].ID: "upstream"})
+	if err != nil || merged["app.json"] != upstream["app.json"] {
+		t.Fatalf("chosen removal did not match upstream: %s, %v", merged["app.json"], err)
 	}
 }

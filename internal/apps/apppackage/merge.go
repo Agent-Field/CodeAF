@@ -163,8 +163,13 @@ func (m *merger) value(at string, base, local, upstream any) any {
 	b, bOK := base.(map[string]any)
 	l, lOK := local.(map[string]any)
 	u, uOK := upstream.(map[string]any)
-	if descend && bOK && lOK && uOK {
-		return m.object(at, b, l, u)
+	if descend && bOK && lOK {
+		if uOK {
+			return m.object(at, b, l, u)
+		}
+		if hasProtectedRequest(at, b) {
+			return m.conflict(at, base, local, upstream)
+		}
 	}
 	if value, ok := unchanged(base, local, upstream); ok {
 		return value
@@ -213,6 +218,22 @@ func requestPath(at string) (protect, descend bool) {
 		}
 	}
 	return false, false
+}
+
+// Removing a field or record can remove requests nested under it. Other
+// removals use the same merge rules as ordinary definition edits.
+func hasProtectedRequest(at string, object map[string]any) bool {
+	for name, value := range object {
+		child := at + "/" + pointer(name)
+		protect, descend := requestPath(child)
+		if protect {
+			return true
+		}
+		if nested, ok := value.(map[string]any); descend && ok && hasProtectedRequest(child, nested) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *merger) object(at string, base, local, upstream map[string]any) map[string]any {
