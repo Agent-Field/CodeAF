@@ -235,6 +235,7 @@ var migrations = []string{
 	intakeMigration,
 	aiReviewMigration,
 	outputMigration,
+	runWriteMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
