@@ -202,7 +202,7 @@ func (s *Store) Refresh() error {
 					// updated_at stays: the clock is not an edit, and a formula
 					// reading it would otherwise never settle.
 					next.Rev++
-					if err := w.save(t, next, false); err != nil {
+					if err := w.save(t, next, false, Scope{Flow: true}); err != nil {
 						return err
 					}
 					if w.change == nil {

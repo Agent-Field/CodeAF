@@ -81,6 +81,15 @@ func (b *appBackend) wireProcess(s *data.Store, scope appwire.DataScope, v *data
 	for _, signoff := range v.Signoffs {
 		out.Signoffs = append(out.Signoffs, signoff.Row())
 	}
+	if route := v.Approval; route != nil {
+		out.Approval = &appwire.ProcessApproval{
+			Rule: route.Rule, Order: route.Order, Statement: route.Statement,
+			Steps: make([]appwire.ProcessApprovalStep, 0, len(route.Steps)),
+		}
+		for _, step := range route.Steps {
+			out.Approval.Steps = append(out.Approval.Steps, appwire.ProcessApprovalStep(step))
+		}
+	}
 	for _, line := range v.Timeline {
 		why := line.Reason
 		if why == "" {
