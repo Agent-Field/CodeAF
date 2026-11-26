@@ -1,0 +1,5 @@
+{
+  "ask": "Collect contacts from four local channels.",
+  "data": [{"id": "contact", "line": "People who contacted us"}],
+  "screens": [{"id": "contacts", "line": "Contacts"}]
+}

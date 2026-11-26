@@ -197,10 +197,6 @@ type WorkPatch struct {
 // CreateWorkItem makes a work item. A transition's effect, a run's ask step,
 // a person and an agent all make them the same way.
 func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
-	in.Title = strings.TrimSpace(in.Title)
-	if in.Title == "" || len(in.Title) > titleMax {
-		return nil, errorf(CodeInvalid, "a work item has a title of at most %d characters", titleMax)
-	}
 	var out *WorkItem
 	err := s.writeAs(sc, func(w *writeTx) error {
 		t, _, err := w.subject(sc, in.Type, in.Record, false)
@@ -213,8 +209,12 @@ func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
 	return out, err
 }
 
-// createWorkItem lets the writer commit a rule's work item with its record.
+// createWorkItem lets the writer commit a work item with its record.
 func (w *writeTx) createWorkItem(sc Scope, t *Type, in WorkItem) (*WorkItem, error) {
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" || len(in.Title) > titleMax {
+		return nil, errorf(CodeInvalid, "a work item has a title of at most %d characters", titleMax)
+	}
 	item := WorkItem{ID: w.s.ids.next(w.now), Title: in.Title, Record: in.Record, Form: strings.TrimSpace(in.Form), Status: WorkOpen,
 		App: sc.App, CreatedBy: w.schema.actor(sc), CreatedAt: w.now.UTC().Format(stamp), sourceType: in.sourceType}
 	item.UpdatedAt = item.CreatedAt

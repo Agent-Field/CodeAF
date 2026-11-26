@@ -31,8 +31,14 @@ type Change struct {
 	OutboxVersion int
 	CauseChain    []string
 	SourceEvent   string
+	Intake        *IntakeChange
 	Before        map[string]any
 	After         map[string]any
+}
+
+// IntakeChange carries a channel's explicit run target from the data outbox.
+type IntakeChange struct {
+	App, Channel, Run, RecordType string
 }
 
 // Keep a bound on stored provenance when runs trigger other runs.
@@ -50,6 +56,7 @@ type triggerReceipt struct {
 	OutboxVersion int      `json:"outbox_version,omitempty"`
 	CauseChain    []string `json:"cause_chain,omitempty"`
 	SourceEvent   string   `json:"source_event,omitempty"`
+	IntakeType    string   `json:"intake_type,omitempty"`
 }
 
 type scheduleClock struct {
@@ -133,10 +140,14 @@ func (e *Engine) RecordChanged(change Change) error {
 
 // RecordChanges loads trigger definitions once for a whole committed batch.
 func (e *Engine) RecordChanges(changes []Change) error {
-	if e.cfg.Triggers == nil || len(changes) == 0 {
+	if len(changes) == 0 {
 		return nil
 	}
-	all, err := e.cfg.Triggers()
+	var all []Trigger
+	var err error
+	if e.cfg.Triggers != nil {
+		all, err = e.cfg.Triggers()
+	}
 	for _, change := range changes {
 		if changeErr := e.recordChanged(change, all); changeErr != nil {
 			err = errors.Join(err, changeErr)
@@ -147,6 +158,15 @@ func (e *Engine) RecordChanges(changes []Change) error {
 
 func (e *Engine) recordChanged(change Change, all []Trigger) error {
 	var err error
+	if route := change.Intake; route != nil && route.Run != "" {
+		target := Trigger{App: route.App, ID: "channel/" + route.Channel, On: "record.changed", Run: route.Run, Type: route.RecordType}
+		err = e.matchRecordTriggers(change, []Trigger{target}, true)
+	}
+	return errors.Join(err, e.matchRecordTriggers(change, all, false))
+}
+
+func (e *Engine) matchRecordTriggers(change Change, all []Trigger, intake bool) error {
+	var err error
 	for _, t := range all {
 		if t.On != "record.changed" || (change.TypeID == "" || e.cfg.RecordInput == nil) && t.Type != change.Type {
 			continue
@@ -155,6 +175,9 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 			Seq: change.Seq, TriggerID: t.App + "/" + t.ID, TypeID: change.TypeID, Batch: change.Batch,
 			Record: change.ID, OutboxVersion: change.OutboxVersion, SourceEvent: change.SourceEvent,
 			CauseChain: change.CauseChain[max(0, len(change.CauseChain)-maxRunCauseChain):],
+		}
+		if intake {
+			receipt.IntakeType = t.Type
 		}
 		if receipt.Seq > 0 {
 			claimed, claimErr := e.journal.AppRunClaimed(receipt.Seq, receipt.TriggerID)
@@ -185,6 +208,9 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		}
 		record["id"], record["type"] = change.ID, scoped.Type
 		input := map[string]any{"record": record, "before": scoped.Before, "after": scoped.After}
+		if intake {
+			input["channel"] = change.Intake.Channel
+		}
 		vars := maps.Clone(record)
 		for field := range scoped.Before {
 			if _, present := vars[field]; !present {
