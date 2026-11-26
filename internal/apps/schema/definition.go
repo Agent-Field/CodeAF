@@ -227,6 +227,7 @@ type AgentRef struct {
 	Name  string `json:"name"`
 	File  string `json:"file"`
 	Model string `json:"model,omitempty"`
+	Dock  string `json:"dock,omitempty"`
 }
 
 // RecordType is one record type the app owns, or, with Uses set, a type another app

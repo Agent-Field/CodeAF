@@ -78,5 +78,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Boards",
+    "props": {
+      "items": [
+        {
+          "label": "Boards",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

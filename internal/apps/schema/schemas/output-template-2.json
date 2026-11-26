@@ -141,6 +141,10 @@
     "table": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+    },
+    "slides": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
     }
   },
   "required": [
@@ -187,7 +191,8 @@
       }
     ],
     "properties": {
-      "body": false
+      "body": false,
+      "slides": false
     }
   },
   "else": {

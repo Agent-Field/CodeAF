@@ -373,7 +373,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.aggregate` | `in.DataAggregateParams` | `DataAggregateResult` |
 | `data.checklist_set` | `in.ChecklistSetParams` | `DataProcessResult` |
 | `data.comments.create` | `in.DataCommentParams` | `DataItemResult` |
-| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` |
+| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` with `viewer` (the current person's ID) |
 | `data.count` | `in.DataCountParams` | `DataCountResult` |
 | `data.create` | `in.DataCreateParams` | `DataWriteResult` |
 | `data.delete` | `in.DataDeleteParams` | `DataWriteResult` |
@@ -3235,7 +3235,7 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
 | `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
-| `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
+| `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types` and the built-in `app_templates` package manifests. |
 | `apps.kit_parts` | `{}` | The person's promoted custom part revisions, with version and source lineage. |
 | `apps.promote_part` | `{app,id}` | The saved custom part's immutable Kit revision, with version and source lineage. |
 | `apps.kit_steps` | `{}` | The person's promoted custom step revisions, with types, version, and source lineage. |
@@ -3262,9 +3262,9 @@ a file from the Kit or export a kept app as a template.
 | method | params | result |
 |---|---|---|
 | `apps.pack` | `{app,path,publisher?,version?,sample?}` | `{path,manifest}`. A format 1 archive contains the definition files, entity shapes, action and automation inventory, requested permissions, budget, and SHA-256 content hash. Publisher defaults to `local`, version to the live version followed by `.0.0`. An existing file at the export path is preserved. |
-| `apps.install` | `{path}` | A proposal with `source:"package_install"`, the common-type bindings, and the requested permissions. Apply publishes the copy. |
+| `apps.install` | `{path?,package?}` | Choose one absolute path or bundled package ID. Returns a `package_install` proposal with common-type bindings and permissions. Apply publishes the copy. |
 | `apps.fork` | `{app}` | A proposal with `source:"package_fork"`. Apply gives the independent definition a new app ID and records `forked_from`. |
-| `apps.update` | `{app,path}` | A proposal with `source:"package_update"`. The file must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
+| `apps.update` | `{app,path?,package?}` | Choose one absolute path or bundled package ID. The `package_update` proposal requires the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
 | `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
 | `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
 

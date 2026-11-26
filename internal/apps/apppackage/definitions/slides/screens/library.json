@@ -17,7 +17,7 @@
           {
             "part": "Button",
             "id": "new",
-            "label": "New slide",
+            "label": "New presentation",
             "props": {
               "kind": "primary"
             },
@@ -32,23 +32,6 @@
                   },
                   "ask": {
                     "title": "text"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "part": "Button",
-            "id": "export-pptx",
-            "label": "Export PPTX",
-            "props": {
-              "kind": "secondary"
-            },
-            "on": {
-              "click": [
-                {
-                  "render": {
-                    "output": "pptx"
                   }
                 }
               ]
@@ -68,7 +51,7 @@
           "columns": [
             "title"
           ],
-          "empty": "Create a slide to get started."
+          "empty": "Create a presentation to get started."
         },
         "on": {
           "open": [
@@ -80,5 +63,18 @@
         }
       }
     ]
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Presentations",
+    "props": {
+      "items": [
+        {
+          "label": "Presentations",
+          "screen": "library"
+        }
+      ]
+    },
+    "id": "home-tab"
   }
 }

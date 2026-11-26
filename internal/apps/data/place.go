@@ -303,26 +303,33 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 			if err != nil {
 				return err
 			}
-			if _, err := w.newBatch(Scope{Actor: "sample"}, OpSeed, t); err != nil {
-				return err
-			}
-			for _, set := range list {
-				set = copyMap(set)
-				id, _ := set["id"].(string)
-				delete(set, "id")
-				if err := w.resolveTitles(t, set); err != nil {
-					return err
-				}
-				if id != "" && !validID(id) {
-					return errorf(CodeInvalid, "sample %s id %q is not a ULID", typ, id)
-				}
-				if _, err := w.createOneAs(t, Scope{Actor: "sample"}, set, OpSeed, id); err != nil {
-					return err
-				}
-			}
-			return nil
+			return w.seedRows(t, Scope{Actor: "sample"}, list)
 		})
 		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *writeTx) seedRows(t *Type, scope Scope, rows []map[string]any) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if _, err := w.newBatch(scope, OpSeed, t); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		set := copyMap(row)
+		id, _ := set["id"].(string)
+		delete(set, "id")
+		if err := w.resolveTitles(t, set); err != nil {
+			return err
+		}
+		if id != "" && !validID(id) {
+			return errorf(CodeInvalid, "sample %s id %q is not a ULID", t.Name, id)
+		}
+		if _, err := w.createOneAs(t, scope, set, OpSeed, id); err != nil {
 			return err
 		}
 	}

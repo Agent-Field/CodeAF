@@ -1,23 +1,37 @@
 # Docs, Sheets, Slides and Canvas
 
-## First-party apps and where to open them
+## First-party apps and where to find templates
 
-Open the built-in editors or find templates in the Kit.
+Docs, Sheets, Slides and Canvas are signed codeaf packages. They install on the first visit to Desk's Apps place or the first `codeaf app list` in a new profile. Each editor opens a list of your records. A fresh installation includes an editable example. Open the Details side panel and choose Delete… to remove it. A package update preserves the existing records and earlier deletions.
 
-Docs, Sheets, Slides and Canvas are apps with their own record types, screens and Actions. They are installed when you first open Apps or run `codeaf app list`. In Desk's Apps place, open Kit to find the codeaf publisher templates. A package uses sample records in the preview. New documents and edits in the kept app go to your records.
+Kit lists the codeaf publisher templates. Use the package preview to try its examples. Older canvas files still open from Canvases with their assets, versions and marks. New app from Canvases opens the same Builder as New app in Apps.
 
-Docs displays Markdown. Sheets supports cell edits, paste, range clear and fill, arithmetic and SUM over ranges. Each worksheet takes up to 500 rows and 32 columns. Slides opens and presents individual slides. Canvas opens a board with movable text. Existing canvas files still open in Canvases with their original assets, versions and marks. New app from Canvases opens the same Builder as New app from Apps.
+## Write, comment or ask AI in Docs
+
+Open a document, choose Edit document and write on the page. Use Text style for headings, Bold, Italic and List to format text. The outline jumps to headings. Docs stores Markdown. Use Markdown for tables, images and other source syntax outside the rich editor. Save commits the current body against the revision you opened. Comments are attached to the document record and open beside the writing page.
+
+Ask AI offers Rewrite selection, Summarize and Continue writing. It uses the current editor text, including unsaved edits, or the selected passage. Desk shows the app agent's answer in the document. Insert puts its text in the current edit, which you can review and save. The app agent requires a configured model.
+
+## Formulas, column types and selections in Sheets
+
+Select a cell to see its source value or formula in the formula bar. Edit or double-click to change it. Use Format column for text, number, currency, date or status. Select a range for its sum and average. Sheets supports paste, clear, fill down, arithmetic and SUM over ranges. A worksheet takes up to 500 rows and 32 columns.
+
+Ask AI can explain the selected formula. Fill column proposes values for empty cells in existing rows. Choose Fill empty cells to apply the suggestion to the worksheet revision it read. CSV export contains calculated values.
+
+## Presentation layouts and boards
+
+Slides lists presentations. Use the thumbnails to switch slides, Layout for title, two-column, chart and image layouts, and Notes for presenter notes. Present opens the current deck. Use the arrow keys to move between slides. Choose image accepts PNG, JPEG and WebP files.
+
+Canvas uses the Desk canvas stage. Add sticky notes, frames and shapes from Canvas's toolbar. Select one object, choose Connector, select the destination and choose Connect to selection. The connector follows the objects when they move. Edit object changes its title and text.
 
 ## Fork an editor and ask for a change
 
-Choose Fork… from the app menu in Desk, review the package card, then choose Fork. The new app has its own definition history. Its document type is shared with the original app, so the same documents remain available. Open Edit app from the app menu and describe what should change. Review and apply the Builder's proposal before using the new controls.
+Open the app menu and choose Fork. Review the package card and keep your copy. The copy carries the codeaf publisher baseline. Open Builder and describe the change you want, such as adding a Draft, Review and Final status with approval before Final. Review and keep the proposed files.
 
-Choose Check for update for a codeaf package. The update card compares the saved publisher version, your version and the new package. For each conflict choose Keep mine or Use publisher’s, then Check choices. Apply keeps the resulting definition. Local changes that do not conflict carry forward.
+Check for update in the app menu opens a three-way card when a newer bundled codeaf package exists. Resolve any conflicts before Apply. The app keeps running the current definition while the card is open.
 
-## Edit documents with codeaf app and export a copy
+## Edit records with codeaf app and export or share
 
-Open the app's agent in Desk or use `codeaf app` from the terminal. `codeaf app show` lists the app's declared views and Actions. `codeaf app query` reads a declared view with its required data grant. `codeaf app invoke` can call the registered edit, duplicate and export Actions with the exact action grant. A record edit takes an expected revision and leaves the actor and changed fields in that record's history. A person-authored value holds against an AI edit.
+Use the app's declared views and Actions to read and edit records. Agents need a grant for the view or Action. Agent edits appear in data history with the agent's name. `codeaf app worksheet-window` reads a scoped cell range and its record revision.
 
-Open a record for its export and copy controls. Docs exports its Markdown source as text in PDF and DOCX. Sheets exports CSV with calculated values. `codeaf app worksheet-window` reads a scoped cell range with its record revision. Slides exports slide text to PPTX and individual slide text to PDF. Canvas exports board text to PDF. The frame exports use the current title and text. They omit canvas positions and visual styling. Exports carry an output receipt. On Desk, choose a destination in the native Save panel.
-
-Copy text or Copy CSV prepares the current record for pasting into another app. The same `render/share` Action gives an agent an output receipt. Grant that Action before invoking it with `codeaf app invoke` and pass the record ID. Use `codeaf app output-file` with the receipt ID to get its contents.
+In the editor, File groups export and copy Actions. Docs exports Markdown source to PDF or DOCX. Sheets exports CSV. Slides exports ordered text and chart values to PPTX or PDF. Slide exports omit pictures, layout styling and presenter notes. Canvas exports board text to PDF. Choose a destination in the native Save panel. Copy text or Copy CSV places the scoped output on the clipboard. Exports and copies carry output receipts.

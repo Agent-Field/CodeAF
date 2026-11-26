@@ -3,7 +3,11 @@
   "name": "Sheets",
   "version": 1,
   "kit": 2,
-  "agent": {"name": "Sheets agent", "file": "agent.md"},
+  "agent": {
+    "name": "Sheets agent",
+    "file": "agent.md",
+    "dock": "closed"
+  },
   "records": {
     "sheets_worksheet": {
       "label": "Worksheet",
@@ -16,6 +20,11 @@
         "body": {
           "type": "longtext",
           "label": "Cells",
+          "default": ""
+        },
+        "column_formats": {
+          "type": "longtext",
+          "label": "Column formats",
           "default": ""
         }
       }
@@ -90,6 +99,19 @@
       "params": {
         "source": "$record.id"
       }
+    },
+    {
+      "id": "delete",
+      "label": "Delete\u2026",
+      "for": "sheets_worksheet",
+      "do": [
+        {
+          "records.delete": {
+            "type": "sheets_worksheet",
+            "id": "$record.id"
+          }
+        }
+      ]
     }
   ],
   "outputs": {
