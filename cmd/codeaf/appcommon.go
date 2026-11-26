@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
-	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -31,30 +29,8 @@ func (b *appBackend) BindCommonAppType(p appwire.BindCommonTypeParams) (*appwire
 	return &appwire.BindCommonTypeResult{Common: p.Common, Type: t.Name, TypeID: t.ID}, nil
 }
 
-func runAppCommonCommand(root string, args []string) error {
-	switch {
-	case args[0] == "parts" && len(args) == 1:
-		_, err := fmt.Fprintln(os.Stdout, string(schema.KitJSON()))
-		return err
-	case args[0] == "common-types" && len(args) == 1:
-		reply, err := appwire.RunCommonTypeCommand(nil, "common_types", json.RawMessage("{}"))
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(os.Stdout).Encode(reply)
-	case args[0] == "bind-common-type" && len(args) == 2:
-		return runAppCommonBind(root, json.RawMessage(args[1]))
-	default:
-		return fmt.Errorf("usage: codeaf app [--home dir] [parts|common-types|bind-common-type JSON]")
-	}
-}
-
-func runAppCommonBind(root string, raw json.RawMessage) error {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		root = home.Dir()
-	}
-	abs, err := filepath.Abs(root)
+func runAppCommonBind(raw json.RawMessage) error {
+	abs, err := filepath.Abs(home.Dir())
 	if err != nil {
 		return err
 	}
@@ -76,7 +52,7 @@ func runAppCommonBind(root string, raw json.RawMessage) error {
 	}
 	backend := &appBackend{data: appDataState{home: abs}}
 	defer backend.closeData()
-	reply, err := appwire.RunCommonTypeCommand(backend, "bind_common_type", raw)
+	reply, err := appwire.RunAppCommand(backend, "bind_common_type", raw)
 	if err != nil {
 		return err
 	}

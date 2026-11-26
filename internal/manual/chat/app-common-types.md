@@ -22,10 +22,12 @@ Organization, Address, Money, Document, Product, Location, Team, Event
 
 To adopt an existing Contacts type as Person, use
 `codeaf app bind-common-type '{"common":"person","type":"contact"}'`
-with the desktop engine closed for that profile. The receipt includes the
+for the same profile as the desktop engine. The receipt includes the
 unchanged type ID. A common key can point to one type in your space. If a
 different type already uses the key, the command refuses the change.
 
 An app definition in kit 2 can declare a common key on a record type, for
 example `"common":"person"`. Use `"uses":true` when adopting an already bound
-type into a new draft. The draft can keep its own type alias.
+type into a new draft. The draft can keep its own type alias. For declared Actions that create or
+edit the shared records, give that alias `"rw"` in `capabilities.records`.
+The builder can set this with `"access":"rw"` on `add-type`.

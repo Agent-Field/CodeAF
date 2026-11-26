@@ -11,19 +11,24 @@ func TestCommonTypeDeclarationsReuseSpaceIDs(t *testing.T) {
 	}
 	crm := []byte(`{"id":"crm","records":{
 		"company":{"common":"organization","fields":{"name":{"type":"text"}}},
-		"contact":{"common":"person","fields":{"name":{"type":"text"},"company":{"type":"ref","to":"company"}}}
+		"contact":{"fields":{"name":{"type":"text"},"company":{"type":"ref","to":"company"}}}
 	},"capabilities":{"records":{"company":"rw","contact":"rw"}}}`)
 	support := []byte(`{"id":"support","records":{
 		"customer":{"common":"person","uses":true,"fields":{}},
 		"account":{"common":"organization","uses":true,"fields":{}},
 		"ticket":{"fields":{"contact":{"type":"ref","to":"customer"},"company":{"type":"ref","to":"account"}}}
-	},"capabilities":{"records":{"customer":"r","account":"r","ticket":"rw"}}}`)
+	},"capabilities":{"records":{"customer":"rw","account":"r","ticket":"rw"}}}`)
 	for _, p := range []AppPublication{
 		{App: "crm", Version: 1, Metadata: []byte("{}"), Definition: crm},
 		{App: "support", Version: 1, Metadata: []byte("{}"), Definition: support},
 	} {
 		if err := s.PublishApp(p, 0); err != nil {
 			t.Fatal(err)
+		}
+		if p.App == "crm" {
+			if err := s.BindCommonType(CommonPerson, "contact"); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	crmScope, supportScope := Scope{App: "crm"}, Scope{App: "support"}
@@ -44,6 +49,12 @@ func TestCommonTypeDeclarationsReuseSpaceIDs(t *testing.T) {
 			t.Fatalf("support can't read CRM's %s: %v, %v", row.alias, got, err)
 		}
 	}
+	shared := mustCreate(t, s, supportScope, "customer", map[string]any{"name": "Support customer"})[0]
+	if got, err := s.Get(crmScope, "contact", shared.ID(), false); err != nil || got.ID() != shared.ID() {
+		t.Fatalf("CRM cannot read the row made through Support: %v, %v", got, err)
+	}
+	_, err = s.Create(supportScope, "account", []map[string]any{{"name": "Denied"}})
+	wantCode(t, err, CodeNotAllowed)
 	mustCreate(t, s, supportScope, "ticket", map[string]any{"contact": contact.ID(), "company": company.ID()})
 
 	if err := place.SeedSample("support-draft", support, map[string][]map[string]any{
@@ -56,6 +67,9 @@ func TestCommonTypeDeclarationsReuseSpaceIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mustCreate(t, draft, supportScope, "customer", map[string]any{"name": "Preview customer"})
+	_, err = draft.Create(supportScope, "account", []map[string]any{{"name": "Denied in preview"}})
+	wantCode(t, err, CodeNotAllowed)
 	if _, err := draft.Get(supportScope, "customer", contact.ID(), false); err == nil {
 		t.Fatal("the draft can see a live contact")
 	}

@@ -218,7 +218,7 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 		}
 	}
 	for _, typ := range reuse {
-		request := "Use my existing " + typ + " records."
+		request := "Use my existing " + typ + " records. " + prompt
 		if _, err := p.cli(ctx, "plan", map[string]string{"draft": plan.Draft, "request": request}); err != nil {
 			return BuildState{}, err
 		}

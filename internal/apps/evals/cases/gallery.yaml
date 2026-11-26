@@ -18,7 +18,7 @@
       params: {app: $app, screen: deals}
       expect: [{path: /screen, exists: true}]
 - name: hiring-reuses-contacts
-  prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible.
+  prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible. Let me add and edit those shared contacts in the hiring app.
   max_rounds: 3
   fixture: crm-contact
   plan:
@@ -171,7 +171,7 @@
       expect: [{path: /total, equals: 3}]
 
 - name: support-shares-crm-identity
-  prompt: Build a CRM with Contacts and Companies. Name the type keys contact and company. Use common Person for Contacts and common Organization for Companies. Give both a name field and let me add and edit records.
+  prompt: Build a CRM with Contacts and Companies. Name the type keys contact and company. Use common Person for Contacts and common Organization for Companies. Give each type just one field, a name. Let me add and edit both kinds of record in simple lists. Leave out automations.
   max_rounds: 3
   record:
     type: contact
@@ -194,7 +194,7 @@
       capture: {contact: /rows/0/id}
     - method: build-app
       params:
-        prompt: Build a Support app with tickets. Let me use the same Contacts and Companies I have in CRM and show both on the ticket screen. Use the record aliases contact and company.
+        prompt: Build a Support app with tickets. Let me use the same Contacts and Companies I have in CRM and show both on the ticket screen. Let me add and edit shared Contacts from Support, and look up Companies. Use the record aliases contact and company.
         reuse: [contact, company]
       capture: {support: /app}
     - method: app.get
@@ -219,3 +219,9 @@
       expect:
         - {path: /row/id, equals: $company}
         - {path: /row/name, equals: Eval Company}
+    - method: data.create
+      params: {app: $support, type: contact, set: {name: Contact Added In Support}}
+      capture: {support_contact: /rows/0/id}
+    - method: data.get
+      params: {app: $app, type: contact, id: $support_contact}
+      expect: [{path: /row/id, equals: $support_contact}]

@@ -66,7 +66,7 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 		t.Fatalf("wire catalog: %+v", lib)
 	}
 	var wireKit map[string]any
-	wire.must("apps.kit", appwire.Empty{}, &wireKit)
+	wire.must("apps.parts", appwire.Empty{}, &wireKit)
 	if !reflect.DeepEqual(wireKit, cliKit) || !reflect.DeepEqual(lib, cliLib) {
 		t.Fatal("the CLI and wire served different catalogs")
 	}
@@ -92,6 +92,16 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 	}
 	if fromCLI != receipt {
 		t.Fatalf("CLI and wire binding receipts differ: %+v, %+v", fromCLI, receipt)
+	}
+	stopCommands, err := backend.serveAppCommands()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopCommands()
+	var fromLiveCLI appwire.BindCommonTypeResult
+	cli([]string{"bind-common-type", `{"common":"person","type":"contact"}`}, &fromLiveCLI)
+	if fromLiveCLI != receipt {
+		t.Fatalf("live CLI binding receipt: %+v", fromLiveCLI)
 	}
 	wire.mustFail("apps.bind_common_type", appwire.BindCommonTypeParams{Common: "person", Type: "company"}, appwire.CodeBadParams)
 	wire.mustFail("apps.bind_common_type", appwire.BindCommonTypeParams{Common: "invented", Type: "contact"}, appwire.CodeBadParams)
