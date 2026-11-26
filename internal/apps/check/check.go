@@ -47,6 +47,7 @@ func Definition(def schema.Definition, types schema.TypeSet) schema.Report {
 	if report.OK() {
 		report.Problems = append(report.Problems, missingControls(def, types)...)
 		report.Problems = append(report.Problems, missingActions(def)...)
+		report.Warnings = LookFindings(def, types)
 	}
 	return report
 }
@@ -123,7 +124,7 @@ func (p Pipeline) run(ctx context.Context, draft string, def schema.Definition, 
 		return report
 	}
 	for _, file := range def.ScreenFiles() {
-		themes, widths := []string{"dark", "light"}, []int{800, 1120}
+		themes, widths := []string{"dark", "black", "light"}, []int{800, 1120}
 		parts, err := schema.ScreenParts(def, def.Files[file])
 		if err != nil {
 			report.Problems = append(report.Problems, problem(file, "screen_layout", "The screen's custom parts could not be opened."))

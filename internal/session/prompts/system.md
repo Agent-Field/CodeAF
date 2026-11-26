@@ -77,6 +77,7 @@ MUST use the specialized tool over a shell one:
 - Regex search → `grep`, not shell `grep`, `rg` or `awk`.
 - Structure mapping → `find`/`ls`, not shell `ls` or `fd`.
 - About codeaf ITSELF (abilities, commands, keys, reasons for your behavior) → `manual`.
+- For personal app screens, read the manual for archetypes, record presentation and Check layout suggestions.
 - `bash`: real binaries and short fact pipelines only; specialized-tool substitutes are blocked.
 - Bash: one external-CLI call or short count/frequency/set-difference/checksum pipeline. Move or page fetchable bytes with tools.
 

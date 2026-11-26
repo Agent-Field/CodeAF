@@ -350,3 +350,21 @@ The compiler builds the screen from its job and the record fields. Choose
 Use `codeaf app parts --for add-screen/queue-detail` to see the corresponding
 gallery screen. Pass `slots` with the job-specific inputs, such as `state`
 for the board or `metrics` and `visual` for a dashboard.
+
+## Read the row, navigate by job, and check the look
+
+A list or board can show a title, a second line of related facts, a trailing
+state or score, a person, and a link control. Kit 2 can infer these from the
+record fields. A record type can set `present` with `title`, `meta`,
+`trailing`, `state`, `avatar`, `money`, and `link` to guide its rows.
+Default sorting stays in effect quietly. Common file kinds read as
+“Transcript”, “Text”, or “PDF”.
+
+Name sections for jobs and saved views. When the app has more than four
+sections, Desk shows an in-app rail with counts for the sections that read
+records. Use a visual suited to the work, such as a timeline for shifts.
+
+Check suggests changes for repetitive sections, bare tables, raw links,
+unlabelled numbers, empty metrics, repeated searches, crowded columns, or
+a missing visual. A personal app can be kept with these suggestions.
+Publishing as **codeaf examples** requires resolving them.
