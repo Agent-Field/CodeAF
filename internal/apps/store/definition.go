@@ -284,7 +284,7 @@ func (s *Store) loadCurrent(m Meta) (Definition, error) {
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	return load(filepath.Join(s.root, m.ID, "current"), m, v.Types)
+	return load(filepath.Join(s.root, m.ID, "current"), m, v)
 }
 
 func (s *Store) loadLive(m Meta) (Definition, error) {
@@ -317,10 +317,10 @@ func (s *Store) loadSnapshot(m Meta, n int) (Definition, error) {
 	}
 	m.Version = n
 	m.UpdatedAt = v.At
-	return load(s.snapshot(m.ID, n), m, v.Types, versionFile)
+	return load(s.snapshot(m.ID, n), m, v, versionFile)
 }
 
-func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definition, error) {
+func load(dir string, m Meta, receipt versionReceipt, extra ...string) (Definition, error) {
 	f, err := readDefinition(dir, extra...)
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -332,10 +332,14 @@ func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definit
 	if m.digest != "" && m.digest != f.digest() {
 		return Definition{}, fmt.Errorf("%w: files differ from the published snapshot", ErrCorrupt)
 	}
-	if a.ID != m.ID || a.Version != m.Version {
+	manifestVersion := m.Version
+	if receipt.ManifestVersion != 0 {
+		manifestVersion = receipt.ManifestVersion
+	}
+	if a.ID != m.ID || a.Version != manifestVersion {
 		return Definition{}, fmt.Errorf("%w: app.json does not match the app ID and version", ErrInvalid)
 	}
-	if err := validateDefinition(f, existing); err != nil {
+	if err := validateDefinition(f, receipt.Types); err != nil {
 		return Definition{}, err
 	}
 	m.Name, m.Icon = a.Name, a.Icon
@@ -346,7 +350,7 @@ func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definit
 	shape := schema.Definition{Files: f}
 	return Definition{
 		Meta: m, App: f[appFile], Plan: f[planFile], AgentMD: string(f[agent]),
-		Screens: idsOf(shape.ScreenFiles()), Runs: idsOf(shape.RunFiles()), files: f, types: existing,
+		Screens: idsOf(shape.ScreenFiles()), Runs: idsOf(shape.RunFiles()), files: f, types: receipt.Types,
 	}, nil
 }
 

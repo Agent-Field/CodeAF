@@ -14,6 +14,11 @@ render a declared query. The agent calls `codeaf app render` with
 actor. The saved receipt identifies the run and credits its agent. Send the
 same arguments again in that step to retrieve the saved receipt.
 
+The interactive app assistant lists outputs as `render/<output-id>` in
+`codeaf app show`. Grant that Action ID for the assistant to call
+`codeaf app invoke` with the declared arguments. A record output takes
+`args.record`. A query output uses its saved query.
+
 ## Export to Excel as CSV
 
 Ask the builder to “export to Excel” using a CSV output. Choose columns with a label and a merge expression, for example `{label: "Company", value: "{{name}}"}`. Each row of the declared query becomes a CSV row. Excel and other spreadsheet apps can open the file. Cells that look like spreadsheet formulas are prefixed with an apostrophe for safe import. Use the same `render` Action to save the CSV and `apps.output_file` to get it. Record queries take up to 500 rows per output. Set a query limit or use an aggregate when the list is longer.

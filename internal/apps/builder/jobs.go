@@ -3,6 +3,7 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -50,13 +51,22 @@ type Options struct {
 	ClosePreview func(scope string)
 	Changed      func(Event)
 	Notify       func(Summary)
+	Proposed     func(Proposal)
+}
+
+// Proposal identifies a requested change after its work is durable.
+type Proposal struct {
+	App, Draft, ID, Screen, Summary string
 }
 
 // Catalog carries shape and counts only. The model adapter projects the
 // fields again so validation metadata such as expressions and defaults stay local.
 type Catalog struct {
-	Types  schema.TypeSet
-	Counts map[string]int
+	Types      schema.TypeSet
+	Counts     map[string]int
+	TypeLabels map[string]string
+	AppNames   map[string]string
+	Origins    map[string]string
 }
 
 type Jobs struct {
@@ -109,9 +119,11 @@ type Event struct {
 }
 
 type Offer struct {
-	Type  string `json:"type"`
-	Count int    `json:"count"`
-	App   string `json:"app"`
+	Common string `json:"common,omitempty"`
+	Line   string `json:"line,omitempty"`
+	Type   string `json:"type"`
+	Count  int    `json:"count"`
+	App    string `json:"app"`
 }
 
 type Message struct {
@@ -153,10 +165,13 @@ type PlanResult struct {
 }
 
 type turn struct {
+	DeskReuse bool `json:",omitempty"`
 	CheckOnly bool
 	ID        string
 	Stage     string
 	Request   string
+	Proposal  string
+	Small     bool
 	Target    *Target
 	Round     int
 	Report    *schema.Report
@@ -176,6 +191,7 @@ type job struct {
 	Working         snapshot
 	Saved           map[string]snapshot
 	Queue           []turn
+	Paused          *turn `json:",omitempty"`
 	Base            int
 	Dirty           bool
 	Editable        bool
@@ -378,7 +394,7 @@ func (s *Jobs) create(app string) (*job, error) {
 		j.Base, j.Name = live.Meta.Version, live.Meta.Name
 		j.Working = snapshot{Files: live.Files(), Passed: true}
 		j.acceptKeptUses()
-		j.describe(Catalog{})
+		s.describeKept(j)
 	}
 	return j, nil
 }
@@ -429,7 +445,7 @@ func (s *Jobs) Plan(ctx context.Context, p PlanRequest) (PlanResult, error) {
 	}
 	var id string
 	if err == nil {
-		id, err = s.enqueue(j, Planning, request, nil)
+		id, err = s.enqueue(j, Planning, request, nil, "")
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -481,7 +497,7 @@ func (s *Jobs) Build(id string) error {
 	if !j.Dirty || j.Working.CheckComplete || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
 		return nil
 	}
-	_, err = s.enqueue(j, Writing, "", nil)
+	_, err = s.enqueue(j, Writing, "", nil, "")
 	return err
 }
 
@@ -494,6 +510,15 @@ func (s *Jobs) Change(app, request string) (string, error) {
 // Propose starts a fresh scoped turn from the request and optional node
 // address. A caller has no way to supply a conversation or its tool history.
 func (s *Jobs) Propose(app, request string, target *Target) (string, error) {
+	return s.propose(app, request, target, "")
+}
+
+// ProposeAssistant carries the assistant's card ID with the persisted turn.
+func (s *Jobs) ProposeAssistant(app, request, proposal string) (string, error) {
+	return s.propose(app, request, nil, proposal)
+}
+
+func (s *Jobs) propose(app, request string, target *Target, proposal string) (string, error) {
 	if !cell.ValidID(app) || !validTarget(target) {
 		return "", store.ErrBadInput
 	}
@@ -524,12 +549,12 @@ func (s *Jobs) Propose(app, request string, target *Target) (string, error) {
 			j.Base, j.Name = live.Meta.Version, live.Meta.Name
 			j.Working = snapshot{Files: live.Files(), Passed: true}
 			j.acceptKeptUses()
-			j.describe(Catalog{})
+			s.describeKept(j)
 		}
 	}
 	j.Editable = true
 	if strings.TrimSpace(request) != "" {
-		_, err = s.enqueue(j, Writing, request, target)
+		_, err = s.enqueue(j, Writing, request, target, proposal)
 	} else {
 		err = s.save(j, Event{})
 	}
@@ -549,7 +574,7 @@ func (s *Jobs) Say(id, text string, target *Target) error {
 		return err
 	}
 	stage := Writing
-	if !j.Editable && len(j.Screens) == 0 && (len(j.Queue) == 0 || j.Queue[0].Stage == Planning) {
+	if !j.Editable && j.Paused == nil && len(j.Screens) == 0 && (len(j.Queue) == 0 || j.Queue[0].Stage == Planning) {
 		stage = Planning
 	}
 	var active turn
@@ -561,7 +586,7 @@ func (s *Jobs) Say(id, text string, target *Target) error {
 		stage = active.Stage
 		j.Queue = j.Queue[1:]
 	}
-	newID, err := s.enqueue(j, stage, text, target)
+	newID, err := s.enqueue(j, stage, text, target, "")
 	if err != nil {
 		return err
 	}
@@ -621,7 +646,7 @@ func (s *Jobs) prioritize(j *job, id string) error {
 	return nil
 }
 
-func (s *Jobs) enqueue(j *job, stage, request string, target *Target) (string, error) {
+func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal string) (string, error) {
 	if s.ctx.Err() != nil {
 		return "", s.ctx.Err()
 	}
@@ -647,8 +672,15 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target) (string, e
 		j.State.State = stage
 		j.Problem = ""
 	}
+	small := proposal != "" && !j.Dirty && len(j.Queue) == 0
+	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small}
+	if stage == Writing && request == "" && j.Paused != nil {
+		next = *j.Paused
+		next.ID = id
+	}
+	j.Paused = nil
 	j.Dirty = true
-	j.Queue = append(j.Queue, turn{ID: id, Stage: stage, Request: request, Target: target})
+	j.Queue = append(j.Queue, next)
 	if err := s.save(j, Event{}); err != nil {
 		return "", err
 	}
@@ -665,6 +697,10 @@ func (s *Jobs) catalog(app string) (Catalog, error) {
 
 // describe derives the card from app.json after every committed model turn.
 func (j *job) describe(catalog Catalog) {
+	j.describeDraft(catalog, false, false)
+}
+
+func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	files := j.Working.Files
 	j.Plan = nil
 	if raw := json.RawMessage(files[schema.PlanFile]); json.Valid(raw) {
@@ -681,8 +717,16 @@ func (j *job) describe(catalog Catalog) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		typ := app.Records[name]
-		if typ.Uses && slices.Contains(j.Accepted, name) {
+		if typ.Uses && (headless || j.reuseAccepted(name, typ, catalog)) {
 			j.Using = append(j.Using, name)
+			source := name
+			if typ.Common != "" {
+				offer, _ := catalog.Types.OfferCommonType(name, typ)
+				source = offer.Existing
+			}
+			if (headless || typ.Common != "") && catalog.reuseSource(source) != "" {
+				j.Needs = append(j.Needs, "Uses "+catalog.reuseText(source))
+			}
 		}
 		access := app.Capabilities.Records[name]
 		if access == "r" || access == "rw" {
@@ -711,13 +755,28 @@ func (j *job) describe(catalog Catalog) {
 		j.Needs = append(j.Needs, fmt.Sprintf("Monthly limit · $%.2f", app.Budget.Month))
 	}
 	j.Offers = reuseOffers(app, j.App, j.Accepted, catalog)
+	if headless && planning {
+		// Put reuse of actual records before empty types and library suggestions.
+		slices.SortStableFunc(j.Offers, func(a, b Offer) int {
+			return cmp.Compare(b.Count, a.Count)
+		})
+		for _, offer := range j.Offers {
+			line := "Uses " + catalog.reuseText(offer.Type)
+			if offer.App != "" && !slices.Contains(j.Needs, line) {
+				j.Needs = append(j.Needs, line)
+			}
+		}
+	}
 }
 
 func (j *job) acceptKeptUses() {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	j.Accepted = []string{}
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if app.Records[name].Uses {
+		if record := app.Records[name]; record.Uses {
+			if record.Common != "" {
+				name = "common:" + record.Common
+			}
 			j.Accepted = append(j.Accepted, name)
 		}
 	}
@@ -732,10 +791,16 @@ func (j *job) applyReuseChoice(request string) {
 		return
 	}
 	field, _, _ := strings.Cut(text, " ")
-	name := strings.TrimSuffix(strings.Trim(field, ".,:;!?"), "s")
+	name := strings.Trim(field, ".,:;!?")
 	for _, offer := range j.Offers {
-		if strings.TrimSuffix(offer.Type, "s") == name && !slices.Contains(j.Accepted, offer.Type) {
-			j.Accepted = append(j.Accepted, offer.Type)
+		if offer.App != "" && name == offer.Type {
+			j.acceptReuse(offer.Type)
+			return
+		}
+	}
+	for _, offer := range j.Offers {
+		if offer.App != "" && strings.TrimSuffix(offer.Type, "s") == strings.TrimSuffix(name, "s") {
+			j.acceptReuse(offer.Type)
 			return
 		}
 	}

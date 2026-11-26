@@ -163,6 +163,7 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 	var args struct {
 		Type       string          `json:"type,omitempty"`
 		Name       string          `json:"name"`
+		Access     string          `json:"access,omitempty"`
 		Definition json.RawMessage `json:"definition"`
 	}
 	if json.Unmarshal(raw, &args) != nil || !validTypeWord(args.Name) || !json.Valid(args.Definition) ||
@@ -175,7 +176,7 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 	}
 	if verb == "add_type" {
 		records[args.Name] = args.Definition
-		if err := declareRead(manifest, args.Name); err != nil {
+		if err := declareRecordAccess(manifest, args.Name, args.Access); err != nil {
 			return err
 		}
 	} else {
@@ -199,9 +200,12 @@ func validTypeWord(name string) bool {
 	return len(name) > 0 && len(name) < 129 && strings.Trim(name, "abcdefghijklmnopqrstuvwxyz0123456789_-") == ""
 }
 
-// A declared type can be displayed in a plan and in screens. An explicit
-// configuration is still required for editing or connector permissions.
-func declareRead(manifest map[string]json.RawMessage, name string) error {
+// A type starts read-only unless the author declares write access for its
+// edit Actions. The existing grant survives a shape-only edit.
+func declareRecordAccess(manifest map[string]json.RawMessage, name, access string) error {
+	if access != "" && access != "r" && access != "rw" {
+		return errors.New("record access is r or rw")
+	}
 	caps := map[string]json.RawMessage{}
 	if raw := manifest["capabilities"]; len(raw) > 0 {
 		if err := json.Unmarshal(raw, &caps); err != nil {
@@ -214,8 +218,11 @@ func declareRead(manifest map[string]json.RawMessage, name string) error {
 			return err
 		}
 	}
-	if records[name] != "" {
-		return nil
+	if access == "" {
+		if records[name] != "" {
+			return nil
+		}
+		access = "r"
 	}
 	if records == nil {
 		records = map[string]string{}
@@ -223,7 +230,7 @@ func declareRead(manifest map[string]json.RawMessage, name string) error {
 	if caps == nil {
 		caps = map[string]json.RawMessage{}
 	}
-	records[name] = "r"
+	records[name] = access
 	caps["records"], _ = json.Marshal(records)
 	manifest["capabilities"], _ = json.Marshal(caps)
 	return nil

@@ -33,6 +33,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"share contacts between apps", "app-common-types"},
+		{"same customers in two apps", "app-common-types"},
+		{"duplicate contacts", "app-common-types"},
+		{"same customer in two systems", "app-common-types"},
+		{"merge records", "app-common-types"},
 		{"how do I auto assign work items", "app-definitions"},
 		{"who approves a record", "app-definitions"},
 		{"how do I prevent double booking", "app-definitions"},

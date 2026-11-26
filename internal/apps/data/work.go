@@ -152,6 +152,7 @@ func when(v string, now time.Time) (string, error) {
 // WorkItem is one thing someone is to do.
 type WorkItem struct {
 	sourceType string
+	Identity   *IdentityCandidate
 	ID         string
 	Title      string
 	Type       string
@@ -169,11 +170,15 @@ type WorkItem struct {
 }
 
 func (wi *WorkItem) Row() map[string]any {
-	return map[string]any{
+	row := map[string]any{
 		"id": wi.ID, "title": wi.Title, "type": wi.Type, "record": wi.Record, "assignee": wi.Assignee,
 		"due": wi.Due, "sla_at": wi.SLAAt, "form": wi.Form, "status": wi.Status, "outcome": wi.Outcome,
 		"app": wi.App, "created_by": wi.CreatedBy, "created_at": wi.CreatedAt, "updated_at": wi.UpdatedAt,
 	}
+	if wi.Identity != nil {
+		row["identity_match"] = wi.Identity
+	}
+	return row
 }
 
 // WorkPatch is a change to a work item; a nil field is left as it is.
@@ -197,7 +202,7 @@ func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
 		return nil, errorf(CodeInvalid, "a work item has a title of at most %d characters", titleMax)
 	}
 	var out *WorkItem
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, _, err := w.subject(sc, in.Type, in.Record, false)
 		if err != nil {
 			return err
@@ -215,6 +220,11 @@ func (w *writeTx) createWorkItem(sc Scope, t *Type, in WorkItem) (*WorkItem, err
 	item.UpdatedAt = item.CreatedAt
 	if t != nil {
 		item.Type = t.Name
+	}
+	if in.Identity != nil {
+		candidate := *in.Identity
+		candidate.ID, candidate.Type = item.ID, item.Type
+		item.Identity = &candidate
 	}
 	var err error
 	if item.Assignee, err = w.schema.personValue(orMe(in.Assignee)); err != nil {
@@ -285,7 +295,7 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 		return nil, errorf(CodeInvalid, "%q is not a work item", id)
 	}
 	var out *WorkItem
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		item, typeID, err := loadWorkItem(w.tx, w.schema, id)
 		if err != nil {
 			return err
@@ -297,6 +307,16 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 			if _, err := w.schema.allow(sc, item.Type, true); err != nil {
 				return err
 			}
+		}
+		if item.Identity != nil {
+			if allowIdentity(sc, w.s.draft != "") != nil {
+				return errorf(CodeNotFound, "there is no work item %s", id)
+			}
+			if action == "complete" {
+				out, err = w.completeIdentityWorkItem(sc, item, p.Outcome)
+				return err
+			}
+			return errorf(CodeNotAllowed, "choose merge or keep separate on this identity review")
 		}
 		if action != "" {
 			if item.Status != WorkOpen {
@@ -374,17 +394,29 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 	return out, err
 }
 
-const workColumns = `id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at, source_type_id`
+const workColumns = `id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at, source_type_id,
+	CASE WHEN form_ref = '` + identityReviewForm + `' THEN (
+		SELECT json_object('id', m.id, 'left', m.left_id, 'right', m.right_id,
+			'left_revision', m.left_rev, 'right_revision', m.right_rev, 'evidence', json(m.evidence))
+		FROM identity_matches m WHERE m.id = work_items.id
+	) END`
 
 func scanWorkItem(sch *schema, scan func(...any) error) (*WorkItem, string, error) {
 	var wi WorkItem
 	var typeID, outcome string
-	if err := scan(&wi.ID, &wi.Title, &typeID, &wi.Record, &wi.Assignee, &wi.Due, &wi.SLAAt, &wi.Form, &wi.Status, &outcome, &wi.App, &wi.CreatedBy, &wi.CreatedAt, &wi.UpdatedAt, &wi.sourceType); err != nil {
+	var identity sql.NullString
+	if err := scan(&wi.ID, &wi.Title, &typeID, &wi.Record, &wi.Assignee, &wi.Due, &wi.SLAAt, &wi.Form, &wi.Status, &outcome, &wi.App, &wi.CreatedBy, &wi.CreatedAt, &wi.UpdatedAt, &wi.sourceType, &identity); err != nil {
 		return nil, "", err
 	}
 	_ = json.Unmarshal([]byte(outcome), &wi.Outcome)
 	if t := sch.byID[typeID]; t != nil {
 		wi.Type = t.Name
+	}
+	if identity.Valid {
+		if err := json.Unmarshal([]byte(identity.String), &wi.Identity); err != nil {
+			return nil, "", err
+		}
+		wi.Identity.Type = wi.Type
 	}
 	return &wi, typeID, nil
 }
@@ -431,6 +463,9 @@ func (s *Store) MyWork(sc Scope) ([]WorkItem, error) {
 
 func workActor(sch *schema, sc Scope) string {
 	if sc.below() {
+		if sc.Principal.ID != "" {
+			return sch.actor(sc)
+		}
 		name := sc.Actor
 		if name == "" {
 			name = sc.App
@@ -474,7 +509,8 @@ func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]W
 		if err != nil {
 			return err
 		}
-		if sch.seen(sc, wi.App, typeID) && sch.canReadSource(sc, wi.sourceType) && len(out) < ListMax {
+		if (wi.Identity == nil || identityOwner(sc)) &&
+			sch.seen(sc, wi.App, typeID) && sch.canReadSource(sc, wi.sourceType) && len(out) < ListMax {
 			out = append(out, *wi)
 		}
 		return nil
@@ -529,7 +565,7 @@ func (s *Store) CreateTimer(sc Scope, in Timer) (*Timer, error) {
 		return nil, errorf(CodeInvalid, "a timer's payload is at most 16 KB")
 	}
 	var out *Timer
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, _, err := w.subject(sc, in.Type, in.Record, true)
 		if err != nil {
 			return err
@@ -572,7 +608,7 @@ func (s *Store) CancelTimer(sc Scope, id string) error {
 	if !validID(id) {
 		return errorf(CodeInvalid, "%q is not a timer", id)
 	}
-	return s.write(func(w *writeTx) error {
+	return s.writeAs(sc, func(w *writeTx) error {
 		tm, typeID, err := loadTimer(w.tx, w.schema, id)
 		if err != nil {
 			return err
@@ -735,7 +771,7 @@ func (so *Signoff) Row() map[string]any {
 // so nobody signs a version they did not see. ONLY THE PERSON SIGNS: an agent
 // or an automation is refused, and its review belongs in a comment.
 func (s *Store) Sign(sc Scope, typ, id, statement string, rev int64) (*Signoff, error) {
-	if sc.Agent || sc.AI || sc.Flow {
+	if sc.isAgent() || sc.AI || sc.Flow {
 		return nil, &Error{Code: CodeNotAllowed, Need: "sign", Message: "only the person signs; an agent's review is a comment"}
 	}
 	statement = strings.TrimSpace(statement)
@@ -743,7 +779,7 @@ func (s *Store) Sign(sc Scope, typ, id, statement string, rev int64) (*Signoff, 
 		return nil, errorf(CodeInvalid, "a sign-off states what is signed, in at most %d characters", statementMax)
 	}
 	var out *Signoff
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, r, err := w.subject(sc, typ, id, true)
 		if err != nil {
 			return err
@@ -873,7 +909,7 @@ func (s *Store) AddComment(sc Scope, in Comment) (*Comment, error) {
 		return nil, errorf(CodeInvalid, "a comment mentions at most %d people", mentionsMax)
 	}
 	var out *Comment
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		c := Comment{ID: w.s.ids.next(w.now), Body: in.Body, Author: w.schema.actor(sc), App: sc.App, At: w.now.UTC().Format(stamp), Mentions: []string{}}
 		var t *Type
 		if in.Record != "" {

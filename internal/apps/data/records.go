@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -142,6 +143,7 @@ type recordMeta struct {
 	Maker          string                             `json:"maker,omitempty"`
 	LastTransition string                             `json:"last_transition,omitempty"`
 	Checklists     map[string]map[string]checkReceipt `json:"checklists,omitempty"`
+	Sources        map[string]ExternalKey             `json:"sources,omitempty"`
 	By             map[string]string                  `json:"by,omitempty"`
 	Reverses       string                             `json:"reverses,omitempty"`
 	ReversedBy     string                             `json:"reversed_by,omitempty"`
@@ -198,6 +200,7 @@ func (t *Type) decode(stored map[string]any) (data, unknown map[string]any) {
 // encodeMeta and decodeMeta do the same for the meta's field names.
 func (t *Type) encodeMeta(m recordMeta) recordMeta {
 	out := m
+	out.Sources = nil
 	if len(m.By) > 0 {
 		out.By = map[string]string{}
 		for name, kind := range m.By {
@@ -206,15 +209,43 @@ func (t *Type) encodeMeta(m recordMeta) recordMeta {
 			}
 		}
 	}
+	for name, key := range m.Sources {
+		if f := t.Fields[name]; f != nil {
+			if out.Sources == nil {
+				out.Sources = map[string]ExternalKey{}
+			}
+			out.Sources[f.ID] = key
+		}
+	}
 	return out
+}
+
+func (m *recordMeta) copySource(name string, from recordMeta) {
+	if key, ok := from.Sources[name]; ok {
+		if m.Sources == nil {
+			m.Sources = map[string]ExternalKey{}
+		}
+		m.Sources[name] = key
+	} else {
+		delete(m.Sources, name)
+	}
 }
 
 func (t *Type) decodeMeta(m recordMeta) recordMeta {
 	out := m
+	out.Sources = nil
 	out.By = map[string]string{}
 	for id, kind := range m.By {
 		if f := t.byID[id]; f != nil {
 			out.By[f.Name] = kind
+		}
+	}
+	for name, key := range m.Sources {
+		if f := t.byID[name]; f != nil {
+			if out.Sources == nil {
+				out.Sources = map[string]ExternalKey{}
+			}
+			out.Sources[f.Name] = key
 		}
 	}
 	return out
@@ -257,6 +288,7 @@ func (r *record) clone() *record {
 	for k, v := range r.Data {
 		c.Data[k] = v
 	}
+	c.Meta.Sources = maps.Clone(r.Meta.Sources)
 	c.Meta.By = map[string]string{}
 	for k, v := range r.Meta.By {
 		c.Meta.By[k] = v
@@ -336,7 +368,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.AI[name] = aiSource(r.Meta.By[name])
 		}
-		if f.Masked && (!reveal || sc.Agent) {
+		if f.Masked && (!reveal || sc.isAgent()) {
 			out[name] = masked
 			meta.Masked = append(meta.Masked, name)
 			continue
@@ -635,6 +667,13 @@ func applySet(r *record, set map[string]any, sc Scope, op string) (held []string
 			r.Data[name] = v
 		}
 		r.Meta.By[name] = kind
+		delete(r.Meta.Sources, name)
+		if sc.sourceKey != (ExternalKey{}) {
+			if r.Meta.Sources == nil {
+				r.Meta.Sources = map[string]ExternalKey{}
+			}
+			r.Meta.Sources[name] = sc.sourceKey
+		}
 	}
 	return held
 }
@@ -710,7 +749,7 @@ func (w *writeTx) checkRefs(f *Field, v any) error {
 	}
 	for _, id := range ids {
 		var n int
-		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = ? AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
+		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = `+identityRefSQL(target, "?")+` AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n == 0 {
@@ -847,7 +886,7 @@ func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (
 	var made []*record
 	var t *Type
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		made = nil
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -891,12 +930,17 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 	if err != nil {
 		return nil, err
 	}
+	defaultState := ""
 	if lc := t.Lifecycle; lc != nil {
-		if v, given := values[lc.Field]; given && !carry && v != nil && v != lc.initial(t) {
+		v, given := values[lc.Field]
+		if given && !carry && v != nil && v != lc.initial(t) {
 			return nil, &Error{Code: CodeLifecycle, Field: lc.Field, Message: fmt.Sprintf("a new %s starts as %s; it moves on by a transition", t.Name, lc.initial(t))}
 		}
-		if values[lc.Field] == nil {
+		if v == nil {
 			values[lc.Field] = lc.initial(t)
+		}
+		if !given {
+			defaultState = lc.Field
 		}
 	}
 	if id == "" {
@@ -919,6 +963,8 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 		r.Data[name] = v
 	}
 	applySet(r, values, sc, op)
+	// Assigning the lifecycle's initial state is a schema default.
+	delete(r.Meta.By, defaultState)
 	for _, name := range t.Order {
 		f := t.field(name)
 		if f == nil || f.Sequence == nil || r.Data[name] != nil {
@@ -998,7 +1044,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 	var rows []*record
 	var held []Held
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		rows, held, batch = nil, nil, ""
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -1085,7 +1131,7 @@ func (s *Store) Delete(sc Scope, typ string, ids []string, opts UpdateOptions) (
 		return nil, err
 	}
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		t, err := w.schema.allow(sc, typ, true)
 		if err != nil {
 			return err
@@ -1142,7 +1188,7 @@ func (s *Store) checkFrozen(t *Type, r *record, fields []string, sc Scope, reaso
 	if !frozen {
 		return nil
 	}
-	if strings.TrimSpace(reason) != "" && !sc.Agent && !sc.AI && !sc.Flow {
+	if strings.TrimSpace(reason) != "" && !sc.isAgent() && !sc.AI && !sc.Flow {
 		return nil
 	}
 	allowed := map[string]bool{}
@@ -1210,7 +1256,7 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	var rows []*record
 	var removes []string
 	var undo string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		rows, removes, undo = nil, nil, ""
 		var typeID, byKind, op string
 		var undone sql.NullString
@@ -1223,6 +1269,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 		}
 		if undone.Valid {
 			return errorf(CodeStale, "that change was already undone")
+		}
+		if op == OpIdentityMerge || op == OpIdentitySplit {
+			return errorf(CodeNotAllowed, "use the identity commands to reverse a merge")
 		}
 		if op == OpTransition && typeID == "" {
 			return errorf(CodeLifecycle, "undoing this would move lifecycle states; fire a transition back instead")

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -111,6 +112,7 @@ func keepOutputApp(t *testing.T, root string) string {
 	delete(contact.Fields, "company")
 	app := schema.App{
 		ID: "contacts", Name: "Contacts", Version: 1, Kit: 2,
+		Agent:        &schema.AgentRef{Name: "Contacts agent", File: "agent.md"},
 		Records:      map[string]schema.RecordType{"contact": contact},
 		Capabilities: schema.Capabilities{Records: map[string]string{"contact": "rw"}},
 		Outputs: map[string]schema.OutputTemplate{
@@ -130,8 +132,9 @@ func keepOutputApp(t *testing.T, root string) string {
 		t.Fatal(err)
 	}
 	files := map[string]string{
+		"agent.md":                "Generate contact cards from supplied record IDs.",
 		"app.json":                string(raw),
-		"plan.json":               `{"ask":"Export CRM contacts","data":[{"id":"contact","line":"CRM contact"}],"screens":[{"id":"home","line":"Contacts"}],"automation":[{"id":"contact-card","line":"Render contact"},{"id":"weekly-digest","line":"Weekly digest"}],"needs":"computed"}`,
+		"plan.json":               `{"ask":"Export CRM contacts","agent":{"line":"Generate contact cards."},"data":[{"id":"contact","line":"CRM contact"}],"screens":[{"id":"home","line":"Contacts"}],"automation":[{"id":"contact-card","line":"Render contact"},{"id":"weekly-digest","line":"Weekly digest"}],"needs":"computed"}`,
 		"screens/home.json":       `{"screen":"home","title":"Contacts","body":{"part":"Button","id":"export","label":"Weekly contacts","on":{"click":[{"render":{"output":"weekly-digest"}}]}}}`,
 		"runs/contact-card.yaml":  "run: contact-card\nparams:\n  contact: {type: ref, to: contact}\nsteps:\n  - id: render\n    render: {output: contact-card, record: $params.contact.id}\n  - id: remember\n    records.update: {type: contact, id: $params.contact.id, set: {title: $steps.render.name}}\n",
 		"runs/weekly-digest.yaml": "run: weekly-digest\nsteps:\n  - id: deliver\n    render: {output: weekly-digest, inbox: true}\n",
@@ -405,5 +408,43 @@ func TestAppOutputCheckUsesOnlySampleRecords(t *testing.T) {
 	page, err = live.Outputs(scope, "", "", false)
 	if err != nil || len(page.Items) != 0 {
 		t.Fatalf("live file receipts after Check: %+v, %v", page, err)
+	}
+}
+
+func TestAppOutputInteractiveAgentRequiresRenderGrant(t *testing.T) {
+	root := resolvedTempDir(t)
+	id := keepOutputApp(t, root)
+	t.Setenv("CODEAF_HOME", root)
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	db, err := b.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := db.Create(data.Scope{App: id}, "contact", []map[string]any{{"name": "Sam"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const action = "render/contact-card"
+	raw, err := json.Marshal(map[string]any{"app": id, "params": map[string]any{
+		"action": action, "args": map[string]string{"record": created.Rows[0].ID()},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refused *appwire.Error
+	if _, err := b.runAppCLICommand(t.Context(), "invoke", raw); !errors.As(err, &refused) || refused.Code != appwire.CodeForbidden {
+		t.Fatalf("ungranted output invocation = %v", err)
+	}
+	if err := b.GrantAppAgent(appwire.AppAgentGrant{App: id, Agent: id, Group: "actions", ID: action, Allowed: true}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := b.runAppCLICommand(t.Context(), "invoke", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file data.Output
+	if err := json.Unmarshal(result.(json.RawMessage), &file); err != nil || file.ActorKind != data.ByAI || file.Action != "contact-card" {
+		t.Fatalf("interactive output receipt: %+v, %v", file, err)
 	}
 }

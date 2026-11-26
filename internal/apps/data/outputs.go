@@ -92,7 +92,11 @@ func (s *Store) SaveOutput(sc Scope, o Output, key string, content []byte) (Outp
 	if sc.App == "" || o.App != sc.App || (key != "" && (!sc.Flow || o.Run == "" || o.Step == "")) {
 		return Output{}, errorf(CodeInvalid, "an output needs an app and valid run provenance")
 	}
-	err := s.write(func(w *writeTx) error {
+	write := s.write
+	if sc.Principal.ID != "" {
+		write = func(fn func(*writeTx) error) error { return s.writeAs(sc, fn) }
+	}
+	err := write(func(w *writeTx) error {
 		if _, err := w.schema.allow(sc, o.SourceType, false); err != nil {
 			return err
 		}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -50,6 +51,11 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return err == nil
 		}
 		t := j.Queue[0]
+		// Keep a Desk choice pending if its renderer disconnects during this turn.
+		if !t.DeskReuse && s.opts.CanLook != nil && s.opts.CanLook() {
+			t.DeskReuse = true
+			j.Queue[0].DeskReuse = true
+		}
 		checking := t.Round > 0 && t.Report == nil
 		event := startEvent(t, checking)
 		j.State.State = event.Stage
@@ -59,6 +65,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return false
 		}
 
+		headless := !t.DeskReuse
 		catalog, err := s.catalog(j.App)
 		var report schema.Report
 		var files map[string]string
@@ -66,7 +73,9 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
-			report = j.checkReuse()
+			if !headless {
+				report = j.checkReuse(catalog)
+			}
 			if report.OK() {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
@@ -75,12 +84,12 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 				}
 			}
 		} else if err == nil {
-			files, reply, err = s.ask(ctx, j, t, catalog)
+			files, reply, err = s.ask(ctx, j, t, catalog, headless)
 		}
 		if ctx.Err() != nil {
 			return true
 		}
-		if err = s.commitTurn(id, t, checking, catalog, report, files, reply, err); err != nil {
+		if err = s.commitTurn(id, t, checking, headless, catalog, report, files, reply, err); err != nil {
 			return errors.Is(err, context.Canceled)
 		}
 	}
@@ -111,6 +120,7 @@ func externalTypes(types schema.TypeSet, ids ...string) schema.TypeSet {
 }
 
 type modelType struct {
+	Common string                `json:"common,omitempty"`
 	Name   string                `json:"name"`
 	Fields map[string]modelField `json:"fields"`
 	Count  int                   `json:"count"`
@@ -126,7 +136,7 @@ type modelField struct {
 func safeTypes(types schema.TypeSet, counts map[string]int) []modelType {
 	out := make([]modelType, 0, len(types))
 	for _, name := range slices.Sorted(maps.Keys(types)) {
-		typ := modelType{Name: name, Fields: map[string]modelField{}, Count: counts[name]}
+		typ := modelType{Name: name, Common: types[name].Common, Fields: map[string]modelField{}, Count: counts[name]}
 		for field, shape := range types[name].Fields {
 			typ.Fields[field] = modelField{Type: shape.Type, To: shape.To, Values: shape.Values, Required: shape.Required}
 		}
@@ -135,7 +145,7 @@ func safeTypes(types schema.TypeSet, counts map[string]int) []modelType {
 	return out
 }
 
-func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[string]string, string, error) {
+func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headless bool) (map[string]string, string, error) {
 	model, err := s.opts.Model()
 	if err != nil {
 		return nil, "", err
@@ -158,9 +168,17 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 	if request == "" {
 		request = j.LastRequest
 	}
+	using := slices.Clone(j.Accepted)
+	if headless {
+		for _, offer := range j.Offers {
+			if offer.App != "" && catalog.reuseSource(offer.Type) == offer.App && !slices.Contains(using, offer.Type) {
+				using = append(using, offer.Type)
+			}
+		}
+	}
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
-		Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
-		Using: j.Accepted, Definition: j.Working.Files, Report: t.Report,
+		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
+		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -169,8 +187,8 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 		state, err := s.State(j.Draft)
 		return state.Presence, err
 	})
-	if err == nil {
-		err = stampAppID(files, j)
+	if err == nil || errors.Is(err, errModelCallLimit) {
+		err = errors.Join(err, stampAppID(files, j))
 	}
 	return files, reply, err
 }
@@ -231,7 +249,7 @@ func (s *Jobs) showWork(ctx context.Context, base *job, t turn, files map[string
 	return s.save(current, Event{})
 }
 
-func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, report schema.Report, files map[string]string, reply string, err error) error {
+func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Catalog, report schema.Report, files map[string]string, reply string, err error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, loadErr := s.load(id)
@@ -243,6 +261,20 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 	}
 	j.WritingFiles = nil
 	j.Screens = screens(j.Working.Files)
+	if errors.Is(err, errModelCallLimit) {
+		j.Working = snapshot{Files: files}
+		j.describeDraft(catalog, headless, t.Stage == Planning)
+		j.State.State = Failed
+		j.Problem = "I ran out of model calls. Your changes are saved. Build again to continue."
+		if t.Stage == Planning {
+			j.Problem = "I ran out of model calls. Your draft is saved. Ask me to continue the plan."
+		} else if len(j.Queue) == 1 {
+			j.Paused = &t
+		}
+		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
+			{Code: "build_failed", Message: j.Problem},
+		}}})
+	}
 	if errors.Is(err, errCompilerUnavailable) {
 		j.State.State = NeedsYou
 		j.Problem = "This engine needs the screen compiler before it can finish the app."
@@ -270,6 +302,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 		ok := report.OK()
 		event := Event{Stage: Checking, Round: t.Round, OK: &ok, Report: &report}
 		if ok {
+			j.describeDraft(catalog, headless, t.Stage == Planning)
 			j.Working.Passed = true
 			j.Working.CheckComplete = true
 			j.Working.Look = report.Look
@@ -320,7 +353,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 
 	j.Working = snapshot{Files: files}
 	j.Presence = nil
-	j.describe(catalog)
+	j.describeDraft(catalog, headless, t.Stage == Planning)
 	if reply == "" {
 		reply = "I updated your app."
 	}
@@ -363,6 +396,7 @@ func (j *job) checkpoint(reply string) error {
 }
 
 func (s *Jobs) finish(j *job, event Event) error {
+	finished := j.Queue[0]
 	j.Queue = j.Queue[1:]
 	j.Presence = nil
 	if len(j.Queue) != 0 {
@@ -372,17 +406,92 @@ func (s *Jobs) finish(j *job, event Event) error {
 	if err := s.save(j, event); err != nil {
 		return err
 	}
+	if finished.Proposal != "" && s.opts.Proposed != nil {
+		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal}
+		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
+			p.Screen = s.proposalScreen(j)
+			if p.Screen != "" && len(j.Checkpoints) != 0 {
+				p.Summary = j.Checkpoints[len(j.Checkpoints)-1].Summary
+			}
+		}
+		s.opts.Proposed(p)
+	}
 	if len(j.Queue) == 0 && s.opts.Notify != nil && ((j.State.State == Ready && j.Working.Passed) || j.State.State == NeedsYou) {
 		s.opts.Notify(j.Summary)
 	}
 	return nil
 }
 
-func (j *job) checkReuse() schema.Report {
+// An in-place Apply card is limited to one existing screen, with optional
+// fields allowed alongside the screen change. Other edits open the builder.
+func (s *Jobs) proposalScreen(j *job) string {
+	kept, err := s.opts.Store.Get(j.App)
+	if err != nil || kept.Meta.Version != j.Base {
+		return ""
+	}
+	before, after := kept.Files(), j.Working.Files
+	screen := ""
+	for path, text := range before {
+		next, exists := after[path]
+		if !exists {
+			return ""
+		}
+		if text == next {
+			continue
+		}
+		switch {
+		case path == schema.AppFile:
+			if !onlyOptionalFields(text, next) {
+				return ""
+			}
+		case path == schema.PlanFile || path == schema.SampleFile:
+			// Neither file changes the behaviour of a kept app.
+		case strings.HasPrefix(path, "screens/") && screen == "":
+			screen = schema.FileID(path)
+		default:
+			return ""
+		}
+	}
+	for path := range after {
+		if _, exists := before[path]; !exists {
+			return ""
+		}
+	}
+	return screen
+}
+
+func onlyOptionalFields(before, after string) bool {
+	kept, err := schema.ParseApp([]byte(before))
+	if err != nil {
+		return false
+	}
+	draft, err := schema.ParseApp([]byte(after))
+	if err != nil {
+		return false
+	}
+	for name, record := range draft.Records {
+		prior, exists := kept.Records[name]
+		if !exists {
+			return false
+		}
+		for name, field := range record.Fields {
+			if _, exists := prior.Fields[name]; exists {
+				continue
+			}
+			if field.Required || field.Unique || field.Default != nil || field.Computed != "" || field.Sequence != nil || field.Timer != nil {
+				return false
+			}
+			delete(record.Fields, name)
+		}
+	}
+	return reflect.DeepEqual(kept, draft)
+}
+
+func (j *job) checkReuse(catalog Catalog) schema.Report {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if app.Records[name].Uses && !slices.Contains(j.Accepted, name) {
+		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
 			report.Problems = append(report.Problems, schema.Problem{
 				File: schema.AppFile, Path: "/records/" + name, Code: "choose_reuse",
 				Message: "The person needs to confirm sharing their " + name + " records.",
@@ -394,17 +503,33 @@ func (j *job) checkReuse() schema.Report {
 
 func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catalog) []Offer {
 	offers := []Offer{}
+	proposedCommon := map[string]schema.CommonTypeOffer{}
+	libraryOffers := map[string]bool{}
+	if app.Kit == 2 {
+		for name, record := range app.Records {
+			if offer, ok := catalog.Types.OfferCommonType(name, record); ok {
+				proposedCommon[name] = offer
+				libraryOffers[offer.Key] = true
+			}
+		}
+	}
+
 	for _, name := range slices.Sorted(maps.Keys(catalog.Types)) {
 		existing := catalog.Types[name]
-		if existing.Owner == liveID || existing.Owner == app.ID {
+		source := catalog.reuseSource(name)
+		if source == "" || source == liveID || source == app.ID {
 			continue
 		}
-		if slices.Contains(accepted, name) {
+		if slices.Contains(accepted, name) || existing.Common != "" && slices.Contains(accepted, "common:"+existing.Common) {
 			continue
 		}
+		offer := Offer{Type: name, Count: catalog.Counts[name], App: source, Common: existing.Common, Line: "Use " + catalog.reuseText(name)}
 		for proposed, shape := range app.Records {
-			if reusable(proposed, name, shape.Fields, existing.Fields) {
-				offers = append(offers, Offer{Type: name, Count: catalog.Counts[name], App: existing.Owner})
+			if shape.Common != "" && shape.Common != existing.Common {
+				continue
+			}
+			if proposedCommon[proposed].Existing == name || reusable(proposed, name, shape.Fields, existing.Fields) {
+				offers = append(offers, offer)
 				break
 			}
 		}
@@ -414,8 +539,14 @@ func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catal
 			if candidate, ok := app.Records["candidate"]; ok && strings.TrimSuffix(name, "s") == "contact" &&
 				(candidate.Fields["name"].Type == "text" && existing.Fields["name"].Type == "text" ||
 					reusable("person", "contact", candidate.Fields, existing.Fields)) {
-				offers = append(offers, Offer{Type: name, Count: catalog.Counts[name], App: existing.Owner})
+				offers = append(offers, offer)
 			}
+		}
+	}
+	if len(libraryOffers) > 0 {
+		library := schema.CommonTypes()
+		for _, key := range slices.Sorted(maps.Keys(libraryOffers)) {
+			offers = append(offers, Offer{Type: key, Common: key, Line: "Start with " + library.Types[key].Label})
 		}
 	}
 	return offers

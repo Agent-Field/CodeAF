@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -161,5 +162,51 @@ func TestPublishedAppUsesCommittedSnapshotAndGrantsAfterReopen(t *testing.T) {
 	}
 	if _, err := d.Create(data.Scope{App: m.ID}, "contact", []map[string]any{{"name": "Ari"}}); err != nil {
 		t.Fatalf("committed grant disappeared: %v", err)
+	}
+}
+
+func TestRevertingAnAddedFieldRestoresBookCreationWithJustATitle(t *testing.T) {
+	s, home := testStore(t)
+	records, err := data.Open(filepath.Join(home, "records.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = records.Close() })
+	s = s.WithData(func() (*data.Store, error) { return records, nil })
+	draft, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const book = `{"id":"reading","name":"Reading list","version":1,"kit":0,"records":{"book":{"title":"title","fields":{"title":{"type":"text","required":true,"unique":true},"status":{"type":"enum","values":["To read","Reading"],"required":true,"default":"To read"}}}},"capabilities":{"records":{"book":"rw"}}}`
+	write(t, draft.Dir(), "app.json", book)
+	write(t, draft.Dir(), "plan.json", `{"ask":"Track books","data":[{"id":"book","line":"A book with a title and reading status"}],"screens":[{"id":"main","line":"Books"}]}`)
+	write(t, draft.Dir(), "screens/main.json", mainScreen)
+	meta, err := s.Promote(draft, "Create a reading list")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	original, err := s.Get(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit, err := s.NewDraft(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, edit.Dir(), "app.json", strings.Replace(book, `"status":{`, `"rating":{"type":"number"},"status":{`, 1))
+	if _, err := s.Promote(edit, "Add a numeric rating"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Revert(meta.ID, meta.Version); err != nil {
+		t.Fatal(err)
+	}
+	live, err := s.Get(meta.ID)
+	if err != nil || live.Meta.Version != 3 || !bytes.Equal(live.App, original.App) {
+		t.Fatalf("reverted reading list = %+v, %v", live.Meta, err)
+	}
+	created, err := records.Create(data.Scope{App: meta.ID}, "book", []map[string]any{{"title": "Eval Book"}})
+	if err != nil || len(created.Rows) != 1 || created.Rows[0]["title"] != "Eval Book" || created.Rows[0]["status"] != "To read" {
+		t.Fatalf("creating a book after revert = %+v, %v", created, err)
 	}
 }

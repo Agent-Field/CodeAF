@@ -278,7 +278,7 @@ func (c *compiled) cond(cond Cond, sc Scope, now time.Time) error {
 	}
 	if col, ok := pseudo[cond.Field]; ok {
 		f := &Field{Name: cond.Field, FieldDef: FieldDef{Field: appschema.Field{Type: TypeDatetime}}}
-		return c.compare(f, strings.Replace(col, "r.", c.alias+".", 1), cond.Op, cond.Value, cond.Neg, now)
+		return c.compare(f, strings.Replace(col, "r.", c.alias+".", 1), cond.Op, cond.Value, cond.Neg, cond.Literal, now)
 	}
 	f := c.t.field(cond.Field)
 	if f == nil {
@@ -290,7 +290,7 @@ func (c *compiled) cond(cond Cond, sc Scope, now time.Time) error {
 	if f.Masked && sc.App != "" {
 		return fieldErr(f.Name, "%s is hidden until revealed, so it cannot be searched", f.Name)
 	}
-	return c.compare(f, c.col(f), cond.Op, cond.Value, cond.Neg, now)
+	return c.compare(f, c.col(f), cond.Op, cond.Value, cond.Neg, cond.Literal, now)
 }
 
 // relate compiles a test of the record a ref points to: one hop, through a
@@ -311,10 +311,10 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 		c.related[target.ID] = true
 	}
 	inner := &compiled{t: target, sch: c.sch, alias: "x", refTitle: c.refTitle, related: c.related}
-	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value}, sc, now); err != nil {
+	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value, Literal: cond.Literal}, sc, now); err != nil {
 		return err
 	}
-	sub := "SELECT x.id FROM records x WHERE " + inner.base() + " AND " + strings.Join(inner.where, " AND ")
+	sub := identityMembersSQL(target, "SELECT x.id FROM records x WHERE "+inner.base()+" AND "+strings.Join(inner.where, " AND "))
 	if f.Type == TypeRef {
 		c.add(c.col(f)+" IN ("+sub+")", cond.Neg, inner.args...)
 		return nil
@@ -442,9 +442,17 @@ func wildcard(s string) string {
 }
 
 // compare compiles field-op-value.
-func (c *compiled) compare(f *Field, col, op, value string, neg bool, now time.Time) error {
+func (c *compiled) compare(f *Field, col, op, value string, neg, literal bool, now time.Time) error {
 	if op == "=" {
 		op = ":"
+	}
+	if op == ":" && literal {
+		sql, args, err := c.matchOne(f, col, value, now)
+		if err != nil {
+			return err
+		}
+		c.add(sql, neg, args...)
+		return nil
 	}
 	if op == ":" {
 		return c.match(f, col, value, neg, now)
@@ -463,16 +471,19 @@ func (c *compiled) compare(f *Field, col, op, value string, neg bool, now time.T
 	default:
 		return fieldErr(f.Name, "%q is not an op; use one of : = > >= < <= is has", op)
 	}
+	if !literal {
+		value = unquote(value)
+	}
 	var v any
 	switch f.Type {
 	case TypeNumber, TypeMoney:
-		n, err := number(unquote(value))
+		n, err := number(value)
 		if err != nil {
 			return fieldErr(f.Name, "%s%s needs a number", f.Name, op)
 		}
 		v = n
 	case TypeDate, TypeDatetime:
-		at, err := queryTime(unquote(value), now)
+		at, err := queryTime(value, now)
 		if err != nil {
 			return fieldErr(f.Name, "%s%s needs a date like 2026-12-31 or -14d", f.Name, op)
 		}
@@ -482,7 +493,7 @@ func (c *compiled) compare(f *Field, col, op, value string, neg bool, now time.T
 			v = at.UTC().Format(stamp)
 		}
 	case TypeText, TypeEmail, TypePhone, TypeURL, TypePerson, TypeEnum:
-		v = unquote(value)
+		v = value
 	default:
 		return fieldErr(f.Name, "%s cannot be compared with %s", f.Name, op)
 	}
@@ -601,11 +612,15 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		if c.related != nil {
 			c.related[target.ID] = true
 		}
-		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", target.Fields[title].ID) + ", '') LIKE ? ESCAPE '\\'"
+		byTitle = identityMembersSQL(target, titles+"COALESCE("+jsonPath("t.data_json", target.Fields[title].ID)+", '') LIKE ? ESCAPE '\\'")
 	}
 	pattern := wildcard(v)
+	byID := " = ?"
+	if target != nil && target.identifiable() {
+		byID = " IN (" + identityMembersSQL(target, "SELECT "+identityRefSQL(target, "?")) + ")"
+	}
 	if f.Type == TypeRef {
-		cond := col + " = ?"
+		cond := col + byID
 		args = append(args, v)
 		if byTitle != "" {
 			cond += " OR " + col + " IN (" + byTitle + ")"
@@ -613,7 +628,7 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		}
 		return cond, args, nil
 	}
-	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value = ?"
+	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value" + byID
 	args = append(args, v)
 	if byTitle != "" {
 		each += " OR j.value IN (" + byTitle + ")"

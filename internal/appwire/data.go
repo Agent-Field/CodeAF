@@ -167,10 +167,11 @@ type (
 		Types []DataType `json:"types"`
 	}
 	DataType struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Title string `json:"title,omitempty"`
-		Label string `json:"label,omitempty"`
+		Common string `json:"common,omitempty"`
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Title  string `json:"title,omitempty"`
+		Label  string `json:"label,omitempty"`
 		// CreatedByApp is where the type came from, only: a type is the
 		// person's, and deleting that app never touches it.
 		CreatedByApp string         `json:"created_by_app"`

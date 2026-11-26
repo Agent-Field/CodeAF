@@ -39,10 +39,16 @@ type wireReply struct {
 }
 
 func launch(ctx context.Context, binary, scratch, key, model string) (*appProcess, error) {
-	env := []string{"HOME=" + scratch, "CODEAF_HOME=" + scratch, "PATH=" + os.Getenv("PATH")}
+	// The detached chat clock can outlive this disposable home. App runs use
+	// the engine's own dispatcher, which still starts and joins normally.
+	env := []string{"HOME=" + scratch, "CODEAF_HOME=" + scratch, "PATH=" + os.Getenv("PATH"), "CODEAF_NO_AUTOMATIONS=1"}
 	if key != "" {
 		env = append(env, "OPENROUTER_API_KEY="+key, "CODEAF_APPS_BUILDER_MODEL="+model)
 	}
+	return launchWithEnv(ctx, binary, scratch, env)
+}
+
+func launchWithEnv(ctx context.Context, binary, scratch string, env []string) (*appProcess, error) {
 	cmd := exec.CommandContext(ctx, binary, "app")
 	cmd.Dir, cmd.Env = scratch, env
 	in, err := cmd.StdinPipe()
@@ -88,11 +94,19 @@ func launch(ctx context.Context, binary, scratch, key, model string) (*appProces
 }
 
 func (p *appProcess) Close() error {
+	if p.cmd == nil {
+		return nil
+	}
 	_ = p.in.Close()
-	return p.cmd.Wait()
+	err := p.cmd.Wait()
+	p.cmd = nil
+	return err
 }
 
 func (p *appProcess) wire(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	if p.cmd == nil {
+		return nil, errors.New("app engine is closed")
+	}
 	p.id++
 	request := map[string]any{"id": p.id, "method": method, "params": params}
 	if err := json.NewEncoder(p.in).Encode(request); err != nil {
@@ -139,6 +153,24 @@ func (p *appProcess) Call(ctx context.Context, method string, params any) (json.
 	if verb, ok := strings.CutPrefix(method, "app."); ok {
 		return p.cli(ctx, verb, params)
 	}
+	if method == "build-app" {
+		raw, err := json.Marshal(params)
+		if err != nil {
+			return nil, err
+		}
+		var args struct {
+			Prompt string
+			Reuse  []string
+		}
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		state, err := p.build(ctx, args.Prompt, args.Reuse, func(BuildState) error { return nil })
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]string{"app": state.App})
+	}
 	if method == "wait-and-apply" {
 		_, err := p.waitCheck(ctx, params)
 		if err != nil {
@@ -166,7 +198,15 @@ func readReply[T any](body json.RawMessage, err error) (T, error) {
 	return v, err
 }
 
-func (p *appProcess) Build(ctx context.Context, prompt string, noModel bool, onPlan func(BuildState) error) (BuildState, error) {
+func (p *appProcess) Build(ctx context.Context, prompt string, _ bool, onPlan func(BuildState) error) (BuildState, error) {
+	var reuse []string
+	if p.onOffer {
+		reuse = []string{"contact"}
+	}
+	return p.build(ctx, prompt, reuse, onPlan)
+}
+
+func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, onPlan func(BuildState) error) (BuildState, error) {
 	body, err := p.cli(ctx, "plan", map[string]string{"ask": prompt})
 	plan, err := readReply[draftReply](body, err)
 	if err != nil {
@@ -178,16 +218,17 @@ func (p *appProcess) Build(ctx context.Context, prompt string, noModel bool, onP
 	if err := onPlan(BuildState{Plan: body}); err != nil {
 		return BuildState{}, err
 	}
-	if p.onOffer {
+	// Check the proposal without sending a separate reuse acceptance.
+	for _, typ := range reuse {
+		found := false
 		for _, offer := range plan.Offers {
-			if offer.Type == "contact" {
-				request := fmt.Sprintf("Use my existing contact records (%d, from %s) instead of making a new type", offer.Count, offer.App)
-				_, err := p.cli(ctx, "plan", map[string]string{"draft": plan.Draft, "request": request})
-				if err != nil {
-					return BuildState{}, err
-				}
+			if offer.Type == typ && offer.App != "" {
+				found = true
 				break
 			}
+		}
+		if !found {
+			return BuildState{}, fmt.Errorf("plan did not offer existing %s records", typ)
 		}
 	}
 	params := map[string]string{"draft": plan.Draft}

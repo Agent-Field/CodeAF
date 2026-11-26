@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -69,7 +70,8 @@ type Config struct {
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
-	CheckTool func(context.Context, Call) (outbound bool, err error)
+	CheckTool        func(context.Context, Call) (outbound bool, err error)
+	CheckAgentAction func(app string, origin AgentActionOrigin) error
 	// Callbacks run after the checkpoint commits. They may read run state.
 	Changed func(ChangeEvent)
 	Ask     func(Run)
@@ -97,22 +99,31 @@ type Engine struct {
 	closeErr    error
 }
 
+// AgentActionOrigin is the app grant that authorized this run.
+type AgentActionOrigin struct {
+	Principal data.AgentPrincipal `json:"principal"`
+	Action    string              `json:"action"`
+	Cause     string              `json:"cause"`
+	Version   int                 `json:"version"`
+}
+
 type checkpoint struct {
 	Run
-	TriggerReceipt *triggerReceipt `json:"trigger_receipt,omitempty"`
-	Definition     Definition      `json:"definition"`
-	Params         map[string]any  `json:"params"`
-	Input          map[string]any  `json:"input,omitempty"`
-	Outputs        map[string]any  `json:"outputs"`
-	Frames         []frame         `json:"frames"`
-	Visit          int             `json:"visit"`
-	Attempt        int             `json:"attempt"`
-	Prepared       bool            `json:"prepared"`
-	Action         *action         `json:"action,omitempty"`
-	Approved       string          `json:"approved,omitempty"`
-	Declined       string          `json:"declined,omitempty"`
-	RaisedBudget   float64         `json:"raised_budget,omitempty"`
-	ApprovalSeq    int             `json:"approval_seq"`
+	AgentOrigin    *AgentActionOrigin `json:"agent_origin,omitempty"`
+	TriggerReceipt *triggerReceipt    `json:"trigger_receipt,omitempty"`
+	Definition     Definition         `json:"definition"`
+	Params         map[string]any     `json:"params"`
+	Input          map[string]any     `json:"input,omitempty"`
+	Outputs        map[string]any     `json:"outputs"`
+	Frames         []frame            `json:"frames"`
+	Visit          int                `json:"visit"`
+	Attempt        int                `json:"attempt"`
+	Prepared       bool               `json:"prepared"`
+	Action         *action            `json:"action,omitempty"`
+	Approved       string             `json:"approved,omitempty"`
+	Declined       string             `json:"declined,omitempty"`
+	RaisedBudget   float64            `json:"raised_budget,omitempty"`
+	ApprovalSeq    int                `json:"approval_seq"`
 }
 
 type frame struct {
@@ -223,6 +234,17 @@ func (e *Engine) Get(id string) (Run, error) {
 	return c.Run, err
 }
 
+// AgentProjection reads the question's address and the answer committed by the agent step.
+func (e *Engine) AgentProjection(id string) (map[string]any, string, error) {
+	c, err := e.read(id)
+	if err != nil {
+		return nil, "", err
+	}
+	step, _ := c.Outputs["answer"].(map[string]any)
+	answer, _ := step["output"].(string)
+	return c.Params, answer, nil
+}
+
 func (e *Engine) List(app, run string) ([]Run, error) {
 	e.mu.Lock()
 	entries := make([]json.RawMessage, 0, len(e.checkpoints))
@@ -248,6 +270,23 @@ func (e *Engine) List(app, run string) ([]Run, error) {
 
 func (e *Engine) Start(app, run string, params map[string]any) (Run, error) {
 	return e.start(app, run, params, nil, false, "", nil)
+}
+
+// StartAgentAction starts a declared automation under the app agent's grant.
+func (e *Engine) StartAgentAction(app, run string, params map[string]any, origin AgentActionOrigin) (Run, error) {
+	if origin.Principal.ID == "" || origin.Action == "" || origin.Cause == "" || origin.Version < 1 || e.cfg.CheckAgentAction == nil {
+		return Run{}, errors.New("the agent action grant is unavailable")
+	}
+	if err := e.cfg.CheckAgentAction(app, origin); err != nil {
+		return Run{}, err
+	}
+	c, err := e.newCheckpoint(app, run, params, nil, false)
+	if err != nil {
+		return Run{}, err
+	}
+	c.AgentOrigin = &origin
+	err = e.save(&c, "", nil)
+	return c.Run, err
 }
 
 func (e *Engine) start(app, run string, params, input map[string]any, caughtUp bool, clockKey string, clock any) (Run, error) {

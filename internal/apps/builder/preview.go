@@ -175,7 +175,7 @@ func (s *Jobs) Restore(id, checkpoint string) error {
 	j.Working, j.State.State, j.Problem, j.Dirty = snap, Ready, "", true
 	j.WritingFiles = nil
 	j.Presence = nil
-	j.Progress, j.Queue = []Event{}, nil
+	j.Progress, j.Queue, j.Paused = []Event{}, nil, nil
 	j.describe(catalog)
 	if err := j.checkpoint("I brought back this earlier version of the app."); err != nil {
 		return err
@@ -326,7 +326,7 @@ func (s *Jobs) Discard(id string) error {
 	j.Base, j.Name = live.Meta.Version, live.Meta.Name
 	j.Working = snapshot{Files: live.Files(), Passed: true}
 	j.acceptKeptUses()
-	j.Queue, j.Dirty, j.Problem, j.State.State = nil, false, "", Ready
+	j.Queue, j.Paused, j.Dirty, j.Problem, j.State.State = nil, nil, false, "", Ready
 	j.WritingFiles = nil
 	j.Presence = nil
 	j.Progress = []Event{}
@@ -336,7 +336,7 @@ func (s *Jobs) Discard(id string) error {
 	j.Checkpoints = j.Checkpoints[:j.KeptCheckpoints]
 	j.Transcript = j.Transcript[:j.KeptMessages]
 	j.Marks = j.Marks[:j.KeptMarks]
-	j.describe(Catalog{})
+	s.describeKept(j)
 	if err := s.save(j, Event{}); err != nil {
 		return err
 	}
