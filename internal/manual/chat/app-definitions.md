@@ -306,7 +306,8 @@ version followed by `.0.0`. App templates belong with other templates in the Kit
 and proposed record bindings. An alias like `contact` can bind to your existing
 People when the package declares that common type. On Apply, a missing
 common type is created from the packaged fields. A matching common type
-is shared and can gain fields from the package. An incompatible field
+is shared and can gain fields from the package. A same-name local type
+with identical fields can also be shared. An incompatible field
 stops the install and names the field. Example rows stay in Check and preview.
 Inspect the card, then run `codeaf app apply '{"draft":"<draft>"}'` to publish.
 Use `codeaf app discard '{"draft":"<draft>"}'` to dismiss it. The live app gets

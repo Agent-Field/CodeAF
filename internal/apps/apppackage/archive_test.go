@@ -200,3 +200,30 @@ func TestPackRebindsReferencesFromTheSourceTypeName(t *testing.T) {
 		t.Fatalf("reference did not follow the package alias: %+v (%v)", app.Records, err)
 	}
 }
+
+func TestPackageReusesAnIdenticalSameNameType(t *testing.T) {
+	raw, err := apppackage.Pack(map[string]string{schema.AppFile: `{
+		"id":"desk","name":"Desk","version":1,"kit":2,
+		"records":{"note":{"fields":{"title":{"type":"text","required":true}}}},
+		"capabilities":{"records":{"note":"rw"}}
+	}`}, nil, apppackage.PackOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := apppackage.Read(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []schema.Field{{Type: "text", Required: true}, {Type: "longtext", Required: true}} {
+		local := schema.TypeSet{"note": {ID: "1", Owner: "other", Fields: map[string]schema.Field{"title": field}}}
+		files, bindings, err := archive.Bind(local, "desk", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		app, err := schema.ParseApp([]byte(files[schema.AppFile]))
+		shared := field.Type == "text"
+		if err != nil || app.Records["note"].Uses != shared || (bindings["note"].Type != "") != shared {
+			t.Fatalf("note binding for %s: %+v, %+v (%v)", field.Type, app.Records["note"], bindings, err)
+		}
+	}
+}

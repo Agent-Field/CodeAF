@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -42,8 +43,10 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 			if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); ok {
 				name = offer.Existing
 			}
-		} else if _, ok := existing[alias]; ok && (entity.Uses || fork) {
-			name = alias
+		} else if target, ok := existing[alias]; ok {
+			if entity.Uses || fork || samePrivateShape(records[alias], target) {
+				name = alias
+			}
 		}
 		if name != "" {
 			targets[alias] = existing[name]
@@ -110,6 +113,26 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 	}
 	files[schema.AppFile] = string(raw) + "\n"
 	return files, bindings, nil
+}
+
+// A matching name alone does not make two private record types interchangeable.
+func samePrivateShape(raw map[string]json.RawMessage, target schema.ExistingType) bool {
+	if target.Common != "" || raw["policy"] != nil || raw["lifecycle"] != nil ||
+		raw["ledger"] != nil || raw["freeze"] != nil || raw["constants"] != nil {
+		return false
+	}
+	var fields map[string]schema.Field
+	if json.Unmarshal(raw["fields"], &fields) != nil || len(fields) == 0 || len(fields) != len(target.Fields) {
+		return false
+	}
+	for name, want := range fields {
+		have, ok := target.Fields[name]
+		want.ID, have.ID = "", ""
+		if !ok || !reflect.DeepEqual(want, have) {
+			return false
+		}
+	}
+	return true
 }
 
 func compatible(need Field, have schema.Field, targets map[string]schema.ExistingType, existing schema.TypeSet) bool {
