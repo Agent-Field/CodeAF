@@ -368,7 +368,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.AI[name] = aiSource(r.Meta.By[name])
 		}
-		if f.Masked && (!reveal || sc.Agent) {
+		if f.Masked && (!reveal || sc.isAgent()) {
 			out[name] = masked
 			meta.Masked = append(meta.Masked, name)
 			continue
@@ -886,7 +886,7 @@ func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (
 	var made []*record
 	var t *Type
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		made = nil
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -930,12 +930,17 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 	if err != nil {
 		return nil, err
 	}
+	defaultState := ""
 	if lc := t.Lifecycle; lc != nil {
-		if v, given := values[lc.Field]; given && !carry && v != nil && v != lc.initial(t) {
+		v, given := values[lc.Field]
+		if given && !carry && v != nil && v != lc.initial(t) {
 			return nil, &Error{Code: CodeLifecycle, Field: lc.Field, Message: fmt.Sprintf("a new %s starts as %s; it moves on by a transition", t.Name, lc.initial(t))}
 		}
-		if values[lc.Field] == nil {
+		if v == nil {
 			values[lc.Field] = lc.initial(t)
+		}
+		if !given {
+			defaultState = lc.Field
 		}
 	}
 	if id == "" {
@@ -958,6 +963,8 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 		r.Data[name] = v
 	}
 	applySet(r, values, sc, op)
+	// Assigning the lifecycle's initial state is a schema default.
+	delete(r.Meta.By, defaultState)
 	for _, name := range t.Order {
 		f := t.field(name)
 		if f == nil || f.Sequence == nil || r.Data[name] != nil {
@@ -1037,7 +1044,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 	var rows []*record
 	var held []Held
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		rows, held, batch = nil, nil, ""
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -1124,7 +1131,7 @@ func (s *Store) Delete(sc Scope, typ string, ids []string, opts UpdateOptions) (
 		return nil, err
 	}
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		t, err := w.schema.allow(sc, typ, true)
 		if err != nil {
 			return err
@@ -1181,7 +1188,7 @@ func (s *Store) checkFrozen(t *Type, r *record, fields []string, sc Scope, reaso
 	if !frozen {
 		return nil
 	}
-	if strings.TrimSpace(reason) != "" && !sc.Agent && !sc.AI && !sc.Flow {
+	if strings.TrimSpace(reason) != "" && !sc.isAgent() && !sc.AI && !sc.Flow {
 		return nil
 	}
 	allowed := map[string]bool{}
@@ -1249,7 +1256,7 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	var rows []*record
 	var removes []string
 	var undo string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		rows, removes, undo = nil, nil, ""
 		var typeID, byKind, op string
 		var undone sql.NullString

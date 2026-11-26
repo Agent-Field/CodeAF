@@ -24,6 +24,11 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 		return Reply{}, err
 	}
 	scope := data.Scope{App: call.App, Flow: true, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
+	if call.agentOrigin != nil {
+		scope.Principal, scope.Flow = call.agentOrigin.Principal, false
+		scope.Action = call.agentOrigin.Action
+		scope.Cause = call.agentOrigin.Cause
+	}
 	var result *data.WriteResult
 	switch call.Name {
 	case "records.create":

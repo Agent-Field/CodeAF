@@ -159,7 +159,7 @@ func (s *Store) transitionRecords(sc Scope, name string, records []TransitionRec
 	}
 	var rows []Row
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		moves := make([]move, 0, len(records))
 		var batchType *Type
 		for i, ref := range records {
@@ -235,6 +235,9 @@ func (w *writeTx) transitionReady(sc Scope, t *Type, tr *transition, ref Transit
 		return nil, staleTransition(t, ref.Rev, before.Rev)
 	}
 	field := t.Lifecycle.Field
+	if sc.below() && (before.Meta.By[field] == ByPerson || before.Meta.By[field] == ByImport) {
+		return nil, errorf(CodeNotAllowed, "%s was set by the person", field)
+	}
 	from, _ := before.Data[field].(string)
 	if !startsFrom(tr, from) {
 		return nil, &Error{Code: CodeLifecycle, Field: field, Message: fmt.Sprintf("this %s is %s; %s starts from %s", t.Name, orNone(from), label(tr), strings.Join(tr.From, " or "))}

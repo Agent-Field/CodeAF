@@ -21,7 +21,7 @@ func (s *Store) Reverse(sc Scope, typ, id, reason string) (*WriteResult, error) 
 	var t *Type
 	var made *record
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		made, batch = nil, ""
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {

@@ -48,7 +48,7 @@ func (b *appBackend) appData() (*data.Place, error) {
 		return nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	if d.place == nil {
-		d.place = data.NewPlace(b.dataRoot(), data.Options{})
+		d.place = data.NewPlace(b.dataRoot(), data.Options{RequireAgentPrincipal: true})
 		if emit := b.emit; emit != nil {
 			d.place.OnCommit(func(change data.Change) {
 				for _, item := range change.Items {
@@ -308,9 +308,22 @@ func (b *appBackend) DataHistory(p appwire.DataRecordParams) (*appwire.DataHisto
 		return nil, appDataError(err)
 	}
 	out := &appwire.DataHistoryResult{History: []appwire.DataHistoryEntry{}}
+	agentLabels := map[string]string{}
 	for _, e := range entries {
+		actor := e.Actor
+		if e.ByKind == data.ByAI && e.App != "" && actor == data.AgentAssigneePrefix+e.App {
+			label, loaded := agentLabels[e.App]
+			if !loaded {
+				label = actor
+				if def, err := b.AppDefinitions().Get(e.App); err == nil {
+					label = def.Meta.Name + " agent"
+				}
+				agentLabels[e.App] = label
+			}
+			actor = label
+		}
 		out.History = append(out.History, appwire.DataHistoryEntry{
-			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: e.Actor, ByKind: e.ByKind, Cause: e.Cause, Note: e.Note, At: e.At,
+			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: actor, ByKind: e.ByKind, Cause: e.Cause, Note: e.Note, At: e.At,
 			Undone: e.Undone, Before: e.Before, After: e.After, Changed: nonNilStrings(e.Changed),
 		})
 	}

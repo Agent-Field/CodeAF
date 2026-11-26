@@ -608,6 +608,22 @@ func TestSchemaSpellingsOfProcessRegister(t *testing.T) {
 	wantCode(t, err, CodeInvalid)
 }
 
+func TestLifecycleAgentLeavesPersonStateAndFlowMayAdvanceIt(t *testing.T) {
+	s, _ := openOps(t)
+	app := strings.Replace(opsApp, `"to": "Review", "guard"`, `"to": "Review", "by": ["person", "flow", "ai"], "guard"`, 1)
+	if err := s.RegisterApp([]byte(app)); err != nil {
+		t.Fatal(err)
+	}
+	row := mustCreate(t, s, person, "case", map[string]any{"name": "Pinned case", "stage": "Open", "amount": 10})[0]
+	ref := []TransitionRecord{{RecordRef: RecordRef{Type: "case", ID: row.ID()}, Rev: 1}}
+	_, err := s.TransitionBatch(Scope{App: "ops", Agent: true}, "submit", ref, TransitionOptions{})
+	wantCode(t, err, CodeNotAllowed)
+	moved, err := s.TransitionBatch(Scope{App: "ops", Flow: true}, "submit", ref, TransitionOptions{})
+	if err != nil || moved.Rows[0]["stage"] != "Review" {
+		t.Fatalf("flow transition = %+v, error = %v", moved, err)
+	}
+}
+
 // A STRUCTURED CONDITION'S OP NEVER REACHES THE SQL AS WRITTEN.
 func TestConditionOpIsNotSQL(t *testing.T) {
 	s, _ := openCRM(t)

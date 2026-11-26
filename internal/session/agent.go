@@ -143,6 +143,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if err := checkAppScope(config); err != nil {
+		return nil, err
+	}
 	if err := configureOwnedChat(&config); err != nil {
 		return nil, fmt.Errorf("prepare conversation storage: %w", err)
 	}

@@ -231,6 +231,7 @@ var migrations = []string{
 	writeRulesMigration,
 	ruleSourceGrantMigration,
 	identityMigration,
+	agentGrantMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
@@ -244,6 +245,8 @@ type Store struct {
 	path  string
 	draft string
 	now   func() time.Time
+
+	requireAgentPrincipal bool
 
 	wdb *sql.DB
 	rdb *sql.DB
@@ -289,6 +292,9 @@ type Options struct {
 	// sample file takes the person of the real one, so "me" is one person in
 	// both.
 	Person string
+	// RequireAgentPrincipal denies legacy AI writes without a bound identity
+	// and action in a live app store.
+	RequireAgentPrincipal bool
 }
 
 // Open opens (making it if need be) the data file at path, runs the
@@ -346,7 +352,8 @@ func Open(path string, opts Options) (*Store, error) {
 
 	s := &Store{
 		path: abs, draft: opts.Draft, now: opts.Now, wdb: wdb, rdb: rdb,
-		writes: make(chan writeOp, writeQueue), notify: make(chan *Change, dispatchQueue),
+		requireAgentPrincipal: opts.RequireAgentPrincipal,
+		writes:                make(chan writeOp, writeQueue), notify: make(chan *Change, dispatchQueue),
 		quit: make(chan struct{}), subs: map[subscriptionKey]*subscription{}, hooks: map[int]func(Change){},
 	}
 	sch, _, err := loadSchema(wdb, s.now)
