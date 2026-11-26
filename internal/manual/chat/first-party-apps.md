@@ -8,9 +8,9 @@ Kit lists the codeaf publisher templates. Use the package preview to try its exa
 
 ## Write, comment or ask AI in Docs
 
-Open a document, choose Edit document and write on the page. Use Text style for headings, Bold, Italic and List to format text. The outline jumps to headings. Docs stores Markdown. Use Markdown for tables, images and other source syntax outside the rich editor. Save commits the current body against the revision you opened. Comments are attached to the document record.
+Open a document, choose Edit document and write on the page. Use Text style for headings, Bold, Italic and List to format text. The outline jumps to headings. Docs stores Markdown. Use Markdown for tables, images and other source syntax outside the rich editor. Save commits the current body against the revision you opened. Comments are attached to the document record and open beside the writing page.
 
-Ask AI offers Rewrite selection, Summarize and Continue writing. Desk shows the app agent's answer in the document. Insert puts its text in the current edit, which you can review and save. The app agent requires a configured model.
+Ask AI offers Rewrite selection, Summarize and Continue writing. It uses the current editor text, including unsaved edits, or the selected passage. Desk shows the app agent's answer in the document. Insert puts its text in the current edit, which you can review and save. The app agent requires a configured model.
 
 ## Formulas, column types and selections in Sheets
 

@@ -5,6 +5,8 @@ pr: 2989
 surface: [app]
 invalidates:
   - The bundled editors opened empty lists on a fresh profile. A new installation now includes one editable example per editor.
+  - Editor actions were spread across the page. Export and clipboard sharing now live in File, and Details opens beside the editor.
+  - Docs comments appeared in the record timeline. The writing page now shows comments by author, and Ask AI reads the current draft.
   - Slides opened individual text frames. A presentation now contains ordered slides with layouts and notes.
 ---
 
