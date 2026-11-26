@@ -1,0 +1,1 @@
+{"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,mail,userPrincipalName)","value":[{"id":"12345678-1234-1234-1234-123456789abc","displayName":"Mira Vennett","mail":"mira@asterloom.example","userPrincipalName":"mira@asterloom.example"}]}

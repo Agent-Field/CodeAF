@@ -494,7 +494,9 @@ func (c *checker) checkApp() {
 			c.add(AppFile, at+"/id", CodeDuplicateID, "Two triggers are called %q.", t.ID)
 		}
 		seen[t.ID] = true
-		if a.Kit == 2 {
+		if t.On == "connector" && GraphSourceTrigger(t.Connector, t.Event) {
+			c.checkGraphSourceTrigger(t, at)
+		} else if a.Kit == 2 {
 			c.checkGalleryTrigger(i, at)
 		} else {
 			switch t.On {

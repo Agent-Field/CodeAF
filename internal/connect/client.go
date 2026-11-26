@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -62,6 +63,7 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 		store: m.store,
 		id:    service.ID,
 		last:  entry.Keys,
+		grant: entry.GrantID,
 	}
 	client := oauth2.NewClient(ctx, bearerSource{base: source})
 	client.Timeout = clientTimeout
@@ -105,8 +107,9 @@ type persisting struct {
 	store *store
 	id    string
 
-	mu   sync.Mutex
-	last *oauth2.Token
+	mu    sync.Mutex
+	last  *oauth2.Token
+	grant string
 }
 
 // Token renews if it must, and writes the result down if anything changed.
@@ -134,13 +137,22 @@ func (p *persisting) Token() (*oauth2.Token, error) {
 	if sameKeys(p.last, fresh) {
 		return fresh, nil
 	}
-	entry, _, err := p.store.get(p.id)
-	if err != nil {
+	stale := false
+	if err := p.store.replace(p.id, func(entries map[string]stored) {
+		entry, exists := entries[p.id]
+		if !exists || entry.GrantID != p.grant {
+			stale = true
+			return
+		}
+		if sameKeys(p.last, entry.Keys) {
+			entry.Keys = fresh
+			entries[p.id] = entry
+		}
+	}); err != nil {
 		return fresh, nil
 	}
-	entry.Keys = fresh
-	if err := p.store.put(p.id, entry); err != nil {
-		return fresh, nil
+	if stale {
+		return nil, errors.New("the account connection changed")
 	}
 	p.last = fresh
 	return fresh, nil
