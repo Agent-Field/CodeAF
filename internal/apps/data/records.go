@@ -355,14 +355,14 @@ func (s *Store) rowWithSchema(sch *schema, t *Type, r *record, sc Scope, reveal 
 	meta := RowMeta{Reverses: r.Meta.Reverses, ReversedBy: r.Meta.ReversedBy}
 	for _, name := range t.Order {
 		f := t.Fields[name]
-		mode := t.FieldPolicy(f)
+		if f.Hidden && sc.App != "" {
+			continue
+		}
+		mode := s.personalFieldPolicy(t, f, r, sc, sch.person)
 		if mode == "hide" {
 			if _, ok := r.Data[name]; ok {
 				s.AuditRecordPolicy(sc, t, "field_hidden")
 			}
-			continue
-		}
-		if f.Hidden && sc.App != "" {
 			continue
 		}
 		v, hasValue := r.Data[name]

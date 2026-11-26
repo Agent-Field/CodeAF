@@ -6,13 +6,20 @@ Tell the app Builder which record type and fields to protect. The app that
 defines the type declares `policy.fields`, for example
 `"policy":{"fields":{"salary":"hide","tax_id":"mask"}}`. Apps that reuse
 the type inherit the same policy. A hidden field is omitted. A masked field
-shows `••••`. These values do not affect searches, sorts, groups or totals
-that use the field. A record's reveal button does not bypass these rules.
+shows `••••`. Searches, sorts and groups cannot use masked or hidden
+fields. In a person's view, sum and average can use a masked numeric field
+over native Personal rows they can access. Agents, automations, and
+connected-source totals need an unmasked field. Hidden fields are unavailable to totals. Choose an accessible
+field if the app refuses a total. A record's reveal button does not bypass
+an explicit hide or mask.
 
 A field's `class` can be `public`, `internal`, `confidential`,
 `restricted` or `pii`. The Builder can suggest a class or set the one you
-ask for. Confidential, restricted and PII fields are masked. A field policy
-can hide them entirely.
+ask for. Confidential, restricted and PII fields are masked for other
+viewers and app agents. The owner can see their own local confidential
+values, such as transaction amounts, unless the type declares an explicit
+mask or hide. Restricted and PII record values stay masked. Values from
+connected sources use the source's rules.
 
 ## Only see my accounts or rows assigned to me
 
@@ -27,16 +34,22 @@ clears and refetches its records when access changes.
 
 ## Don't send customer data to AI or choose an approved model
 
-Classify a field as `restricted` or `pii` to require an approved model.
-The run, Builder and app agent stop with
-“This app has restricted or PII fields. Choose an approved model for this data.”
-when a class in scope lacks approval. App queries still use the same masks
-for approved models.
+The Builder can plan and edit the schema for any data class. It receives
+field definitions and worked examples. The contents of an existing sample
+file are withheld. If a change needs new example rows, ask the Builder to
+write synthetic records.
 
-The local profile owner can install approvals with
+For restricted or PII data in a Personal app, codeaf can send the request
+to the exact model and endpoint you chose in your profile. A model named
+only by an app, a fallback destination, or a connected app using restricted
+data needs explicit approval. An external AI harness cannot receive
+restricted or PII app input. Choose a model with an exact completion URL
+in codeaf. Claude Code and Codex sign-ins do not qualify for automatic
+approval, since their transports manage the destination.
+
+The profile owner can install an explicit allowlist with
 `codeaf app model-policy FILE.json`. The file lists exact model names and
 completion URLs per class, for example
 `{"restricted":[{"model":"provider/model","endpoint":"https://example.com/v1/chat/completions"}]}`.
-Install an empty object to remove approvals. A fallback model or a different
-endpoint needs its own approval. An external AI harness cannot receive restricted or PII app input because it does not report a fixed model and completion URL. Refusals and masks go to the app data log
-`policy.jsonl` with decision names and identifiers.
+An empty object denies all restricted and PII sends. Refusals and masks
+go to the app data log `policy.jsonl` with decision names and identifiers.

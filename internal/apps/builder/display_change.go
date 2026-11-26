@@ -60,7 +60,7 @@ func screenChange(before, after map[string]string, path string, target *Target) 
 		if node == nil {
 			return DisplayChange{}, false
 		}
-		if prior := past[node.ID]; prior != nil && !reflect.DeepEqual(prior.Props, node.Props) {
+		if prior := past[node.ID]; prior != nil && (prior.Part != node.Part || !reflect.DeepEqual(prior.Props, node.Props)) {
 			want := target == nil || target.Node == "" || target.Node == node.ID
 			if want && (node.Part == "RecordList" || node.Part == "Table" || node.Part == "Board") {
 				typ := ""
@@ -148,6 +148,35 @@ func displayName(value, fallback string) string {
 	return "Screen"
 }
 
+// A field-only revision may have no changed screen file to name the edit.
+func recordFieldChange(before, after map[string]string) (DisplayChange, bool) {
+	old, _ := schema.ParseApp([]byte(before[schema.AppFile]))
+	next, _ := schema.ParseApp([]byte(after[schema.AppFile]))
+	var change DisplayChange
+	for _, name := range slices.Sorted(maps.Keys(next.Records)) {
+		record := next.Records[name]
+		prior, exists := old.Records[name]
+		if !exists {
+			continue
+		}
+		for _, key := range slices.Sorted(maps.Keys(record.Fields)) {
+			if _, exists := prior.Fields[key]; exists {
+				continue
+			}
+			if change.Part != "" {
+				return DisplayChange{}, false
+			}
+			label := displayName(record.Fields[key].Label, key)
+			change = DisplayChange{
+				Part:   displayName(record.Label, name) + " fields",
+				Before: "Without " + label,
+				After:  "Includes " + label,
+			}
+		}
+	}
+	return change, change.Part != ""
+}
+
 func (s *Jobs) beforeTurn(j *job) map[string]string {
 	if len(j.Checkpoints) != 0 {
 		return j.Saved[j.Checkpoints[len(j.Checkpoints)-1].ID].Files
@@ -177,6 +206,9 @@ func (s *Jobs) displaySummary(j *job, t turn) string {
 		return change.Part + " is ready to try."
 	}
 	if j.App != "" && len(names) == 0 {
+		if field, ok := recordFieldChange(before, after); ok {
+			return field.Part + " now include " + strings.TrimPrefix(field.After, "Includes ") + "."
+		}
 		old, _ := schema.ParseApp([]byte(before[schema.AppFile]))
 		next, _ := schema.ParseApp([]byte(after[schema.AppFile]))
 		for _, command := range next.Commands {

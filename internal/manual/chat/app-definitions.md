@@ -76,8 +76,8 @@ Open **Edit app** and say what to change. Select an element in the preview
 to ask about that exact part. The saved mark keeps the selected node ID and
 checkpoint. The builder describes the change by its display name in the
 conversation. Open **Build activity** for tool replies and Check details.
-A small assistant change card shows the part and its before and after
-states. Choose **Apply** or **Discard** there. Use an earlier step in the conversation to
+A checked change card shows the part and its before and after states.
+The card stays available after restarting. Choose **Apply** or **Discard** there. Use an earlier step in the conversation to
 preview it or choose **Go back to this** to put it back as a new step.
 **Apply** publishes the checked files as the next version. **Discard**
 drops the unpublished change and returns to your saved app.

@@ -39,5 +39,5 @@ type RowPolicy struct {
 	Attribute string `json:"attribute"`
 }
 
-// Restricted classes require an explicit model destination approval.
+// Restricted classes require model destination approval before a data send.
 func (c DataClass) Restricted() bool { return c == ClassRestricted || c == ClassPII }

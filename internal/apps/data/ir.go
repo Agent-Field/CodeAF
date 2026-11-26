@@ -18,8 +18,8 @@ import (
 //	           money sum in whole cents so a ledger adds up exactly
 //
 // Policy is applied once, here: a type the scope may not read is refused
-// wherever the IR reaches it, and a masked field is neither searched,
-// grouped nor summed for an app and reads as the mask when selected.
+// wherever the IR reaches it. A masked field cannot be searched or grouped.
+// A person's native totals can use masked fields without selecting their values.
 
 // Cond is one condition: Field (a field, or ref.field) Op Value, or, with no
 // Field, free words in Value. Op is one of : > >= < <= is has; a value of :
@@ -285,6 +285,12 @@ func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	residency, err := residencyState(s.rdb, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	sourceBound := residency.Binding.App != "" || c.external != nil && c.external.types[t.ID]
+
 	where, args := c.filter()
 
 	var selects, groupCols, orders []string
@@ -313,7 +319,7 @@ func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
 	}
 	names := map[string]bool{}
 	for i, a := range ir.Aggregate {
-		expr, err := c.aggregate(sc, a)
+		expr, err := c.aggregate(sc, a, sourceBound)
 		if err != nil {
 			return nil, err
 		}
@@ -422,13 +428,13 @@ func (c *compiled) groupColumn(sc Scope, name string) (string, *Field, error) {
 
 // aggregate is the SQL of one aggregate. A sum or average of money is taken
 // in whole cents and answered rounded to the cent: 0.1 + 0.2 is 0.30.
-func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
+func (c *compiled) aggregate(sc Scope, a Agg, sourceBound bool) (string, error) {
 	switch a.Fn {
 	case "count":
 		if a.Field == "" {
 			return "count(*)", nil
 		}
-		f, err := c.usable(a.Field, sc, "count")
+		f, err := c.aggregateField(sc, a, sourceBound)
 		if err != nil {
 			return "", err
 		}
@@ -437,7 +443,7 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 	default:
 		return "", errorf(CodeInvalid, "%q is not an aggregate; use count, sum, avg, min or max", a.Fn)
 	}
-	f, err := c.usable(a.Field, sc, a.Fn)
+	f, err := c.aggregateField(sc, a, sourceBound)
 	if err != nil {
 		return "", err
 	}
@@ -457,6 +463,34 @@ func (c *compiled) aggregate(sc Scope, a Agg) (string, error) {
 		}
 	}
 	return a.Fn + "(" + col + ")", nil
+}
+
+func (c *compiled) aggregateField(sc Scope, a Agg, sourceBound bool) (*Field, error) {
+	f, err := c.queryField(a.Field, a.Fn)
+	if err != nil {
+		return nil, err
+	}
+	mode := c.t.FieldPolicy(f)
+	if mode == "hide" || f.Hidden && sc.App != "" || c.sch.withheldRef(f) {
+		c.sch.notePolicy(sc, c.t, "query_field_refused")
+		return nil, fieldErr(f.Name, "%s is hidden by the record policy. Choose a field you can access for %s.", f.Name, a.Fn)
+	}
+	automated := sc.below() || sc.Flow
+	if mode == "mask" || f.Masked && (sc.App != "" || automated) {
+		if sourceBound {
+			c.sch.notePolicy(sc, c.t, "query_field_refused")
+			return nil, fieldErr(f.Name, "%s is masked by its source policy. Choose an unmasked field for %s.", f.Name, a.Fn)
+		}
+		if automated {
+			c.sch.notePolicy(sc, c.t, "query_field_refused")
+			return nil, fieldErr(f.Name, "%s is masked for this automation. Choose an unmasked field for %s.", f.Name, a.Fn)
+		}
+		if a.Fn != "sum" && a.Fn != "avg" {
+			c.sch.notePolicy(sc, c.t, "query_field_refused")
+			return nil, fieldErr(f.Name, "%s is masked. Use sum or avg for a numeric field, or choose an unmasked field for %s.", f.Name, a.Fn)
+		}
+	}
+	return f, nil
 }
 
 // page is one page of the records a compiled query matches, in its order,

@@ -72,6 +72,22 @@ func (t *Type) FieldPolicy(f *Field) string {
 	return ""
 }
 
+// A Personal store belongs to its registered person. Human requests without
+// a delegated subject use that identity, and an inherited row rule still
+// applies to each projected version of the record.
+func (s *Store) personalFieldPolicy(t *Type, f *Field, r *record, sc Scope, person string) string {
+	mode := t.FieldPolicy(f)
+	if mode == "mask" && f.Class == appschema.ClassConfidential && t.fieldRules[f.Name] == "" && !f.Masked &&
+		r.Meta.By[f.Name] != BySync && !sc.below() && !sc.Flow && person != "" &&
+		sc.attribute(person, "id") == person && t.rowAllowed(sc, person, r.Data) {
+		if _, present := r.Data[f.Name]; present {
+			s.AuditRecordPolicy(sc, t, "owner_field_read")
+		}
+		return ""
+	}
+	return mode
+}
+
 // Ref values need a scoped lookup before projection when their target
 // type carries a row policy. Unchecked IDs would disclose membership.
 func (sch *schema) withheldRef(f *Field) bool {

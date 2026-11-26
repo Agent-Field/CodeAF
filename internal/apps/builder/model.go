@@ -48,6 +48,9 @@ revising the plan. Reuse the plan ids in the compiled definitions.
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
+For a new common contact, use add-type {"name":"contact","definition":{"common":"person","title":"name","fields":{"name":{"type":"text"}}}}.
+For a new common company, put "common":"organization" in the same place.
+Keep the common key on later edits so other apps can reuse the same records.
 A linked field uses {"type":"ref","to":"company"}. New types start read-only.
 For an app where the person tracks records, grant read and write to every
 tracked type. For a CRM, use
@@ -82,11 +85,8 @@ run's sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
-Use codeaf app common-types to find stable keys. The library's role labels
-describe fields. Copy type and relevant fields only, omit role in app.json,
-and point refs at the draft's local type names. Leave out optional fields and
-relations the app does not need, especially circular references in examples.
-Use common person and organization for new contacts and companies.
+Find common keys with codeaf app common-types. Copy only needed fields without
+role labels. Point refs at local type names and omit unused or circular relations.
 For existing records, copy the common key from context.common_bindings.
 If it lists no key for that type, omit common and keep its exact name.
 Reuse uses {"uses":true,"fields":{}}. Apply still confirms headless proposals.
@@ -95,7 +95,6 @@ For a shared type this app's Actions create or edit, use this shape:
 add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
 Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
-If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
 Keep screen and node ids. Claim marked nodes and preserve the rest of that
 screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
@@ -257,6 +256,9 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		if !found || !definitionPath.MatchString(opts.File) {
 			return "", errors.New("that app definition file is unavailable")
 		}
+		if opts.File == schema.SampleFile {
+			return "Existing example rows are withheld. Leave them in place unless the change needs new examples. Use reference for synthetic examples, or set-sample with invented values.", nil
+		}
 		if opts.Offset < 0 || opts.Offset > len(body) || (opts.Offset < len(body) && !utf8.RuneStart(body[opts.Offset])) {
 			return "", errors.New("use the next offset from the previous page")
 		}
@@ -332,7 +334,14 @@ func briefReport(report *schema.Report) *modelReport {
 	// Include every location so one repair can address all the findings.
 	problems := make([]schema.Problem, len(report.Problems))
 	for i, p := range report.Problems {
-		p.Message = briefText(p.Message, 400)
+		switch {
+		case p.File == schema.SampleFile && p.Code != "sample_unavailable":
+			p.Message = "Check the example file at this location. Use synthetic records and valid sample links."
+		case p.Code == "run_failed":
+			p.Message = "The automation could not finish on the example data. Check the reported run and step."
+		default:
+			p.Message = briefText(p.Message, 400)
+		}
 		problems[i] = p
 	}
 	return &modelReport{Problems: problems, Total: len(report.Problems)}
@@ -384,18 +393,6 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
-	var observedClasses []schema.DataClass
-	ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		classes, err := definitionClasses(files, types)
-		for _, class := range classes {
-			if !slices.Contains(observedClasses, class) {
-				observedClasses = append(observedClasses, class)
-			}
-		}
-		return slices.Clone(observedClasses), err
-	})
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
 	var planSaved bool
@@ -540,7 +537,8 @@ use add-field with just {"type":"number"} for an optional number. Keep the
 plan, screens and samples when the request leaves them alone. Then finish so the engine can check the draft.`
 			break
 		}
-		prompt += `Complete the planned screens and samples before making refinements.
+		prompt += `Keep planned types and common keys. Edit types only as requested or to bind types from using.
+Complete the planned screens and samples before making refinements.
 Set record permissions and compile one recipe for each missing plan screen,
 using its exact screen id. Implement each planned run and its requested
 entry point before Check. Keep existing screens unless asked to edit them.

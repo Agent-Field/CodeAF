@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2611,8 +2612,26 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	return c.newHTTPRequestAt(ctx, request, body, stream, c.config.BaseURL)
 }
 
+// CompletionDestination names the configured primary route before any fallback.
+func (c Config) CompletionDestination() ModelDestination {
+	u, err := url.Parse(completionEndpoint(c.BaseURL))
+	if err != nil || u.Hostname() == "" || u.User != nil || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "::1" || u.Hostname() == "localhost"))) {
+		return ModelDestination{}
+	}
+	return modelDestination(c.Model, u)
+}
+
+func modelDestination(model string, u *url.URL) ModelDestination {
+	return ModelDestination{Model: model, Endpoint: u.Scheme + "://" + u.Host + u.EscapedPath()}
+}
+
+func completionEndpoint(baseURL string) string {
+	return strings.TrimSuffix(strings.TrimSpace(baseURL), "/") + "/chat/completions"
+}
+
 func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body []byte, stream bool, baseURL string) (*http.Request, error) {
-	endpoint := strings.TrimSuffix(strings.TrimSpace(baseURL), "/") + "/chat/completions"
+	endpoint := completionEndpoint(baseURL)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

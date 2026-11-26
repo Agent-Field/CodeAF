@@ -91,7 +91,8 @@ func (b *appBackend) appBuilderModel() (builder.Completer, error) {
 		model = config.TierModelAt(settings.ProfileDir, config.ModelTierWorker)
 	}
 	clientConfig := settings.ClientConfig(model)
-	clientConfig.AuthorizeDestination = b.appModelAuthorizer("", true)
+	// Builder tools return app definitions and redacted sample diagnostics.
+	// Record access and model approval belong to the data-bearing app doors.
 	client, err := provider.NewClient(clientConfig)
 	if err != nil {
 		return nil, err
@@ -122,6 +123,9 @@ func (b *appBackend) appBuildChanged(event builder.Event) {
 
 func (b *appBackend) appBuildNotice(item builder.Summary) {
 	title, detail := item.Name+" is ready to try", "Open the app to try it and keep it."
+	if item.Proposal != nil {
+		title, detail = "Review the change to "+item.Name, "Open the app to apply or discard the proposed change."
+	}
 	if item.State == builder.NeedsYou {
 		title, detail = item.Name+" needs you", "Open the app to choose what to change."
 	}

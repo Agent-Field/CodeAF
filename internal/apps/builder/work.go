@@ -205,7 +205,11 @@ func stampAppID(files map[string]string, j *job) error {
 	if id == "" {
 		id = j.Draft
 	}
-	app["id"], _ = json.Marshal(id)
+	encoded, _ := json.Marshal(id)
+	if string(app["id"]) == string(encoded) {
+		return nil
+	}
+	app["id"] = encoded
 	raw, err := json.MarshalIndent(app, "", "  ")
 	if err == nil {
 		files[schema.AppFile] = string(raw)
@@ -437,27 +441,20 @@ func (s *Jobs) finish(j *job, event Event) error {
 		j.State.State = j.Queue[0].Stage
 		j.Problem = ""
 	}
+	// An older queued assistant edit may only carry the proposal ID on its turn.
+	if j.PendingProposal == nil && finished.Proposal != "" {
+		j.PendingProposal = &proposalIntent{ID: finished.Proposal, Target: finished.Target}
+	}
+	var proposed *Proposal
+	if j.PendingProposal != nil && len(j.Queue) == 0 && j.State.State == Ready && j.Working.CheckComplete && len(j.Checkpoints) > 0 {
+		proposed = s.checkedProposal(j, *j.PendingProposal)
+		j.Proposal, j.PendingProposal = proposed, nil
+	}
 	if err := s.save(j, event); err != nil {
 		return err
 	}
-	if finished.Proposal != "" && s.opts.Proposed != nil {
-		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal, Kind: "big", Source: "assistant", BaseVersion: j.Base, SummaryLines: []string{"Open the builder to review the change."}}
-		if j.State.State == Ready && j.Working.Passed {
-			p.Display = &DisplayChange{Part: displayName(j.Name, "App"), Before: "Current app", After: "Updated app"}
-		}
-		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
-			p.Screen = s.proposalScreen(j)
-			if p.Screen != "" && len(j.Checkpoints) != 0 {
-				p.Kind = "small"
-				p.Checkpoint = j.Checkpoints[len(j.Checkpoints)-1].ID
-				if live, err := s.opts.Store.Get(j.App); err == nil {
-					change := screenChange(live.Files(), j.Working.Files, "screens/"+p.Screen+".json", finished.Target)
-					p.Display = &change
-					p.SummaryLines = []string{change.Part}
-				}
-			}
-		}
-		s.opts.Proposed(p)
+	if proposed != nil && s.opts.Proposed != nil {
+		s.opts.Proposed(*proposed)
 	}
 	if len(j.Queue) == 0 && s.opts.Notify != nil && ((j.State.State == Ready && j.Working.Passed) || j.State.State == NeedsYou) {
 		s.opts.Notify(j.Summary)
@@ -628,14 +625,6 @@ func (s *Jobs) classify(j *job, active turn, id, text string) {
 			return
 		}
 		instruction := "Classify whether the new request directly contradicts or cancels the work in progress. Additions and small refinements can wait. Reply REDIRECT or QUEUE only."
-		catalog, err := s.catalog(j.App)
-		if err != nil {
-			return
-		}
-		types := externalTypes(catalog.Types, j.App, j.Draft)
-		ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
-			return definitionClasses(j.Working.Files, types)
-		})
 		modelID := builderModelID(model)
 		response, err := session.ScopedCommandTurn(ctx, filepath.Join(s.root, draft), modelID, instruction, string(input), model,
 			func(context.Context, string) (string, error) {
