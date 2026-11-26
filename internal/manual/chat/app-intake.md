@@ -46,7 +46,12 @@ Optional `accept` restricts MIME types, such as `text/csv`,
 
 To extract text into a field, declare `run` on the channel. The run gets
 `$record` and `$input.channel`. Its first `agent` step can read the uploaded PDF
-or image when the run's model accepts that format, up to eight attachments.
+or image from the scoped intake record, up to eight attachments. A text
+PDF supplies its extracted text. An image-capable run model can also see
+up to eight PDF pages as images when Poppler is installed. A scan without
+a text layer needs that image path to be readable. Each PDF can supply up
+to 128 KiB of extracted text. The run accepts up to 2 MiB per rendered page
+and 12 MiB in combined attachment data, including image encoding.
 A following
 `records.update` step can set a field to `$steps.extract.output` (where
 `extract` is the agent step's ID). Those updates carry AI provenance.

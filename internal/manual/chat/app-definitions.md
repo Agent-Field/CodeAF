@@ -354,7 +354,7 @@ The compiler builds the screen from its job and the record fields. Choose
 
 Use `codeaf app parts --for add-screen/queue-detail` to see the corresponding
 gallery screen. Pass `slots` with the job-specific inputs, such as `state`
-for the board or `metrics` and `visual` for a dashboard.
+for a board view or `metrics` and `visual` for a dashboard.
 
 For a dashboard, each entry in `slots.metrics` has a `label` and an `op`
 of `count`, `sum`, `avg`, `min`, or `max`. Add the `field` for an operation

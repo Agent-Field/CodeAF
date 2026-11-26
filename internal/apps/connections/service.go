@@ -107,9 +107,17 @@ func (s Service) Register(c Config, credential string) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
-	credential, err := validateCredential(c.Kind, credential)
-	if err != nil {
-		return err
+	if c.CredentialMode == CredentialPublic {
+		if strings.TrimSpace(credential) != "" {
+			return errors.New("a public connection takes no credential")
+		}
+		credential = ""
+	} else {
+		key, err := validateCredential(c.Kind, credential)
+		if err != nil {
+			return err
+		}
+		credential = key
 	}
 	person := ""
 	if c.CredentialMode == CredentialPerson {
@@ -530,7 +538,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		row := data.Row{"type": binding.Alias}
 		if read.Version != "" {
 			version, err := sourceScalar(raw[read.Version])
-			if err != nil || strings.Contains(version, secret) && c.Kind == HTTP {
+			if err != nil || c.Kind == HTTP && containsCredential(version, secret) {
 				return Page{}, ErrInvalidRows
 			}
 			row["_source_version"] = version
@@ -709,6 +717,9 @@ func (s Service) person(ctx context.Context) data.PersonPrincipal {
 }
 
 func (s Service) credential(c registration, person data.PersonPrincipal) (string, error) {
+	if c.CredentialMode == CredentialPublic {
+		return "", nil
+	}
 	if c.CredentialMode != CredentialPerson {
 		return s.vault().Credential(c.ID)
 	}
@@ -728,6 +739,9 @@ func (s Service) SetPersonCredential(ctx context.Context, app, id, credential st
 	}
 	if c.Kind == Microsoft365 {
 		return errors.New("Microsoft 365 uses browser sign-in")
+	}
+	if c.CredentialMode == CredentialPublic {
+		return errors.New("this public connection takes no credential")
 	}
 	if c.CredentialMode != CredentialPerson {
 		return errors.New("this connection uses a shared credential")
