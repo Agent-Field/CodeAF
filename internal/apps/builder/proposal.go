@@ -3,11 +3,19 @@ package builder
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"unicode"
 )
 
 func (s *Jobs) checkedProposal(j *job, intent proposalIntent) *Proposal {
+	live, err := s.opts.Store.Get(j.App)
+	if err == nil && maps.Equal(live.Files(), j.Working.Files) {
+		// A question can reach Check without editing the app. Keep the
+		// conversation and its checkpoint without asking for an Apply.
+		j.Dirty = false
+		return nil
+	}
 	card := &Proposal{
 		App: j.App, Draft: j.Draft, ID: intent.ID, Kind: "big", Source: "assistant",
 		BaseVersion: j.Base, Target: intent.Target, Screen: s.proposalScreen(j),
@@ -23,7 +31,7 @@ func (s *Jobs) checkedProposal(j *job, intent proposalIntent) *Proposal {
 		var before string
 		if snap, ok := j.Saved[target.Checkpoint]; ok {
 			before = snap.Files[path]
-		} else if live, err := s.opts.Store.Get(j.App); err == nil {
+		} else if err == nil {
 			before = live.Files()[path]
 		}
 		name, previous := describeMarkedPart(before, target)
@@ -79,7 +87,7 @@ func describeMarkedPart(raw string, target *Target) (name, description string) {
 	if node == nil {
 		return name, name + " screen"
 	}
-	if label, _ := node["label"].(string); label != "" && label != name {
+	if label, _ := node["label"].(string); label != "" && !strings.EqualFold(label, name) {
 		name += " · " + label
 	}
 	part, _ := node["part"].(string)

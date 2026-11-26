@@ -88,8 +88,12 @@ func TestAppChangeCardSurvivesEngineRestart(t *testing.T) {
 				return true
 			})
 			if card.App != app.ID || (opened.Draft != "" && card.Draft != opened.Draft) || card.ID == "" ||
+				card.Source != source || card.BaseVersion != 1 || card.Checkpoint == "" ||
 				!strings.Contains(strings.Join(card.SummaryLines, " "), "renewal") {
 				t.Fatalf("proposal = %+v", card)
+			}
+			if source == "marked" && (card.Target == nil || card.Target.Node != "deals" || !strings.Contains(card.SummaryLines[1], "Before:")) {
+				t.Fatalf("the proposal lost the marked part: %+v", card)
 			}
 			if err := b.Close(); err != nil {
 				t.Fatal(err)
@@ -110,15 +114,24 @@ func TestAppChangeCardSurvivesEngineRestart(t *testing.T) {
 			if kept.Meta.Version != 1 {
 				t.Fatalf("version before Apply = %d", kept.Meta.Version)
 			}
-			var applied struct{ Meta store.Meta }
-			reopened.must("apps.apply", map[string]string{"draft": card.Draft}, &applied)
-			if applied.Meta.Version != 2 {
-				t.Fatalf("version after Apply = %d", applied.Meta.Version)
+			if source == "marked" {
+				var applied struct{ Meta store.Meta }
+				reopened.must("apps.apply", map[string]string{"draft": card.Draft}, &applied)
+				if applied.Meta.Version != 2 {
+					t.Fatalf("version after Apply = %d", applied.Meta.Version)
+				}
+			} else {
+				reopened.must("apps.discard", map[string]string{"draft": card.Draft}, nil)
+				reopened.must("apps.get", map[string]string{"app": app.ID}, &kept)
+				if kept.Meta.Version != 1 {
+					t.Fatalf("version after Discard = %d", kept.Meta.Version)
+				}
 			}
 			reopened.must("apps.list", struct{}{}, &listed)
 			if len(listed.Builds) != 0 {
-				t.Fatal("the applied card is still pending")
+				t.Fatal("the answered card is still pending")
 			}
+
 		})
 	}
 }
@@ -160,4 +173,37 @@ func serveAppProposalTestModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}}})
+}
+
+func TestMarkedQuestionDoesNotAskToApply(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	app := installAppAssistantCRM(t)
+	record := newAppRecorder()
+	b := newAppBackend(record, refuseAppOpen)
+	t.Cleanup(func() { _ = b.Close() })
+	jobs, err := builder.OpenJobs(builder.Options{
+		Home: root, Store: b.AppDefinitions(),
+		Model:    func() (builder.Completer, error) { return &proposalTestModel{sent: true}, nil },
+		Proposed: b.appAssistantProposed, Changed: b.appBuildChanged,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.builds.jobs = jobs
+	wire := wireOver(t, b)
+	var opened struct{ Draft string }
+	wire.must("apps.change", map[string]string{"app": app.ID, "request": ""}, &opened)
+	wire.must("apps.say", map[string]any{"draft": opened.Draft, "text": "What is this part?",
+		"target": map[string]any{"screen": "deals", "path": []string{"body"}, "node_id": "deals"}}, nil)
+	record.waitFor(t, 5*time.Second, func(name string, payload any) bool {
+		event, ok := payload.(builder.Event)
+		return name == appwire.EventAppsBuild && ok && event.Stage == builder.Ready && event.OK != nil && *event.OK
+	})
+	var state builder.State
+	wire.must("apps.build_state", map[string]string{"draft": opened.Draft}, &state)
+	if state.Proposal != nil || !state.Published {
+		t.Fatalf("a question produced unpublished changes: %+v", state.Proposal)
+	}
+	wire.must("apps.say", map[string]string{"draft": opened.Draft, "text": "Another question"}, nil)
 }

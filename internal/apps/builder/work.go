@@ -408,7 +408,7 @@ func (s *Jobs) finish(j *job, event Event) error {
 		j.PendingProposal = &proposalIntent{ID: finished.Proposal, Target: finished.Target}
 	}
 	var proposed *Proposal
-	if j.PendingProposal != nil && len(j.Queue) == 0 && j.State.State == Ready && j.Working.CheckComplete {
+	if j.PendingProposal != nil && len(j.Queue) == 0 && j.State.State == Ready && j.Working.CheckComplete && len(j.Checkpoints) > 0 {
 		proposed = s.checkedProposal(j, *j.PendingProposal)
 		j.Proposal, j.PendingProposal = proposed, nil
 	}

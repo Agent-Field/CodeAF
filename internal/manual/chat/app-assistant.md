@@ -19,7 +19,8 @@ Ask for the change in your own words. The assistant uses the `propose_change`
 app command to hand just those words to a fresh editing session when it has
 the Propose changes grant. A checked change appears on a **Proposed change**
 card that stays available after restarting. The card previews a change to
-one screen in place. Open **Edit app** to see all affected screens. Choose
+one screen in place. For a larger change, choose **Open in builder** to see
+all affected screens. Choose
 **Apply** to publish a new version or **Discard** to keep the current one.
 
 ## Ask the agent or schedule an app duty

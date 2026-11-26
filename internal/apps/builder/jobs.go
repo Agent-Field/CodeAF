@@ -69,8 +69,8 @@ type Proposal struct {
 }
 
 type proposalIntent struct {
-	ID     string
-	Target *Target
+	ID     string  `json:"id"`
+	Target *Target `json:"target,omitempty"`
 }
 
 // Catalog carries shape and counts only. The model adapter projects the
@@ -672,7 +672,7 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 		return "", store.ErrConflict
 	}
 	wantsProposal := proposal != "" || (j.App != "" && target != nil)
-	if wantsProposal && j.PendingProposal != nil {
+	if wantsProposal && j.PendingProposal != nil && len(j.Queue) != 0 {
 		return "", store.ErrConflict
 	}
 	id, err := cell.NewID(time.Now())
