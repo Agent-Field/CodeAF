@@ -600,3 +600,19 @@ func TestScreenAndRunFileNamesAreIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCheckExplainsARefsDefaultWrittenAsAQueryObject(t *testing.T) {
+	def := load(t, "testdata/crm")
+	const file = "runs/follow-up.yaml"
+	def.Files[file] = []byte(strings.Replace(string(def.Files[file]),
+		`default: "stage:Qualified,Proposal,Negotiation last_touch<-14d"`,
+		`default: {query: {type: deal}}`, 1))
+	report := Validate(def, nil)
+	for _, problem := range report.Problems {
+		if problem.File == file && problem.Path == "/params/deals/default" &&
+			strings.Contains(problem.Message, "query string") {
+			return
+		}
+	}
+	t.Fatalf("Check did not identify the unusable default: %s", report)
+}

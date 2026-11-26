@@ -980,6 +980,18 @@ func (c *checker) checkRun(file string, r Run) {
 	if r.Run != id {
 		c.add(file, "/run", CodeRunIDMismatch, "The run calls itself %q but its file is %s; the file name is the run's id.", r.Run, file)
 	}
+	for _, name := range sortedKeys(r.Params) {
+		param := r.Params[name]
+		if param.Type != "refs" || param.Default == nil {
+			continue
+		}
+		switch param.Default.(type) {
+		case string, []any:
+		default:
+			at := "/params/" + pointerToken.Replace(name) + "/default"
+			c.add(file, at, CodeSchema, "Use a record query string or a list of record IDs as the default for %q.", name)
+		}
+	}
 	if r.Budget != nil && c.app.Budget != nil {
 		if c.app.Budget.PerRun > 0 && r.Budget.PerRun > c.app.Budget.PerRun {
 			c.add(file, "/budget/per_run", CodeRunBudgetOver, "This run may spend $%.2f, more than the app's $%.2f a run.", r.Budget.PerRun, c.app.Budget.PerRun)
