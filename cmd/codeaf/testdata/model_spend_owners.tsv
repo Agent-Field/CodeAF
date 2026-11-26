@@ -1,4 +1,5 @@
 # Exact production caller inventory. Exceptions are audit debt, not proof of missing charges.
+cmd/codeaf/appbuild.go:builderModelClient.CompleteWithMessages:CompleteWithMessages	owner: Scoped app session (ScopedCommandTurn -> Agent turn usage ledger)
 cmd/codeaf/carried.go:wireCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:consolidateFacts:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:digestTerritory:CompleteWithMessages	exception: untraced terminal helpers
@@ -15,6 +16,7 @@ cmd/codeaf/factory_triage.go:factoryTriageCallNoting:CompleteWithMessages	owner:
 cmd/codeaf/image.go:runImage:GenerateImage	exception: untraced image and media transport
 cmd/codeaf/poolrecord.go:poolJudgeAsk:CompleteWithMessages	exception: pool judge
 cmd/codeaf/subharness_env.go:headlessEnv.AI:CompleteWithMessages	exception: untraced execution helpers
+internal/apps/builder/model.go:boundedModel.CompleteWithMessages:CompleteWithMessages	owner: Scoped app session (ScopedCommandTurn -> Agent turn usage ledger)
 internal/apps/runs/agent.go:CompleteAgent:CompleteWithMessages	owner: app run accounting (appRunAgent -> factoryAIAccounting -> session.RecordUsage)
 internal/exec/document.go:Toolbox.parseDocument:ParseDocument	exception: untraced execution helpers
 internal/exec/linear.go:Linear.complete:CompleteWithMessages	exception: untraced execution helpers
