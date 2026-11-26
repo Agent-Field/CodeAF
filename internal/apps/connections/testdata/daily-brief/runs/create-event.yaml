@@ -1,0 +1,15 @@
+run: create-event
+title: Create calendar event
+params:
+  title: {type: text}
+  start: {type: text}
+  end: {type: text}
+steps:
+  - id: create
+    tool: connections.m365.create-event
+    gate: {approval: send}
+    args:
+      set:
+        title: $params.title
+        start: $params.start
+        end: $params.end

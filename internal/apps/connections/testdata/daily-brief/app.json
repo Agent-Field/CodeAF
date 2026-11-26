@@ -1,0 +1,175 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "id": "daily-brief",
+  "name": "Daily brief",
+  "icon": "inbox",
+  "version": 1,
+  "kit": 0,
+  "records": {
+    "message": {
+      "title": "subject",
+      "fields": {
+        "subject": {
+          "type": "text"
+        },
+        "sender": {
+          "type": "email"
+        },
+        "received": {
+          "type": "datetime"
+        },
+        "to": {
+          "type": "text"
+        },
+        "body": {
+          "type": "longtext",
+          "class": "pii"
+        }
+      }
+    },
+    "meeting": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "start": {
+          "type": "datetime"
+        },
+        "end": {
+          "type": "datetime"
+        },
+        "location": {
+          "type": "text"
+        }
+      }
+    },
+    "document": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "modified": {
+          "type": "datetime"
+        },
+        "kind": {
+          "type": "text"
+        },
+        "text": {
+          "type": "longtext",
+          "class": "pii"
+        },
+        "meeting": {
+          "type": "ref",
+          "to": "meeting"
+        }
+      }
+    },
+    "person": {
+      "title": "name",
+      "fields": {
+        "name": {
+          "type": "text"
+        },
+        "email": {
+          "type": "email"
+        },
+        "upn": {
+          "type": "email"
+        },
+        "domain": {
+          "type": "text"
+        }
+      }
+    },
+    "company": {
+      "title": "name",
+      "fields": {
+        "name": {
+          "type": "text"
+        },
+        "domain": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "message": "rw",
+      "meeting": "rw",
+      "document": "r",
+      "person": "r",
+      "company": "r"
+    },
+    "tools": [
+      "connections.m365.create-draft",
+      "connections.m365.create-event",
+      "connections.m365.update-event"
+    ],
+    "connectors": {
+      "microsoft-365": {
+        "can": [
+          "message.received",
+          "event.starts",
+          "transcript.created"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "new-mail",
+      "on": "connector",
+      "connector": "microsoft-365",
+      "event": "message.received",
+      "match": {
+        "connection": "m365",
+        "read": "mail",
+        "query": "CM proof"
+      },
+      "run": "brief"
+    },
+    {
+      "id": "meeting-soon",
+      "on": "connector",
+      "connector": "microsoft-365",
+      "event": "event.starts",
+      "match": {
+        "connection": "m365",
+        "read": "calendar",
+        "minutes": 30
+      },
+      "run": "brief"
+    },
+    {
+      "id": "transcript-ready",
+      "on": "connector",
+      "connector": "microsoft-365",
+      "event": "transcript.created",
+      "match": {
+        "connection": "m365",
+        "read": "transcripts"
+      },
+      "run": "brief"
+    }
+  ],
+  "commands": [
+    {
+      "id": "draft",
+      "label": "Create Outlook draft",
+      "run": "draft"
+    },
+    {
+      "id": "create-event",
+      "label": "Create calendar event",
+      "run": "create-event"
+    },
+    {
+      "id": "update-event",
+      "label": "Update calendar event",
+      "run": "update-event"
+    }
+  ]
+}

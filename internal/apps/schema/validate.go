@@ -24,7 +24,7 @@ const (
 	CodeFieldUnknown      = "field_unknown"       // a title, column, set or sample names a field the type lacks
 	CodeFieldNotEnum      = "field_not_enum"      // a board, meter or Move asks for an enum and gets something else
 	CodeFieldNotAI        = "field_not_ai"        // ai.sort fills a field that is not an AI field
-	CodeDefaultNotValue   = "default_not_value"   // an enum default is not one of its values
+	CodeDefaultNotValue   = "default_not_value"   // a default is not a value the field or parameter accepts
 	CodeCapabilityUnknown = "capability_unknown"  // capabilities name a type the app neither owns nor uses
 	CodeNotAllowed        = "not_allowed"         // something reads or writes beyond the app's capabilities
 	CodeRunUnknown        = "run_unknown"         // a trigger, command or action names a run that has no file
@@ -473,7 +473,9 @@ func (c *checker) checkApp() {
 			c.add(AppFile, at+"/id", CodeDuplicateID, "Two triggers are called %q.", t.ID)
 		}
 		seen[t.ID] = true
-		if a.Kit == 2 {
+		if t.On == "connector" && GraphSourceTrigger(t.Connector, t.Event) {
+			c.checkGraphSourceTrigger(t, at)
+		} else if a.Kit == 2 {
 			c.checkGalleryTrigger(i, at)
 		} else {
 			switch t.On {
@@ -979,6 +981,18 @@ func (c *checker) checkRun(file string, r Run) {
 	id := FileID(file)
 	if r.Run != id {
 		c.add(file, "/run", CodeRunIDMismatch, "The run calls itself %q but its file is %s; the file name is the run's id.", r.Run, file)
+	}
+	for _, name := range sortedKeys(r.Params) {
+		param := r.Params[name]
+		if param.Type != "refs" || param.Default == nil {
+			continue
+		}
+		switch param.Default.(type) {
+		case string, []any:
+		default:
+			at := "/params/" + pointerToken.Replace(name) + "/default"
+			c.add(file, at, CodeDefaultNotValue, "Use a record query string or a list of record IDs as the default for %q.", name)
+		}
 	}
 	if r.Budget != nil && c.app.Budget != nil {
 		if c.app.Budget.PerRun > 0 && r.Budget.PerRun > c.app.Budget.PerRun {

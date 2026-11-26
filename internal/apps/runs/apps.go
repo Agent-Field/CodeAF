@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
-	"gopkg.in/yaml.v3"
 )
 
 type App = schema.App
@@ -159,25 +158,14 @@ func (f Files) agentPrompt(id, fallback string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	model := app.Agent.Model
-	body := strings.ReplaceAll(string(prompt), "\r\n", "\n")
-	if front, ok := strings.CutPrefix(body, "---\n"); ok {
-		metadata, rest, found := strings.Cut(front, "\n---\n")
-		if !found {
-			return "", "", errors.New("agent.md front matter needs a closing delimiter")
-		}
-		var header struct {
-			Model string `yaml:"model"`
-		}
-		if err := yaml.Unmarshal([]byte(metadata), &header); err != nil {
-			return "", "", err
-		}
-		if model == "" {
-			model = header.Model
-		}
-		body = rest
+	body, model, err := schema.AgentInstructions(string(prompt))
+	if err != nil {
+		return "", "", err
 	}
-	if body = strings.TrimSpace(body); body == "" {
+	if app.Agent.Model != "" {
+		model = app.Agent.Model
+	}
+	if body == "" {
 		if fallback == "" {
 			return "", "", errors.New("agent.md needs instructions")
 		}
@@ -217,6 +205,7 @@ func (f Files) Triggers() ([]Trigger, error) {
 			triggers = append(triggers, Trigger{
 				App: app.ID, ID: trigger.ID, On: trigger.On, Run: trigger.Run, Cron: trigger.Cron,
 				Type: trigger.Type, When: trigger.When, Since: since,
+				Connector: trigger.Connector, Event: trigger.Event, Match: trigger.Match,
 			})
 		}
 	}
