@@ -198,20 +198,22 @@ type (
 		Effects []map[string]any `json:"effects,omitempty"`
 	}
 	DataField struct {
-		ID       string   `json:"id"`
-		Name     string   `json:"name"`
-		Type     string   `json:"type"`
-		App      string   `json:"app"`
-		Hidden   bool     `json:"hidden"`
-		Label    string   `json:"label,omitempty"`
-		Required bool     `json:"required,omitempty"`
-		Unique   bool     `json:"unique,omitempty"`
-		Masked   bool     `json:"masked,omitempty"`
-		Values   []string `json:"values,omitempty"`
-		To       string   `json:"to,omitempty"`
-		Currency string   `json:"currency,omitempty"`
-		Computed bool     `json:"computed,omitempty"`
-		AI       bool     `json:"ai,omitempty"`
+		Class      string   `json:"class,omitempty"`
+		Visibility string   `json:"visibility,omitempty"`
+		ID         string   `json:"id"`
+		Name       string   `json:"name"`
+		Type       string   `json:"type"`
+		App        string   `json:"app"`
+		Hidden     bool     `json:"hidden"`
+		Label      string   `json:"label,omitempty"`
+		Required   bool     `json:"required,omitempty"`
+		Unique     bool     `json:"unique,omitempty"`
+		Masked     bool     `json:"masked,omitempty"`
+		Values     []string `json:"values,omitempty"`
+		To         string   `json:"to,omitempty"`
+		Currency   string   `json:"currency,omitempty"`
+		Computed   bool     `json:"computed,omitempty"`
+		AI         bool     `json:"ai,omitempty"`
 		// Sequence numbers new records: prefix then a zero-padded counter.
 		Sequence *DataSequence `json:"sequence,omitempty"`
 	}

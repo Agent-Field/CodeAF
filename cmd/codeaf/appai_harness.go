@@ -12,14 +12,27 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/claudeagent"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func (b *appBackend) appAIHarnesses(files runs.Files) runs.Harnesses {
 	return runs.Harnesses{
 		runs.HarnessCodeaf:     {Check: b.checkCodeafAI, Run: b.appRunAgent(files)},
-		runs.HarnessClaudeCode: {Check: checkClaudeAppAI, Run: runClaudeAppAI},
-		runs.HarnessCodex:      {Check: checkCodexAppAI, Run: runCodexAppAI},
-		runs.HarnessAgentField: {Check: b.checkAgentFieldAppAI, Run: b.runAgentFieldAppAI},
+		runs.HarnessClaudeCode: {Check: checkClaudeAppAI, Run: b.appExternalModelCall(runClaudeAppAI)},
+		runs.HarnessCodex:      {Check: checkCodexAppAI, Run: b.appExternalModelCall(runCodexAppAI)},
+		runs.HarnessAgentField: {Check: b.checkAgentFieldAppAI, Run: b.appExternalModelCall(b.runAgentFieldAppAI)},
+	}
+}
+
+// An external harness does not pin its actual model or completion URL.
+// Because those facts are required for approval, it cannot receive a
+// restricted app request.
+func (b *appBackend) appExternalModelCall(run func(context.Context, runs.AgentCall) (runs.Reply, error)) func(context.Context, runs.AgentCall) (runs.Reply, error) {
+	return func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {
+		if err := b.appModelAuthorizer(call.App, false)(ctx, provider.ModelDestination{}); err != nil {
+			return runs.Reply{}, err
+		}
+		return run(ctx, call)
 	}
 }
 

@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // AppScope supplies the complete tool list for a personal app conversation.
 // Its owners bind app identity and check the live definition at execution.
 type AppScope struct {
-	ID    string
-	Tools []bare.Tool
+	ID             string
+	Tools          []bare.Tool
+	AuthorizeModel func(context.Context, provider.ModelDestination) error
 	// Refresh reads the live app at the start of each turn so a Keep or Revert
 	// cannot leave the old tool list in a conversation already open.
 	Refresh func() (string, *AppScope, error)

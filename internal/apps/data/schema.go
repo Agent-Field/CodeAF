@@ -50,6 +50,9 @@ type Field struct {
 // rules, lifecycle) it has now. Hidden is a type no app declares any more;
 // its records are kept and the Data place still shows them.
 type Type struct {
+	policy       *appschema.RecordPolicy
+	rowRule      *rowPolicy
+	fieldRules   map[string]string
 	Common       CommonTypeKey
 	rules        writeRules
 	ID           string
@@ -102,10 +105,12 @@ type freezeRule struct {
 // builds a new one and the writer swaps it in after the commit, so a reader
 // always sees one whole schema.
 type schema struct {
-	common   map[CommonTypeKey]*Type
-	bindings map[string]map[string]TypeBinding
-	types    map[string]*Type
-	byID     map[string]*Type
+	policyAudit    func(Scope, *Type, string)
+	hasRowPolicies bool
+	common         map[CommonTypeKey]*Type
+	bindings       map[string]map[string]TypeBinding
+	types          map[string]*Type
+	byID           map[string]*Type
 	// typeAliases is every name a type was once known by, to its name now.
 	typeAliases map[string]string
 	// caps is app → type → "r" or "rw", for every registered app.
@@ -166,6 +171,8 @@ func (s *schema) typeNamed(name string) *Type {
 // A Principal supplies the history actor and needs the named Action grant
 // in the app's write transaction.
 type Scope struct {
+	policyLog  map[policyDecision]int
+	Person     PersonPrincipal
 	App        string
 	Actor      string
 	Agent      bool
@@ -176,10 +183,11 @@ type Scope struct {
 	Cause      string
 	CauseChain []string
 
-	intake      *IntakeTrigger
-	sync        bool
-	sourceEvent string
-	sourceKey   ExternalKey
+	intake            *IntakeTrigger
+	policyMaintenance bool
+	sync              bool
+	sourceEvent       string
+	sourceKey         ExternalKey
 }
 
 func (sc Scope) isAgent() bool {
@@ -284,7 +292,7 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 			def.Rules = ruleDeclarations{}
 		}
 		t := &Type{
-			ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
+			policy: def.Policy, ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
 			rules: writeRules{declarations: def.Rules}, Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
@@ -388,13 +396,16 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 			return nil
 		}
 		f := t.Fields[name]
+		var def FieldDef
+		_ = json.Unmarshal([]byte(raw), &def)
 		if f == nil {
-			var def FieldDef
-			_ = json.Unmarshal([]byte(raw), &def)
 			f = &Field{ID: id, Name: name, FieldDef: def, App: app, Hidden: true}
 			t.Fields[name] = f
 			t.byID[id] = f
 			t.Order = append(t.Order, name)
+		}
+		if !hidden && def.Class.Rank() > f.Class.Rank() {
+			f.Class = def.Class
 		}
 		f.Apps = append(f.Apps, app)
 		// A field is hidden only when every app that declared it has
@@ -423,7 +434,9 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 
 	problems := map[string][]error{}
 	for _, name := range sortedKeys(s.types) {
-		p := s.types[name].compile(now, s.person)
+		p := s.types[name].declarePolicy(s.types[name].policy)
+		s.hasRowPolicies = s.hasRowPolicies || s.types[name].HasRowPolicy()
+		p = append(p, s.types[name].compile(now, s.person)...)
 		p = append(p, s.compileRules(s.types[name], now)...)
 		if len(p) > 0 {
 			problems[name] = p
@@ -470,9 +483,9 @@ func (t *Type) compile(now func() time.Time, person string) []error {
 		// the masked value with the mask taken off: "computed": "ssn" would
 		// show, sort and search what the mask hides.
 		leaks := false
-		if !f.Masked {
+		if !f.Masked && t.FieldPolicy(f) == "" {
 			for ref := range identifiers(f.Computed) {
-				if src := t.Fields[ref]; src != nil && src.Masked {
+				if src := t.field(ref); src != nil && (src.Masked || t.FieldPolicy(src) != "") {
 					problems = append(problems, fieldErr(name, "%s.%s reads %s, which is masked; mark %s masked too", t.Name, name, ref, name))
 					leaks = true
 				}
@@ -929,8 +942,9 @@ type TypeInfo struct {
 
 // FieldInfo is one field as the Data place lists it.
 type FieldInfo struct {
-	ID   string
-	Name string
+	Visibility string
+	ID         string
+	Name       string
 	FieldDef
 	App    string
 	Hidden bool

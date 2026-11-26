@@ -363,6 +363,7 @@ func Open(path string, opts Options) (*Store, error) {
 		_ = rdb.Close()
 		return fail(err)
 	}
+	sch.policyAudit = s.AuditRecordPolicy
 	s.schema.Store(sch)
 	s.done.Add(2)
 	go s.writer()
@@ -525,6 +526,7 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 		return err
 	}
 	if w.next != nil {
+		w.next.policyAudit = s.AuditRecordPolicy
 		s.schema.Store(w.next)
 	}
 	if w.afterCommit != nil {
@@ -588,9 +590,23 @@ func (s *Store) HasApp(app string) bool {
 // Types lists every type with its owner, users, fields and live count. An
 // app sees only the types its capabilities name, and no hidden field.
 func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	counts := map[string]int{}
-	rows, err := s.rdb.Query(`SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type_id`)
+	stmt := "SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL"
+	var args []any
+	if sch.hasRowPolicies {
+		var protected []string
+		for _, t := range sch.byID {
+			if t.HasRowPolicy() {
+				protected = append(protected, t.ID)
+			}
+		}
+		stmt += " AND type_id NOT IN (SELECT value FROM json_each(?))"
+		args = append(args, canonicalJSON(protected))
+	}
+	rows, err := s.rdb.Query(stmt+" GROUP BY type_id", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -611,6 +627,16 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 				continue
 			}
 		}
+		if t.HasRowPolicy() {
+			query := compiled{t: t, sch: sch, alias: "r"}
+			query.applyPolicy(sc)
+			where, args := query.filter()
+			var count int
+			if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&count); err != nil {
+				return nil, err
+			}
+			counts[t.ID] = count
+		}
 		info := TypeInfo{
 			ID: t.ID, Name: t.Name, Common: t.Common, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
 			UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.ID], Ledger: t.Ledger,
@@ -624,7 +650,7 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 			if f.Hidden && sc.App != "" {
 				continue
 			}
-			info.Fields = append(info.Fields, FieldInfo{ID: f.ID, Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden})
+			info.Fields = append(info.Fields, FieldInfo{ID: f.ID, Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden, Visibility: t.FieldPolicy(f)})
 		}
 		out = append(out, info)
 	}

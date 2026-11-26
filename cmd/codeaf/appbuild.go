@@ -38,7 +38,7 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 	}
 	pipeline := check.Pipeline{Seed: b.seedBuildSample, DryRun: b.CheckDraftRun, Look: b.checkAppLook}
 	jobs, err := builder.OpenJobs(builder.Options{
-		Home: home.Dir(), Store: b.AppDefinitions(), Model: appBuilderModel,
+		Home: home.Dir(), Store: b.AppDefinitions(), Model: b.appBuilderModel,
 		Check: pipeline.Run, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
 		Proposed: b.appAssistantProposed,
 		Catalog:  b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
@@ -88,7 +88,7 @@ func (door *appBuildState) takeJobs() *builder.Jobs {
 
 // The worker seat and credentials come from the same profile as other
 // headless model calls. An explicit builder model is handy for acceptance.
-func appBuilderModel() (builder.Completer, error) {
+func (b *appBackend) appBuilderModel() (builder.Completer, error) {
 	settings, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -97,7 +97,9 @@ func appBuilderModel() (builder.Completer, error) {
 	if model == "" {
 		model = config.TierModelAt(settings.ProfileDir, config.ModelTierWorker)
 	}
-	client, err := provider.NewClient(settings.ClientConfig(model))
+	clientConfig := settings.ClientConfig(model)
+	clientConfig.AuthorizeDestination = b.appModelAuthorizer("", true)
+	client, err := provider.NewClient(clientConfig)
 	if err != nil {
 		return nil, err
 	}

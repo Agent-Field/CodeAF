@@ -52,6 +52,15 @@ func (f *Field) LiveValue(value any, write bool) (any, error) {
 	if f.Masked && !write && value != nil {
 		return masked, nil
 	}
+	return f.liveValue(value, write)
+}
+
+// LiveReadValue normalizes a source value before the connection evaluates policy.
+func (f *Field) LiveReadValue(value any) (any, error) {
+	return f.liveValue(value, false)
+}
+
+func (f *Field) liveValue(value any, write bool) (any, error) {
 	// Relative dates describe a person's entry, never a value held by a source.
 	if text, ok := value.(string); ok && (f.Type == TypeDate || f.Type == TypeDatetime) {
 		if v := strings.ToLower(strings.TrimSpace(text)); v == "$now" || v == "$today" || v == "today" || v == "now" {
