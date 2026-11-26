@@ -339,6 +339,18 @@ func (s *Store) LookupIdentity(key ExternalKey) (string, bool, error) {
 	return id, id != "", err
 }
 
+// LookupBoundIdentity resolves a source key only for its checked type binding.
+func (s *Store) LookupBoundIdentity(binding TypeBinding, key ExternalKey) (string, bool, error) {
+	if !key.valid() {
+		return "", false, errorf(CodeInvalid, "a complete source key is required")
+	}
+	id, typeID, err := findIdentity(s.rdb, key)
+	if err == nil && id != "" && typeID != binding.TypeID {
+		return "", false, errorf(CodeInvalid, "the source identity belongs to a different type")
+	}
+	return id, id != "", err
+}
+
 // ExternalKeys returns the crosswalk's reverse lookup for trusted source adapters.
 func (s *Store) ExternalKeys(entityID string) ([]ExternalKey, error) {
 	return s.groupExternalKeys(entityID)
