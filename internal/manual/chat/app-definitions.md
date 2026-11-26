@@ -383,3 +383,9 @@ Grouped lists and timelines keep every row and show it under its group.
 If the view has a limit, the display shows up to that many matches. Changing
 the sort picks that many matches in the new order. Clearing your sort restores
 the saved order.
+
+## Reuse a reply in a conversation
+
+An inbox can offer saved replies beside the draft. Pick one to insert it into
+your draft. Edit the words before choosing **Reply**. Picking a saved reply
+keeps the message as a draft.

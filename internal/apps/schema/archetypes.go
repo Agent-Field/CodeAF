@@ -15,6 +15,7 @@ type ScreenSlots struct {
 	Message     string            `json:"message,omitempty"`
 	Reply       string            `json:"reply,omitempty"`
 	ReplyParams map[string]any    `json:"reply_params,omitempty"`
+	Macros      []ReplyMacro      `json:"macros,omitempty"`
 	Actions     []string          `json:"actions,omitempty"`
 	Sort        string            `json:"sort,omitempty"`
 	Filter      []QueryPredicate  `json:"filter,omitempty"`
@@ -22,6 +23,11 @@ type ScreenSlots struct {
 	Visual      *ScreenVisual     `json:"visual,omitempty"`
 	Changed     *ScreenCollection `json:"changed,omitempty"`
 	Related     *ScreenCollection `json:"related,omitempty"`
+}
+
+type ReplyMacro struct {
+	Label string `json:"label"`
+	Text  string `json:"text"`
 }
 
 type ScreenCollection struct {
@@ -194,6 +200,12 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			}
 			thread := node("thread", "Thread", "Conversation", map[string]any{"messages": field, "compose": slots.Reply != ""})
 			thread.Bind = &Bind{Record: selection, Type: r.Record}
+			if len(slots.Macros) > 0 {
+				if slots.Reply == "" {
+					return nil, fmt.Errorf("choose a reply action to use reply macros")
+				}
+				thread.Props["macros"] = slots.Macros
+			}
 			if slots.Reply != "" {
 				thread.On = map[string][]Action{"reply": {{"runs.start": slots.Reply, "params": slots.ReplyParams}}}
 			}

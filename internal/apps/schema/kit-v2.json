@@ -1974,6 +1974,18 @@
           "messages": {
             "type": "string"
           },
+          "macros": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "text"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1 },
+                "text": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
           "compose": {
             "type": "boolean"
           }
