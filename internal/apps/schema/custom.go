@@ -32,7 +32,7 @@ func PartDigest(manifest, source []byte) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(append(canonical, source...))), nil
 }
 
-// PartElement is the compiled form of an app-authored JSX leaf. The desk
+// PartElement is the compiled form of an app-authored presentation leaf. The desk
 // receives data-only instructions and owns every element and event handler.
 type PartElement struct {
 	Kind  string `json:"kind"`
@@ -163,7 +163,7 @@ func (c *checker) checkCustomPart(ctx actionCtx, n *Node, program PartProgram, a
 				c.add(ctx.file, at+"/bind/view", CodeBindNotAccepted, "The custom part's query must select %q.", name)
 			}
 		}
-		if len(query.Group) != 0 || len(query.Aggregate) != 0 {
+		if len(query.Group) != 0 || len(query.Aggregate) != 0 || query.Relate != nil || query.Window != nil && len(query.Window.OrderBy) > 1 {
 			c.add(ctx.file, at+"/bind/view", CodeBindNotAccepted, "A custom part needs a query that returns individual records.")
 		}
 	}

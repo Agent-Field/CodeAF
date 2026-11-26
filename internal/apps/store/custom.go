@@ -197,7 +197,7 @@ func (s *Store) PromoteStep(app, id string) (KitStep, error) {
 		return KitStep{}, err
 	}
 	if step.Origin == nil {
-		step.Origin = &extensions.Origin{App: app, Version: d.Meta.Version, Digest: step.Digest()}
+		step.Origin = &extensions.Origin{App: d.Meta.ID, Version: d.Meta.Version, Digest: step.Digest()}
 	}
 	dir := filepath.Join(s.root, "_extension_kit")
 	unlock, err := s.lock(true, true)

@@ -192,19 +192,17 @@ var appMethods = map[string]method{
 			return nil, Errorf(CodeBadParams, "unknown app kit version %d", version)
 		}
 		if version == 2 {
-			parts, err := defs.AppDefinitions().KitParts()
-			if err != nil {
-				return nil, appDefinitionError(err)
-			}
-			steps, err := defs.AppDefinitions().KitSteps()
-			if err != nil {
-				return nil, appDefinitionError(err)
-			}
+			// The base catalog stays available even if a local Kit receipt
+			// is damaged. The explicit listing returns that receipt error.
+			store := defs.AppDefinitions()
+			parts, _ := store.KitParts()
+			steps, _ := store.KitSteps()
 			if len(parts) != 0 || len(steps) != 0 {
 				var catalog map[string]json.RawMessage
 				if err := json.Unmarshal(raw, &catalog); err != nil {
 					return nil, err
 				}
+				var err error
 				if len(parts) > 0 {
 					catalog["custom_parts"], err = json.Marshal(parts)
 					if err != nil {

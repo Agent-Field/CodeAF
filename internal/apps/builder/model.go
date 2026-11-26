@@ -49,7 +49,7 @@ configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 A new record should be creatable with its title and the essential input
-the person supplied. Use the corresponding field as the record title. Give a required status
+the person supplied. Keep user field IDs and choose the matching title field. Give a required status
 an initial value, for example
 {"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
 Other fields are optional unless required at creation.

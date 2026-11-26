@@ -107,13 +107,19 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 		return report
 	}
 	for _, file := range def.ScreenFiles() {
-		themes := []string{"dark", "light"}
-		parts, _ := schema.ScreenParts(def, def.Files[file])
-		if len(parts) != 0 {
-			themes = []string{"dark", "black", "light"}
+		themes, widths := []string{"dark", "light"}, []int{800, 1120}
+		parts, err := schema.ScreenParts(def, def.Files[file])
+		if err != nil {
+			report.Problems = append(report.Problems, problem(file, "screen_layout", "The screen's custom parts could not be opened."))
+			continue
+		}
+		// Validated custom manifests agree on the supported combinations.
+		for _, part := range parts {
+			themes, widths = part.Manifest.Themes, part.Manifest.Sizes
+			break
 		}
 		for _, theme := range themes {
-			for _, width := range []int{800, 1120} {
+			for _, width := range widths {
 				problems, err := p.Look(ctx, draft, schema.FileID(file), LookViewport{theme, width})
 				if errors.Is(err, ErrDeskUnavailable) {
 					report.Look = skippedLook
