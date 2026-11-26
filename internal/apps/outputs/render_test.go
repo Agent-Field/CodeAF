@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
 )
 
 func TestOutputGolden(t *testing.T) {
@@ -33,5 +35,24 @@ func TestOutputGolden(t *testing.T) {
 				t.Fatalf("rendered %s differs from the golden file", format)
 			}
 		})
+	}
+}
+
+func TestPDFTextAndPagination(t *testing.T) {
+	rows := make([]map[string]any, 48)
+	for i := range rows {
+		rows[i] = map[string]any{"number": i + 1}
+	}
+	result, err := Render(schema.OutputTemplate{Label: "Café & Co.", Format: "pdf", Body: "Invoice — {{number}}"}, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "invoices.pdf")
+	if err := os.WriteFile(path, result, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, pages, err := pdfx.ExtractCounted(path)
+	if err != nil || pages != 2 || !strings.Contains(text, "Café & Co.") || !strings.Contains(text, "Invoice — 48") {
+		t.Fatalf("PDF text layer on %d pages: %q, %v", pages, text, err)
 	}
 }
