@@ -75,12 +75,13 @@
   record:
     type: release
     unique_by: version
-    value: {version: "1.2.3", status: Planned, date: "2026-01-01"}
+    value: {version: "1.2.3", date: "2026-01-01"}
     edit: {version: "1.2.4"}
   looks: [{screen: releases, recipe: add-view/board}]
   steps:
     - method: data.create
-      params: {app: $app, type: release, set: {version: "3.1.0", status: Planned, date: "2026-01-02"}}
+      params: {app: $app, type: release, set: {version: "3.1.0", date: "2026-01-02"}}
+      expect: [{path: /rows/0/status, equals: Planned}]
       capture: {release: /rows/0/id, rev: /rows/0/_rev}
     - method: data.transition
       params: {app: $app, type: release, id: $release, expected_rev: $rev, transition: ship}
