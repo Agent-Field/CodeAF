@@ -13,6 +13,22 @@ The assistant's writes carry AI provenance, and a value you set or clear
 takes precedence.
 An outgoing action waits for you to review and approve its exact payload.
 
+## Find and grant a write action such as Mark Won
+
+Record-changing runs appear in the action list by run ID, or by command ID
+when a command launches the run. App agent settings lists the same grant
+choices. In the CLI, use `codeaf app show '{"app":"APP_ID"}'` to find each
+Action ID and its typed arguments. List grants with `codeaf app agent_query
+'{"app":"APP_ID","kind":"grants"}'`. To grant Mark Won, use `codeaf app
+agent_grant '{"app":"APP_ID","agent":"APP_ID","group":"actions","id":"mark-won","allowed":true}'`.
+When using another agent, put its principal ID in `agent`. Its grants are
+separate. Grant the assistant a Deals view as well so it can find a deal by
+name. Check reports any Action ID promised in `plan.agent.actions` that
+the app does not declare. A run that uses an unavailable model or harness
+is omitted from the live Action and grant lists until it can run. If Check
+asks you to make a record command grantable, put its multiple effects into
+one run with typed parameters and bind the command to that run.
+
 ## Add a field, column, screen or automation from the app assistant
 
 Ask for the change in your own words. The assistant uses the `propose_change`

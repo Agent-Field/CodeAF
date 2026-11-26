@@ -359,7 +359,8 @@ type PlanLine struct {
 
 // PlanAgent is the plan card's agent line.
 type PlanAgent struct {
-	Line string `json:"line"`
+	Line    string   `json:"line"`
+	Actions []string `json:"actions,omitempty"`
 }
 
 // Screen is one screens/<id>.json.
@@ -438,6 +439,7 @@ type Step struct {
 	AI            *AIStep        `json:"ai,omitempty"`
 	Agent         string         `json:"agent,omitempty"`
 	Prompt        string         `json:"prompt,omitempty"`
+	AgentTools    []string       `json:"tools,omitempty"`
 	Tool          string         `json:"tool,omitempty"`
 	As            string         `json:"as,omitempty"`
 	Args          map[string]any `json:"args,omitempty"`

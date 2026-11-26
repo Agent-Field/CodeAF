@@ -45,3 +45,17 @@ Use the actual field names in the app. `{{owner.name}}` uses the local
 account's display name when available. Check flags markers such as
 `[Name]` left in run templates or example replies. Bind the missing value
 or remove the placeholder before applying the app.
+
+## Draft a follow-up message or another text artifact in a run
+
+A run's `agent` step receives its declared inputs, including the selected
+record and readable relationships. Write a step prompt for the artifact you
+want. A step with its own prompt uses that instruction. A step without one
+uses the app agent's default instructions. The text alone is available at
+`$steps.<id>.output`. The engine checks the response and asks once more if
+it receives tool-call syntax or narration.
+If the second response still fails the contract, the run follows its error
+handling without saving that response. Tools require a declaration on the
+step. An `ai` step uses its declared JSON output schema and also gets one
+repair attempt. Keep the approval on the save step to see the exact note
+before it is written.

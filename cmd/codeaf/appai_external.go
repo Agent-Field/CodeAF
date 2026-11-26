@@ -54,7 +54,7 @@ func runCodexAppAI(ctx context.Context, call runs.AgentCall) (runs.Reply, error)
 		"-c", "web_search=disabled", "-c", "mcp_servers={}",
 		"--output-last-message", output, "-")
 	cmd.Dir, cmd.Env = dir, codexAppEnv()
-	cmd.Stdin = strings.NewReader(appAISystem(call.AI) + "\n\nApp request and record data:\n" + call.Prompt)
+	cmd.Stdin = strings.NewReader(appAISystem(call.AI) + "\n\nApp request and record data:\n" + call.ModelPrompt())
 	if err := cmd.Run(); err != nil {
 		return runs.Reply{}, errors.Join(runs.ErrOutcomeUnknown, errors.New("Codex did not complete the app request"))
 	}
@@ -115,7 +115,7 @@ func (b *appBackend) runAgentFieldAppAI(ctx context.Context, call runs.AgentCall
 		return runs.Reply{}, err
 	}
 	started, err := client.Dispatch(ctx, target, map[string]any{
-		"request_id": call.Key, "prompt": call.Prompt, "instructions": appAISystem(call.AI),
+		"request_id": call.Key, "prompt": call.ModelPrompt(), "instructions": appAISystem(call.AI),
 		"output_schema": call.AI.Output, "remaining_usd": call.Remaining,
 	}, owner)
 	if err != nil || started.ExecutionID == "" || started.RunID == "" {
