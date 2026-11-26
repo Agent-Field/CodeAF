@@ -6,13 +6,14 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // ScopedCommandTurn runs the ordinary turn loop with a command executor
 // in place of the process executor. A scoped turn has no ambient tools,
 // filesystem, credentials or network. The caller binds scope to execute.
-func ScopedCommandTurn(ctx context.Context, workspace, model, system, request string, client Completer, execute func(context.Context, string) (string, error)) (string, error) {
+func ScopedCommandTurn(ctx context.Context, workspace, model, system, request string, client Completer, execute func(context.Context, string) (string, error), attachments ...ai.ContentPart) (string, error) {
 	if strings.TrimSpace(system) == "" || execute == nil {
 		return "", errors.New("a scoped turn needs a prompt and a command executor")
 	}
@@ -25,7 +26,22 @@ func ScopedCommandTurn(ctx context.Context, workspace, model, system, request st
 		return "", err
 	}
 	defer a.Close()
-	events, err := a.Submit(ctx, request)
+	var events <-chan Event
+	if len(attachments) == 0 {
+		events, err = a.Submit(ctx, request)
+	} else {
+		request = strings.TrimSpace(request)
+		if request == "" {
+			return "", errors.New("a scoped turn needs a request for its attachments")
+		}
+		// The run owns the attachment bytes. Keep only its words in the local
+		// transcript record while giving the model the original parts.
+		user := userText(request)
+		user.said = request
+		user.fromPerson = true
+		user.message.Content = append(user.message.Content, attachments...)
+		events, err = a.submitUser(ctx, user)
+	}
 	if err != nil {
 		return "", err
 	}

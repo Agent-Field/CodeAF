@@ -71,7 +71,14 @@ func (c *checker) checkGalleryRun(file, recordType string) {
 		}
 	}
 	steps, _ := run["steps"].([]any)
-	walk(steps, "/steps", nil, false)
+	bindings := make(map[string]string, len(params))
+	for name, value := range params {
+		param, _ := value.(map[string]any)
+		if typ := asString(param["to"]); typ != "" {
+			bindings["params."+name] = typ
+		}
+	}
+	walk(steps, "/steps", bindings, false)
 }
 
 func (c *checker) checkGalleryAI(file string, run Run, steps []Step, at string) {
@@ -146,6 +153,8 @@ func (c *checker) checkRules(ctx actionCtx, at string, rules []ManifestRule, val
 				if !inRepo {
 					c.add(ctx.file, where, CodeShellRefused, "This step needs a repository workspace.")
 				}
+			case "output-ref":
+				c.checkRender(ctx, where, body)
 			case "record-write":
 				c.checkRecordWrite(ctx, where, body)
 			case "tool-call":

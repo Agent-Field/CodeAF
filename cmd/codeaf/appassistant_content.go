@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -17,7 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope, command appwire.AppContentCommand) (json.RawMessage, error) {
+func (b *appBackend) RunAppContent(ctx context.Context, p appwire.AppContentScope, command appwire.AppContentCommand) (json.RawMessage, error) {
 	app, def, err := b.appContentDefinition(p.App)
 	if err != nil {
 		return nil, err
@@ -69,7 +70,7 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 		}
 		return b.queryAppAssistant(sc, declared, command.Query)
 	case appwire.AppContentInvoke:
-		return b.invokeAppAssistant(sc, app, def, command.Action)
+		return b.invokeAppAssistant(ctx, sc, app, def, command.Action)
 	case appwire.AppContentPropose:
 		if !b.appAgentAllowed(p.App, p.Principal, "actions", "propose_change") {
 			return nil, appwire.Errorf(appwire.CodeForbidden, "This agent cannot propose changes.")
@@ -116,6 +117,14 @@ func appAssistantActions(app schema.App, def store.Definition) ([]appAssistantAc
 		} else if _, ok := appAssistantRecordUpdate(cmd); ok {
 			actions = append(actions, recordAction(cmd.ID, cmd.Label, cmd.For))
 		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(app.Outputs)) {
+		t := app.Outputs[id]
+		args := map[string]schema.RunParam{}
+		if t.Record != "" {
+			args["record"] = schema.RunParam{Type: "ref", To: t.Record}
+		}
+		actions = append(actions, appAssistantAction{ID: "render/" + id, Label: t.Label, Record: t.Record, Args: args})
 	}
 	for _, typ := range slices.Sorted(maps.Keys(app.Records)) {
 		if record := app.Records[typ]; record.Lifecycle != nil {
@@ -230,9 +239,25 @@ func appViewArgument(kind string, value any) bool {
 	return value != nil && reflect.TypeOf(value) == appViewArgumentType(kind)
 }
 
-func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store.Definition, intent appwire.AppActionIntent) (json.RawMessage, error) {
+func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app schema.App, def store.Definition, intent appwire.AppActionIntent) (json.RawMessage, error) {
 	if !b.appAgentAllowed(sc.App, sc.Principal, "actions", intent.Action) {
 		return nil, appwire.Errorf(appwire.CodeForbidden, "The app agent needs an action grant for %q.", intent.Action)
+	}
+	if id, isOutput := strings.CutPrefix(intent.Action, "render/"); isOutput {
+		template, ok := app.Outputs[id]
+		if !ok {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "That output is not declared in this app.")
+		}
+		action := schema.RenderAction{Output: id}
+		if template.Record != "" {
+			if len(intent.Args) != 1 || json.Unmarshal(intent.Args["record"], &action.Record) != nil || action.Record == "" {
+				return nil, appwire.Errorf(appwire.CodeBadParams, "Choose one record ID for the output.")
+			}
+		} else if len(intent.Args) != 0 {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "A query output takes its input from its declaration.")
+		}
+		file, err := b.invokeKeptOutput(ctx, app, outputs.Invocation{Scope: sc, Render: action})
+		return marshalAppContent(file, appDataError(err))
 	}
 	if name, isTransition := strings.CutPrefix(intent.Action, "transition/"); isTransition {
 		typ, transition, ok := strings.Cut(name, "/")

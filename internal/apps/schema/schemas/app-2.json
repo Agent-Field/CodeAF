@@ -397,6 +397,13 @@
       "additionalProperties": {
         "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/resource"
       }
+    },
+    "outputs": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": { "$ref": "https://codeaf.dev/schema/output-template-2.json" }
     }
   },
   "$defs": {

@@ -114,7 +114,7 @@ func (l Ledger) MarshalJSON() ([]byte, error) {
 func (c *checker) checkEnterprise() {
 	app := object(c.def.Files[AppFile])
 	for _, group := range []struct{ name, entry string }{
-		{"roles", "role"}, {"audiences", "audience"}, {"resources", "resource"},
+		{"outputs", "output-template"}, {"roles", "role"}, {"audiences", "audience"}, {"resources", "resource"},
 		{"channels", ""}, {"rules", ""},
 	} {
 		entries, _ := app[group.name].(map[string]any)
@@ -137,6 +137,8 @@ func (c *checker) checkEnterprise() {
 			}
 			for _, rule := range manifest.Rules {
 				switch rule.Check {
+				case "output-template":
+					c.checkOutput(at, c.app.Outputs[id])
 				case "role":
 					role := c.app.Roles[id]
 					c.checkAudienceGrants(at, role.Screens, role.Transitions)
