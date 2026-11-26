@@ -135,6 +135,9 @@ func runApp(args []string) error {
 			return err
 		}
 	}
+	if flags.Arg(0) == "residency" {
+		return appResidencyCommand(nil, flags.Args()[1:], os.Stdout)
+	}
 	if flags.Arg(0) == "model-policy" {
 		return appModelPolicyCommand(factoryProfile(config.ProfileDir()), flags.Args()[1:])
 	}
@@ -271,6 +274,7 @@ func runApp(args []string) error {
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	backend.stopAppRuns = backend.openAppRuns(ctx)
 	backend.openAppIntake(ctx)
+	guard.Go("app/residency", func() { backend.appConnections().WatchResidency(ctx) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()

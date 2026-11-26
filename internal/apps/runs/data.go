@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
 // Data connects a run to either the person's store or a draft sample store.
 // Both go through the same app capability, mask and record-rule checks.
 type Data struct {
-	Store func() (*data.Store, error)
+	Store   func() (*data.Store, error)
+	Sources *connections.Service
 }
 
 func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
@@ -66,7 +68,7 @@ func (d Data) ResolveParams(app string, declared map[string]Parameter, provided 
 		if err != nil {
 			return nil, err
 		}
-		reader := refReader{store: store, scope: scope, remaining: maxReferenceReads}
+		reader := refReader{store: store, sources: d.Sources, scope: scope, remaining: maxReferenceReads}
 		switch parameter.Type {
 		case data.TypeRef:
 			out[name], err = reader.get(parameter.To, value, refDepth)
@@ -86,7 +88,7 @@ func (d Data) ReadRecords(app string, recordType string) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	reader := refReader{store: store, scope: data.Scope{App: app, Agent: true}, remaining: maxReferenceReads}
+	reader := refReader{store: store, sources: d.Sources, scope: data.Scope{App: app, Agent: true}, remaining: maxReferenceReads}
 	return reader.many(recordType, "")
 }
 
@@ -122,7 +124,7 @@ func (d Data) RecordInput(app string, change Change) (Change, error) {
 		if row == nil {
 			return nil, nil
 		}
-		reader := refReader{store: store, scope: scope, remaining: maxReferenceReads}
+		reader := refReader{store: store, sources: d.Sources, scope: scope, remaining: maxReferenceReads}
 		return reader.project(typ, row, refDepth)
 	}
 	change.Before, err = filter(change.Before)
@@ -139,6 +141,7 @@ const (
 
 type refReader struct {
 	store     *data.Store
+	sources   *connections.Service
 	scope     data.Scope
 	remaining int
 }
@@ -147,12 +150,40 @@ func (r *refReader) many(typ string, v any) ([]any, error) {
 	rows := []any{}
 	switch value := v.(type) {
 	case string:
-		cursor := ""
-		for {
-			page, err := r.store.Query(r.scope, typ, value, cursor, 100)
+		ir, err := data.ParseQuery(value)
+		if err != nil {
+			return nil, err
+		}
+		ir.Type = typ
+		var source connections.Source
+		var versions map[string]string
+		if r.sources != nil {
+			planned, observed, revisions, err := r.sources.PlanQuery(context.Background(), r.scope.App, *ir)
 			if err != nil {
 				return nil, err
 			}
+			ir, source, versions = &planned, observed, revisions
+		}
+		cursor := ""
+		for {
+			page, err := r.store.QueryRows(r.scope, ir, cursor, 100)
+			if err != nil {
+				return nil, err
+			}
+			if r.sources != nil {
+				if err := r.sources.AttachVersions(r.scope.App, typ, source, page.Rows); err != nil {
+					return nil, err
+				}
+			}
+			for _, row := range page.Rows {
+				if version := versions[row.ID()]; version != "" {
+					row["_source_version"] = version
+				}
+				if source.Connection != "" {
+					row["_source"] = source
+				}
+			}
+
 			meta, err := r.store.Type(r.scope, typ)
 			if err != nil {
 				return nil, err
@@ -202,7 +233,16 @@ func (r *refReader) get(typ string, value any, depth int) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	row, err := r.store.Get(r.scope, typ, id, false)
+	var row data.Row
+	if r.sources != nil {
+		var source connections.Source
+		row, source, err = r.sources.GetRecord(context.Background(), r.scope.App, typ, id, false)
+		if err == nil && source.Connection != "" {
+			row["_source"] = source
+		}
+	} else {
+		row, err = r.store.Get(r.scope, typ, id, false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +251,7 @@ func (r *refReader) get(typ string, value any, depth int) (map[string]any, error
 
 func (r *refReader) project(typ *data.Type, row map[string]any, depth int) (map[string]any, error) {
 	fields := map[string]any{"id": row["id"], "type": typ.Name}
-	for _, name := range []string{"created_at", "updated_at", "_rev"} {
+	for _, name := range []string{"created_at", "updated_at", "_rev", "_source_version", "_source"} {
 		if value, ok := row[name]; ok {
 			fields[name] = value
 		}

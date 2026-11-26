@@ -638,6 +638,9 @@ func changedFields(before, after *record) []string {
 // save enforces rules shared by all record changes before it writes the row.
 // The rule outcomes commit in the same transaction as the record.
 func (w *writeTx) save(t *Type, r *record, insert bool, sc Scope) error {
+	if err := w.guardResidencyWrite(t, r, insert, sc); err != nil {
+		return err
+	}
 	if t.rules.invalid != nil {
 		return t.rules.invalid
 	}

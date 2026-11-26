@@ -115,6 +115,19 @@ func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
 	return ask, err
 }
 
+// SourceFence binds the run's durable approval to the authority it prepared.
+func (c ConnectedTools) SourceFence(call Call) (string, error) {
+	id, write, ok := schema.ParseSourceTool(call.Name)
+	if !ok {
+		return "", nil
+	}
+	effect, err := c.sourceEffect(call, id, write)
+	if err != nil {
+		return "", err
+	}
+	return effect.Fence(), nil
+}
+
 func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 	if id, write, ok := schema.ParseSourceTool(call.Name); ok {
 		if !call.approved || call.Key == "" {
@@ -123,6 +136,9 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 		effect, err := c.sourceEffect(call, id, write)
 		if err != nil {
 			return Reply{}, err
+		}
+		if call.SourceFence == "" || effect.Fence() != call.SourceFence {
+			return Reply{}, errors.New("the source authority changed after approval")
 		}
 		result, err := effect.Apply(ctx, call.Key)
 		receipt := &EffectReceipt{Step: call.Step, Tool: call.Name, Key: call.Key, Connection: result.Connection, Version: result.Version}

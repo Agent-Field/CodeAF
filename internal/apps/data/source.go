@@ -29,6 +29,7 @@ type SourceObservation struct {
 	ACLRef           string
 	ACLEpoch         int64
 	CauseChain       []string
+	restore          bool
 	Claims           map[string]SourceFieldClaim
 
 	// NativeValues explicitly copies values with native visibility. Sources
@@ -162,7 +163,7 @@ func (w *writeTx) observeSource(o SourceObservation) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	sc := Scope{Actor: "engine", sync: true, CauseChain: o.CauseChain, sourceEvent: o.Event, sourceKey: o.Key}
+	sc := Scope{Actor: "engine", sync: true, CauseChain: o.CauseChain, sourceEvent: o.Event, sourceKey: o.Key, restoreSource: o.restore}
 	if o.NativeValues && len(values) > 0 {
 		if origin != id {
 			if err := w.refreshIdentityAlias(t, sc, origin, values); err != nil {
@@ -253,17 +254,18 @@ func (w *writeTx) projectSource(t *Type, sc Scope, id string, values map[string]
 		_, err := w.createOneAs(t, sc, set, OpSync, id)
 		return err
 	}
-	if before.DeletedAt != "" || before.Type != t.Name {
+	if before.Type != t.Name || before.DeletedAt != "" && !sc.restoreSource {
 		return errorf(CodeNotFound, "the canonical record is unavailable")
 	}
 	if t.Ledger {
 		return errorf(CodeLedger, "a source observation cannot change a ledger entry")
 	}
 	after := before.clone()
+	after.DeletedAt = ""
 	applySet(after, set, sc, OpSync)
 	changed := changedFields(before, after)
 	compute(t, after, changed, w.schema.person)
-	if after.key(t) == before.key(t) {
+	if before.DeletedAt == "" && after.key(t) == before.key(t) {
 		return nil
 	}
 	if err := w.s.checkFrozen(t, before, changed, sc, ""); err != nil {
