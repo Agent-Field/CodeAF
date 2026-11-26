@@ -37,51 +37,56 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 		if entity.Common != "" {
 			records[alias]["common"], _ = json.Marshal(entity.Common)
 		}
-		if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); entity.Common != "" && ok && offer.Existing != "" {
-			targets[alias] = existing[offer.Existing]
-			if appID == "" || targets[alias].Owner != appID || entity.Uses {
-				bindings[alias] = Binding{Common: offer.Key, Type: offer.Existing}
+		var name string
+		if entity.Common != "" {
+			if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); ok {
+				name = offer.Existing
 			}
-		} else if entity.Common == "" && (entity.Uses || fork) {
-			if target, ok := existing[alias]; ok {
-				targets[alias] = target
-				bindings[alias] = Binding{Type: alias}
-			}
+		} else if _, ok := existing[alias]; ok && (entity.Uses || fork) {
+			name = alias
 		}
-		if entity.Uses && bindings[alias].Type == "" {
-			report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias,
-				Code: "package_type_unmapped", Message: fmt.Sprintf("Map the package's %s records to an existing type (%s).", alias, entity.Common)})
+		if name != "" {
+			targets[alias] = existing[name]
+			if appID == "" || targets[alias].Owner != appID {
+				bindings[alias] = Binding{Common: entity.Common, Type: name}
+			}
 		}
 	}
-	for _, alias := range slices.Sorted(maps.Keys(bindings)) {
+	for _, alias := range slices.Sorted(maps.Keys(a.Manifest.Entities)) {
 		entity := a.Manifest.Entities[alias]
-		target := targets[alias]
 		record := records[alias]
-		record["uses"] = json.RawMessage("true")
-		var fields map[string]json.RawMessage
+		binding, reuse := bindings[alias]
+		if !reuse && !entity.Uses {
+			continue
+		}
+		if reuse {
+			record["uses"] = json.RawMessage("true")
+		} else {
+			delete(record, "uses")
+			// A fallback is owned in this profile, but it remains a
+			// shared dependency if the person exports this app again.
+			record["portable_reuse"] = json.RawMessage("true")
+		}
+		fields := map[string]json.RawMessage{}
 		if err := json.Unmarshal(record["fields"], &fields); err != nil {
 			return nil, nil, err
 		}
-		for _, name := range slices.Sorted(maps.Keys(entity.Fields)) {
-			field := entity.Fields[name]
-			have, found := target.Fields[name]
-			var message string
-			switch {
-			case !found && field.Required:
-				message = fmt.Sprintf("%s records need a %s field named %s to use the package's %s.%s.", bindings[alias].Type, field.Type, name, alias, name)
-			case found && !compatible(field, have, targets, existing):
-				message = fmt.Sprintf("%s.%s does not match the package's %s field %s.%s.", bindings[alias].Type, name, field.Type, alias, name)
-			}
-			if message != "" {
-				report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias + "/fields/" + name,
-					Code: "package_field_unmapped", Message: message})
-			}
-			if found {
-				delete(fields, name)
-			}
-		}
 		if fields == nil {
 			fields = map[string]json.RawMessage{}
+		}
+		for _, name := range slices.Sorted(maps.Keys(entity.Fields)) {
+			field := entity.Fields[name]
+			have, found := targets[alias].Fields[name]
+			if reuse && found {
+				if !compatible(field, have, targets, existing) {
+					report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias + "/fields/" + name,
+						Code: "package_field_unmapped", Message: fmt.Sprintf("%s.%s does not match the package's %s field %s.%s.", binding.Type, name, field.Type, alias, name)})
+				}
+				delete(fields, name)
+			} else if _, declared := fields[name]; !declared {
+				// Older archives carry reused fields only in the manifest.
+				fields[name], _ = json.Marshal(schema.Field{Type: field.Type, Required: field.Required, To: field.To, Currency: field.Currency, Values: field.Values})
+			}
 		}
 		record["fields"], _ = json.Marshal(fields)
 	}

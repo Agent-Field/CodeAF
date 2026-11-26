@@ -3,11 +3,14 @@ package apppackage_test
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
@@ -99,5 +102,76 @@ func TestPackageUpdatesFollowSemVerPrecedence(t *testing.T) {
 		if got := apppackage.Newer(source(tc.update), source(tc.previous)); got != tc.newer {
 			t.Errorf("Newer(%q, %q) = %v, want %v", tc.update, tc.previous, got, tc.newer)
 		}
+	}
+}
+
+func TestPackMakesReusedTypesInstallableInEitherOrder(t *testing.T) {
+	types := schema.TypeSet{
+		"people":    {ID: "1", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text", Required: true}}},
+		"companies": {ID: "2", Common: "organization", Fields: map[string]schema.Field{"name": {Type: "text", Required: true}}},
+		"contact":   {ID: "3", Fields: map[string]schema.Field{"name": {Type: "text"}, "phone": {Type: "phone"}}},
+	}
+	archives := map[string]apppackage.Archive{}
+	for _, app := range []string{"queue", "roadmap"} {
+		raw, err := apppackage.Pack(map[string]string{schema.AppFile: fmt.Sprintf(`{
+			"id":%q,"name":"Work","version":1,"kit":2,"records":{
+				"person":{"common":"person","uses":true,"fields":{"company":{"type":"ref","to":"company"}}},
+				"company":{"common":"organization","uses":true,"fields":{"website":{"type":"url"}}},
+				"contact":{"uses":true,"fields":{}}
+			},"capabilities":{"records":{"person":"rw","company":"rw","contact":"r"}}
+		}`, app)}, types, apppackage.PackOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		archives[app], err = apppackage.Read(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, first := range []string{"queue", "roadmap"} {
+		t.Run(first, func(t *testing.T) {
+			store, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			second := "queue"
+			if first == second {
+				second = "roadmap"
+			}
+			for _, app := range []string{first, second} {
+				// An installed app can be exported again, including when
+				// its original pack created the dependency locally.
+				local, _, err := archives[app].Bind(nil, app, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				packed, err := apppackage.Pack(local, nil, apppackage.PackOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				repacked, err := apppackage.Read(bytes.NewReader(packed))
+				if err != nil {
+					t.Fatal(err)
+				}
+				files, _, err := repacked.Bind(store.TypeSet(), app, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := store.RegisterApp([]byte(files[schema.AppFile])); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, alias := range []string{"person", "company", "contact"} {
+				left, err := store.Type(data.Scope{App: first}, alias)
+				if err != nil {
+					t.Fatal(err)
+				}
+				right, err := store.Type(data.Scope{App: second}, alias)
+				if err != nil || left.ID != right.ID {
+					t.Fatalf("separate %s types: %+v, %+v (%v)", alias, left, right, err)
+				}
+			}
+		})
 	}
 }

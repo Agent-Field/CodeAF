@@ -232,17 +232,20 @@ type AgentRef struct {
 // RecordType is one record type the app owns, or, with Uses set, a type another app
 // owns that this app uses and adds its own fields to.
 type RecordType struct {
-	Policy    *RecordPolicy    `json:"policy,omitempty"`
-	Common    string           `json:"common,omitempty"`
-	Lifecycle *RecordLifecycle `json:"lifecycle,omitempty"`
-	ID        string           `json:"id,omitempty"`
-	Ledger    *Ledger          `json:"ledger,omitempty"`
-	Title     string           `json:"title,omitempty"`
-	Label     string           `json:"label,omitempty"`
-	Uses      bool             `json:"uses,omitempty"`
-	Fields    map[string]Field `json:"fields"`
-	Constants map[string]any   `json:"constants,omitempty"`
-	Freeze    []Freeze         `json:"freeze,omitempty"`
+	// PortableReuse remembers a package dependency created in this profile.
+	// It lets a later export still offer the same type as a shared binding.
+	PortableReuse bool             `json:"portable_reuse,omitempty"`
+	Policy        *RecordPolicy    `json:"policy,omitempty"`
+	Common        string           `json:"common,omitempty"`
+	Lifecycle     *RecordLifecycle `json:"lifecycle,omitempty"`
+	ID            string           `json:"id,omitempty"`
+	Ledger        *Ledger          `json:"ledger,omitempty"`
+	Title         string           `json:"title,omitempty"`
+	Label         string           `json:"label,omitempty"`
+	Uses          bool             `json:"uses,omitempty"`
+	Fields        map[string]Field `json:"fields"`
+	Constants     map[string]any   `json:"constants,omitempty"`
+	Freeze        []Freeze         `json:"freeze,omitempty"`
 }
 
 // Field is one field of a record type and its rules.

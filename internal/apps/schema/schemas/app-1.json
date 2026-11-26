@@ -124,6 +124,7 @@
         "label": { "type": "string" },
         "common": { "type": "string" },
         "uses": { "type": "boolean" },
+        "portable_reuse": { "type": "boolean" },
         "policy": {
           "type": "object",
           "additionalProperties": false,
