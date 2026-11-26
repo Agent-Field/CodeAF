@@ -236,8 +236,10 @@ func revisionWords(t factory.WorkstreamTask, who, words string) string {
 
 // startRevision starts a revision run on the done task t, as starter, after
 // the line that asked for it.
+// words are a person's (their revise note, or the comment by a person whose
+// offer they took), so the run may follow an address in them.
 func (h *Handler) startRevision(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words string) error {
-	return h.runTaskTurn(ws, t, starter, revisionWords(t, starter, words))
+	return h.startTaskRunTyped(ws, t, starter, revisionWords(t, starter, words), words, 0, false)
 }
 
 // requestLike is a comment that asks the doer for a change: it opens with a

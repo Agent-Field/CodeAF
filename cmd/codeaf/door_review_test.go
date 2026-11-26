@@ -264,3 +264,28 @@ func TestDoorOrgPrintsServerWordsCleaned(t *testing.T) {
 		t.Fatalf("a 403's sentence came back %q", err)
 	}
 }
+
+// A server that asks for the answer later (429, 408) is asked again, as one
+// that failed is: only a refusal is left for WorkAF.
+func TestDoorAsksAgainWhenTheServerIsBusy(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusRequestTimeout} {
+		out := doorTest(t, "\n\n", true, false)
+		ask := &factory.TaskAsk{ID: "ask_1", Title: "Tone?", Reversible: true,
+			Options: []factory.TaskAskOption{{ID: "o1", Label: "Casual", Recommended: true}}}
+		needs := func(t *factory.WorkstreamTask) { t.Ask = ask }
+		d, srv := newDoorServer(t,
+			doorTask("tk_1", factory.TaskRunning),
+			doorTask("tk_1", factory.TaskNeeds, needs),
+			doorTask("tk_1", factory.TaskNeeds, needs),
+			doorTask("tk_1", factory.TaskDone),
+		)
+		d.answerFails, d.failStatus = 1, status
+		signIn(t, srv)
+		if err := runTask([]string{"Pick a tagline", "--workstream", "ws_1"}); err != nil {
+			t.Fatalf("%d: task: %v\n%s", status, err, out)
+		}
+		if d.answers != 1 || strings.Count(out.String(), "Afi asks: Tone?") != 2 {
+			t.Errorf("%d: took %d answers after %d asks, want the Ask put again and answered:\n%s", status, d.answers, strings.Count(out.String(), "Afi asks: Tone?"), out)
+		}
+	}
+}

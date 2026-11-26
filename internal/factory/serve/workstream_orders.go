@@ -126,6 +126,8 @@ func (h *Handler) createWorkstreamOrder(w http.ResponseWriter, r *http.Request) 
 	if h.taskRefused(w, err) {
 		return
 	}
+	// Who wrote what each run will ask (factory.WorkstreamOrder.WordsBy).
+	made.WordsBy = factory.WordsAuthor(wordsKind(r), body.WordsBy)
 	err = h.config.Store.EditWorkstreamOrders(func(ow store.OrderWrite) error {
 		all, err := ow.Orders(ws.ID)
 		if err != nil {
@@ -328,6 +330,8 @@ func (h *Handler) runOrder(o factory.WorkstreamOrder, now time.Time) {
 		if err != nil {
 			return err
 		}
+		// The run asks the order's words, written by whoever wrote the order.
+		factory.StampWords(&made, took.WordsBy)
 		if alone {
 			made.State = factory.TaskRunning
 		} else {

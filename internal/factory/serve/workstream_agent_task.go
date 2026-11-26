@@ -222,7 +222,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// dropped when the run ends here (before an answer that came meanwhile
 		// starts the next run, whose lease it is not), unless the server is
 		// closing, which is exactly the cut the next start must find.
-		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, now, resumes, func() float64 {
+		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, r.typed, now, resumes, func() float64 {
 			// Every beat: a workstream that has spent its budget pauses
 			// the run.
 			usd := watch.spent()
@@ -440,7 +440,7 @@ func (h *Handler) resumeParkedAnswer(ws factory.OrgWorkstream, seen factory.Work
 		}
 		resumed = t
 		words := answeredWords(t, factory.TaskAsk{Title: answered.Question}, answered.Answer, answered.By.Name)
-		return h.startTaskRun(ws, t, starter, words, 0, true)
+		return h.startTaskRunTyped(ws, t, starter, words, answered.Typed, 0, true)
 	})
 	if err != nil {
 		if !errors.Is(err, errSettledElsewhere) && !wakeRefused(err) {
@@ -460,8 +460,11 @@ func (h *Handler) resumeParkedAnswer(ws factory.OrgWorkstream, seen factory.Work
 // told it to fetch, with the workstream's data in it.
 func taskLeashWords(t factory.WorkstreamTask, typed string) []string {
 	var out []string
-	if t.WordsBy == factory.TaskByPerson {
-		out = append(out, t.Title, t.Request)
+	if t.TitleBy == factory.TaskByPerson && strings.TrimSpace(t.Title) != "" {
+		out = append(out, t.Title)
+	}
+	if t.RequestBy == factory.TaskByPerson && strings.TrimSpace(t.Request) != "" {
+		out = append(out, t.Request)
 	}
 	if typed = strings.TrimSpace(typed); typed != "" {
 		out = append(out, typed)

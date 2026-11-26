@@ -14,8 +14,11 @@ The terminal door keeps its sign-in in the codeaf home under doors/, readable by
 never answered there: the door says to open WorkAF.
 
 Review fixes: the server agent's web_fetch reads only an address a person wrote (their chat messages and steers, a
-task's title and request when a person last wrote them, a typed answer) or one from that run's web_search results, and
-never sends a fragment on; an answer kept while the organization had no model key is carried on once a key is set, or
+task's title or request when a person last wrote that field, a person's standing order or cross-workstream request, a
+typed answer or revision note, kept across a restart) or one from that run's web_search results, and never sends a
+fragment on. Afi's task cards are Afi's words even once a person adds them, and a client may say `words_by: "afi"` on a
+task, request or order it creates for Afi (it only lowers trust). The terminal door's `codeaf task` is trusted as the
+person, even when a coding agent in their shell runs it; an answer kept while the organization had no model key is carried on once a key is set, or
 at start when one is there. A plain button answer on an Ask that also offers a words answer can still be undone. The terminal
 door refuses a password over plain http to another machine, passes a server's 403 sentence through, never replaces an
 unreadable sign-ins file, locks its sign-ins while writing them, strips control characters from what the server sends,

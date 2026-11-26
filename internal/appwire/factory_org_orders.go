@@ -49,6 +49,9 @@ type OrgOrderCreateParams struct {
 	Zone            string  `json:"zone,omitempty"`
 	Does            string  `json:"does"`
 	BudgetPerRunUSD float64 `json:"budget_per_run_usd,omitempty"`
+	// WordsBy is "afi" when the desk's Afi wrote what the order does: it
+	// only ever lowers trust in those words (OrgTaskCreateParams.WordsBy).
+	WordsBy string `json:"words_by,omitempty"`
 }
 
 // OrgOrderUpdateParams switches an order on or off, at the rev it was read.
@@ -123,7 +126,8 @@ func init() {
 			Zone            string  `json:"zone,omitempty"`
 			Does            string  `json:"does"`
 			BudgetPerRunUSD float64 `json:"budget_per_run_usd,omitempty"`
-		}{strings.TrimSpace(p.Title), when, strings.TrimSpace(p.Zone), does, p.BudgetPerRunUSD}}, nil
+			WordsBy         string  `json:"words_by,omitempty"`
+		}{strings.TrimSpace(p.Title), when, strings.TrimSpace(p.Zone), does, p.BudgetPerRunUSD, strings.TrimSpace(p.WordsBy)}}, nil
 	})
 	methods["factory.org_workstream_order_update"] = orgMethod[OrgOrderUpdateParams, OrgOrder]("factory.org_workstream_order_update", func(p OrgOrderUpdateParams) (OrgRequest, error) {
 		path, err := orgOrderPath(p.WS, p.ID)

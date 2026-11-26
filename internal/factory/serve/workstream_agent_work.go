@@ -559,12 +559,11 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 		ask := factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options, Kind: factory.AskKind(a.Ask.Kind), Reversible: a.Ask.Reversible}
 		// AN ANSWER THAT NEEDS THE PERSON'S WORDS IS NEVER ONE CLICK (live
-		// test 2026-11-23 #37): an Ask holding one is not reversible, so it is
-		// never accepted with the rest, and no rule decides it for them.
+		// test 2026-11-23 #37): no rule decides an Ask holding one for them,
+		// and no door treats it as quick (factory.NeedsWords). It keeps the
+		// reversible the agent gave it, so its plain answers can still be
+		// undone; the words answer itself never can (factory.AnswerTask).
 		words := factory.NeedsWords(ask)
-		if words {
-			ask.Reversible = false
-		}
 		// A KIND THE STEWARD LET GO IS NOT ASKED. The server decides it with
 		// the answer the agent recommended and lists it under Assumed, where
 		// Send back still overturns it (owner decisions §13).

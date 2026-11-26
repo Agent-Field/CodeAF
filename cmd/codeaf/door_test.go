@@ -32,8 +32,10 @@ type doorServer struct {
 	// with refuseSentence as the server's sentence.
 	refuseSignIn   int
 	refuseSentence string
-	// answerFails is how many answers are refused (500) before one is taken.
+	// answerFails is how many answers are refused (500, or failStatus)
+	// before one is taken.
 	answerFails int
+	failStatus  int
 	// answerStatus, when set, is the status every answer is refused with.
 	answerStatus int
 	// name is the organization's name /v1/about and the sign-in answer.
@@ -126,7 +128,11 @@ func (d *doorServer) handler() http.Handler {
 		}
 		if d.answerFails > 0 {
 			d.answerFails--
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "the store blinked"})
+			status := d.failStatus
+			if status == 0 {
+				status = http.StatusInternalServerError
+			}
+			writeJSON(w, status, map[string]string{"error": "the store blinked"})
 			return
 		}
 		_ = json.NewDecoder(r.Body).Decode(&d.answered)

@@ -1316,7 +1316,9 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?, run?, queue?}`, `state` one of `up_next`, `running`, `needs`,
+updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?, run?, queue?,
+title_by?, request_by?}`, `title_by` and `request_by` being who last wrote each (`person`,
+`afi`, …; server-written only, absent on older tasks), `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you, to `stopped_by`; Stopped by
 <name> to everyone else), `no_report` (Didn't report back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
 undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
@@ -1337,7 +1339,11 @@ their own hand. `for_you` is the reader's own and never kept: `{comments, mentio
 last}`, the unread `comment` lines of the last fourteen days on a task the reader owns
 or that name the reader with @, not their own, and the newest of them as `last`.
 `_task_create {ws, title, request?, owner?, done_by, came_from?, waiting_on?, due?,
-group?, state?}` `POST` (`edit`) answers the task, 201; whoever asked owns it, work
+group?, state?, words_by?}` `POST` (`edit`) answers the task, 201; `words_by: "afi"` says
+the desk's Afi wrote the title and request through the person's token, and only ever lowers
+trust in them (the server agent's web_fetch follows an address only in words a person wrote);
+`"person"` or leaving it out changes nothing, and `_task_update` and `_workstream_request`
+take it the same way; whoever asked owns it, work
 from the Factory or a standing order goes to the workstream's default owner, and a
 group named without an id joins that workstream's group of the same name and kind.
 `_task_update {ws, id, rev, ...change}` `PATCH If-Match: rev` (`edit`; rev 0 for a

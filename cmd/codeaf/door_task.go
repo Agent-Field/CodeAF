@@ -524,7 +524,7 @@ func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) (answered, 
 		// answer, or failed (5xx), is asked again.
 		var refused client.Refusal
 		var ended doorSignInEnded
-		if errors.As(err, &ended) || errors.As(err, &refused) && !refused.Fault {
+		if errors.As(err, &ended) || errors.As(err, &refused) && !refused.Fault && !refused.Busy {
 			fmt.Fprintf(doorOut, "The answer was not taken: %s\nAnswer it in WorkAF (%s).\n", doorText(err.Error()), f.where())
 			return false, true
 		}

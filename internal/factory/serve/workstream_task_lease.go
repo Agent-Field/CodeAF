@@ -89,14 +89,14 @@ func (h *Handler) leaseSince() time.Time {
 // answers the drop the run calls when it ends here. It runs inside the run's
 // goroutine, after the write that started the run has ended: that store has
 // one connection.
-func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int, beat func() float64) func() {
+func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words, typed string, started time.Time, resumes int, beat func() float64) func() {
 	st := h.config.Store
 	if st == nil {
 		return func() {}
 	}
 	stamp := func() string { return h.clock().UTC().Format(time.RFC3339Nano) }
 	_ = st.PutTaskRun(store.TaskRun{WS: key.ws, Task: key.task, Owner: owner, Starter: starter,
-		Started: started.UTC().Format(time.RFC3339Nano), Beat: stamp(), Resumes: resumes, Words: words})
+		Started: started.UTC().Format(time.RFC3339Nano), Beat: stamp(), Resumes: resumes, Words: words, Typed: typed})
 	done := make(chan struct{})
 	guard.Go("factory workstream task lease", func() {
 		tick := time.NewTicker(taskLeaseBeat)
@@ -201,7 +201,7 @@ func (h *Handler) sweepTaskRuns() {
 				// It was waiting for its place, not working: it waits again,
 				// with nothing to say on its thread, and a run an answer
 				// started is still that run (D1's answered, kept on the lease).
-				_ = h.startTaskRun(ws, t, l.Starter, l.Words, l.Resumes, l.Answered)
+				_ = h.startTaskRunTyped(ws, t, l.Starter, l.Words, l.Typed, l.Resumes, l.Answered)
 			case (!leased || l.Owner != me) && last.Before(since) && now.Sub(since) >= taskRestartSettle:
 				h.settleCutRun(ws, t, l, leased)
 			case now.Sub(last) >= taskNoReportAfter:
@@ -260,7 +260,7 @@ func (h *Handler) settleCutRun(ws factory.OrgWorkstream, seen factory.Workstream
 				return err
 			}
 			settled = t
-			return h.startTaskRun(ws, t, starter, resumeWords(t, l.Words), resumes+1, false)
+			return h.startTaskRunTyped(ws, t, starter, resumeWords(t, l.Words), l.Typed, resumes+1, false)
 		}
 		t.State, t.StateReason = factory.TaskInterrupted, taskInterruptedWhy
 		if err := keepTask(tw, t, seen.Rev); err != nil {

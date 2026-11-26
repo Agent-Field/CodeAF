@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestAnAnswerKeptWithoutAKeyIsCarriedOnWhenTheKeyIsSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := o.one(t, path, task.ID)
-	o.do(t, "santosh", "POST", path+"/tasks/"+task.ID+"/answer", -1, api.TaskAnswer{Option: got.Ask.Options[0].ID}, 200, nil)
+	o.do(t, "santosh", "POST", path+"/tasks/"+task.ID+"/answer", -1, api.TaskAnswer{Option: got.Ask.Options[0].ID, Text: "near https://typed.example/austin"}, 200, nil)
 	if after := o.one(t, path, task.ID); after.State != factory.TaskUpNext {
 		t.Fatalf("after the answer the task is %q, want up next", after.State)
 	}
@@ -75,6 +76,11 @@ func TestAnAnswerKeptWithoutAKeyIsCarriedOnWhenTheKeyIsSet(t *testing.T) {
 	case turn := <-started:
 		if turn.Task == nil || turn.Asker != "santosh" || !strings.Contains(turn.Text, "answered your question “Which city?”: Austin") {
 			t.Fatalf("the resumed run = asker %q, text %q", turn.Asker, turn.Text)
+		}
+		// What the person typed with the answer is kept on the answered
+		// line, so the run started later may follow an address in it.
+		if !slices.Contains(turn.LeashWords, "near https://typed.example/austin") {
+			t.Fatalf("the resumed run's leash = %q", turn.LeashWords)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("setting the key did not carry on the parked answer")

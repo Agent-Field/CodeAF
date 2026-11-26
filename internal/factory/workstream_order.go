@@ -67,9 +67,14 @@ type WorkstreamOrder struct {
 	// Runs counts its runs; the newest run's number names its task.
 	Runs      int64     `json:"runs"`
 	CreatedBy PersonRef `json:"created_by"`
-	CreatedAt string    `json:"created_at"`
-	UpdatedAt string    `json:"updated_at"`
-	Rev       int       `json:"rev"`
+	// WordsBy is who wrote its title and brief, as a kind of writer
+	// (TaskByPerson, TaskByAfi, …), written by the server only; each run's
+	// task carries it (TaskCreate.WordsBy reads the same way). Empty on an
+	// order kept before it, which reads as not a person.
+	WordsBy   string `json:"words_by,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	Rev       int    `json:"rev"`
 }
 
 // Schedule is the order's schedule.
@@ -117,6 +122,8 @@ type WorkstreamOrderNew struct {
 	Does            string  `json:"does"`
 	On              *bool   `json:"on,omitempty"`
 	BudgetPerRunUSD float64 `json:"budget_per_run_usd,omitempty"`
+	// WordsBy only ever lowers trust in its words (TaskCreate.WordsBy).
+	WordsBy string `json:"words_by,omitempty"`
 }
 
 // WorkstreamOrderPatch is what may change on an order.

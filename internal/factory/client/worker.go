@@ -43,6 +43,9 @@ type Refusal struct {
 	// may be taken when it is sent again. Every other refusal says the same
 	// thing the next time.
 	Fault bool
+	// Busy is the server asking for the call later (429 Too Many Requests,
+	// 408 Request Timeout): like a fault, it may be taken when sent again.
+	Busy bool
 }
 
 // refusal is the factory's sentence refused at status, with its facts stamped.
@@ -51,7 +54,8 @@ func refusal(err error, status int) Refusal {
 		SignedOut: status == http.StatusUnauthorized,
 		Forbidden: status == http.StatusForbidden,
 		Missing:   status == http.StatusNotFound,
-		Fault:     status >= http.StatusInternalServerError}
+		Fault:     status >= http.StatusInternalServerError,
+		Busy:      status == http.StatusTooManyRequests || status == http.StatusRequestTimeout}
 }
 
 func (r Refusal) Unwrap() error { return r.error }

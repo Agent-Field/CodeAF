@@ -540,12 +540,14 @@ type WorkstreamTask struct {
 	UpdatedAt  string          `json:"updated_at"`
 	DoneAt     string          `json:"done_at,omitempty"`
 	AnsweredBy *PersonRef      `json:"answered_by,omitempty"`
-	// WordsBy is who last wrote the task's title and request, as the kind
-	// of writer (TaskByPerson, TaskByAfi, …); empty on a task made before it
-	// was kept, which is read as not a person. The server agent's web_fetch
-	// may read an address in those words only when a person wrote them
-	// (session's tools_web_leash.go).
-	WordsBy string `json:"words_by,omitempty"`
+	// TitleBy and RequestBy are who last wrote the task's title and its
+	// request, each as the kind of writer (TaskByPerson, TaskByAfi, …), and
+	// only ever written by the server; empty on a task made before they were
+	// kept, which reads as not a person. The server agent's web_fetch may read
+	// an address in one of them only when a person wrote it (serve's
+	// taskLeashWords, session's tools_web_leash.go).
+	TitleBy   string `json:"title_by,omitempty"`
+	RequestBy string `json:"request_by,omitempty"`
 	// Undoable are the answers given to its reversible Asks, oldest first, at
 	// most TaskUndoableMost: each can be undone from the task by whoever gave
 	// it, which opens the Ask again (TaskPatch.UndoAnswer).
@@ -683,6 +685,10 @@ type WorkstreamTaskEvent struct {
 	Mentions []string `json:"mentions,omitempty"`
 	// File is, on a "made" event, the id of the document the line names.
 	File string `json:"file,omitempty"`
+	// Typed is, on an "answered" event, what the person typed with their
+	// answer (never an option's label, which the asker wrote), so a run
+	// started from the answer later may follow an address in it.
+	Typed string `json:"typed,omitempty"`
 }
 
 // TaskInvalid is a task the store will not keep, answered 422.
@@ -881,7 +887,31 @@ type TaskCreate struct {
 	State     string        `json:"state,omitempty"`
 	// Checklist is the deliverable's steps, one line each, unticked.
 	Checklist []string `json:"checklist,omitempty"`
+	// WordsBy, when a client sends it, says its title and request were not
+	// the person's own words ("afi": a desk's Afi wrote them through the
+	// person's token). It only ever lowers trust (WordsAuthor): "person", or
+	// leaving it out, changes nothing, and older clients send none.
+	WordsBy string `json:"words_by,omitempty"`
 }
+
+// WordsAuthor is who wrote words sent by a caller of kind by (TaskByPerson,
+// TaskByAfi, …) that says claimed of them (a create's or patch's WordsBy). A
+// claim only lowers trust: a person's request that says "afi" is Afi's words,
+// and nothing makes words a person's that a person's request did not carry.
+func WordsAuthor(by, claimed string) string {
+	claimed = strings.ToLower(strings.TrimSpace(claimed))
+	if by != TaskByPerson || claimed == "" || claimed == TaskByPerson {
+		return by
+	}
+	switch claimed {
+	case TaskByAfi, TaskByAgent, TaskByChat, TaskByFactory, TaskByOrder:
+		return claimed
+	}
+	return TaskByAfi
+}
+
+// StampWords records author as the writer of t's title and request.
+func StampWords(t *WorkstreamTask, author string) { t.TitleBy, t.RequestBy = author, author }
 
 // NewTask makes a task from in, checked. id is the store's; by is the caller;
 // defaultOwner is the owner of work nobody asked for directly (the workstream's
@@ -1099,8 +1129,11 @@ func cleanIDs(ids []string) []string {
 // TaskPatch is any subset of a task. Due "" clears the date; ClearGroup and
 // ClearAsk clear those. State "done" on a person task is the tick.
 type TaskPatch struct {
-	Title       *string       `json:"title,omitempty"`
-	Request     *string       `json:"request,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Request *string `json:"request,omitempty"`
+	// WordsBy is TaskCreate's WordsBy for a change of the title or request:
+	// it only ever lowers trust.
+	WordsBy     string        `json:"words_by,omitempty"`
 	Owner       *TaskOwner    `json:"owner,omitempty"`
 	WaitingOn   *[]string     `json:"waiting_on,omitempty"`
 	Due         *string       `json:"due,omitempty"`
@@ -1211,8 +1244,14 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if p.Request != nil {
 			t.Request = strings.TrimSpace(*p.Request)
 		}
-		if (p.Title != nil && t.Title != before.Title) || (p.Request != nil && t.Request != before.Request) {
-			t.WordsBy = by.Kind
+		// Each field keeps its own writer: a person fixing a title's typo
+		// does not make the request Afi wrote theirs.
+		author := WordsAuthor(by.Kind, p.WordsBy)
+		if p.Title != nil && t.Title != before.Title {
+			t.TitleBy = author
+		}
+		if p.Request != nil && t.Request != before.Request {
+			t.RequestBy = author
 		}
 		if p.Brief != nil {
 			brief, err := CleanBrief(p.Brief)
@@ -2363,8 +2402,10 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to, name string, by TaskE
 // TaskRequest is a request into a workstream: what is wanted, and the work
 // it came from, when it came from a task elsewhere.
 type TaskRequest struct {
-	Title    string `json:"title"`
-	Request  string `json:"request,omitempty"`
+	Title   string `json:"title"`
+	Request string `json:"request,omitempty"`
+	// WordsBy is TaskCreate's WordsBy: it only ever lowers trust.
+	WordsBy  string `json:"words_by,omitempty"`
 	FromWS   string `json:"from_ws,omitempty"`
 	FromTask string `json:"from_task,omitempty"`
 }

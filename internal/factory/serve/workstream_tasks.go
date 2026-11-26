@@ -345,10 +345,9 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		// Who wrote its words: a person, or an agent through its door.
-		if by := h.taskBy(r, v); !isBotCall(r) {
-			made.WordsBy = by.Kind
-		}
+		// Who wrote its words: a person, or an agent through its door, or
+		// (by its own word, which only lowers trust) a desk's Afi.
+		factory.StampWords(&made, factory.WordsAuthor(wordsKind(r), body.WordsBy))
 		if made.State != factory.TaskRunning {
 			return tw.Put(made, 0)
 		}
@@ -699,6 +698,9 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if h.taskRefused(w, err) {
 		return
 	}
+	if len(change.Events) > 0 && change.Events[0].Kind == factory.TaskEventAnswered {
+		change.Events[0].Typed = strings.TrimSpace(personTyped(r, body.Text))
+	}
 	asked, _, _ := factory.FindAsk(t, body.Ask)
 	// A run of a standing order kept here: Go starts Afi in this same write,
 	// Skip this one and Not right stop the task (workstream_orders.go).
@@ -817,6 +819,25 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name), personTyped(r, body.Text))
 	}
 	h.write(w, http.StatusOK, fresh)
+}
+
+// wordsByBot is the writer kind of words a bot sent: never a person's.
+const wordsByBot = "bot"
+
+// wordsKind is who wrote words r carries, as a kind of writer: a person
+// calling with their own token, else the agent or bot calling through its
+// door. A person's client may still carry Afi's words; it says so with
+// words_by (factory.WordsAuthor), and the terminal door's codeaf task is taken
+// as the person's own.
+func wordsKind(r *http.Request) string {
+	call, ok := agentCallOf(r)
+	switch {
+	case !ok:
+		return factory.TaskByPerson
+	case call.bot != "" || call.by.Kind == "" || call.by.Kind == factory.TaskByPerson:
+		return wordsByBot
+	}
+	return call.by.Kind
 }
 
 // personTyped is text a person typed into a request, "" when the request came
