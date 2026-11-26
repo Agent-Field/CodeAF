@@ -326,3 +326,15 @@ For a conflict, choose `local` or `upstream` in
 Give a choice for each conflict. Check runs on the result and Apply is still
 required. A clean update also waits for Apply. The card can be reopened after
 an engine restart with `codeaf app build_state '{"draft":"<draft>"}'`.
+
+## Work a queue beside its record or shape the app
+
+A screen can keep a queue or board beside the selected record. Choose a row
+to see its details without leaving the queue. A queue row shows its title,
+the related facts on a second line, and a status or figure at the right.
+Choose **Shape** in the app header to open its Builder.
+
+A plan timeline on a checked screen reads the app's saved plan. A definition
+document can display its saved copy until it has a record to edit.
+`apps.content.read` serves the saved document or plan from the selected app
+or preview.

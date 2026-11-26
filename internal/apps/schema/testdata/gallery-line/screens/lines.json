@@ -39,104 +39,131 @@
         }
       },
       {
-        "part": "Chart",
-        "id": "oee",
+        "part": "Row",
+        "id": "shift-workspace",
         "props": {
-          "kind": "metric",
-          "title": "OEE (%) · target 85%",
-          "y": "oee"
+          "align": "start"
         },
-        "bind": {
-          "records": "line",
-          "view": "oee"
-        }
-      },
-      {
-        "part": "Chart",
-        "id": "good_parts",
-        "props": {
-          "kind": "metric",
-          "title": "Good parts · plan 1,400",
-          "y": "good_parts"
-        },
-        "bind": {
-          "records": "line",
-          "view": "good_parts"
-        }
-      },
-      {
-        "part": "Chart",
-        "id": "scrap",
-        "props": {
-          "kind": "metric",
-          "title": "Scrap (%) · limit 1.0%",
-          "y": "scrap"
-        },
-        "bind": {
-          "records": "line",
-          "view": "scrap"
-        }
-      },
-      {
-        "part": "Chart",
-        "id": "minutes",
-        "props": {
-          "kind": "metric",
-          "title": "Downtime (min)",
-          "y": "minutes"
-        },
-        "bind": {
-          "records": "line",
-          "view": "minutes"
-        }
-      },
-      {
-        "part": "Chart",
-        "id": "pressure",
-        "props": {
-          "kind": "line",
-          "title": "Press 4 · hydraulic pressure (bar)",
-          "x": "reading",
-          "y": "pressure"
-        },
-        "bind": {
-          "records": "line",
-          "view": "pressure"
-        }
-      },
-      {
-        "part": "Chart",
-        "id": "temp",
-        "props": {
-          "kind": "line",
-          "title": "Trim station · die temperature (°C)",
-          "x": "reading",
-          "y": "temp"
-        },
-        "bind": {
-          "records": "line",
-          "view": "temp"
-        }
-      },
-      {
-        "part": "Timeline",
-        "label": "Shift plan",
-        "props": {
-          "view": "shifts"
-        },
-        "bind": {
-          "content-part": "plan/shifts.json"
-        },
-        "id": "timeline"
-      },
-      {
-        "part": "Text",
-        "label": "Handover notes",
-        "props": {},
-        "bind": {
-          "content-part": "docs/handover.md"
-        },
-        "id": "text"
+        "children": [
+          {
+            "part": "Stack",
+            "id": "measurements",
+            "props": {
+              "gap": 2
+            },
+            "children": [
+              {
+                "part": "Chart",
+                "id": "oee",
+                "props": {
+                  "kind": "metric",
+                  "title": "OEE (%) · target 85%",
+                  "y": "oee"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "oee"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "good_parts",
+                "props": {
+                  "kind": "metric",
+                  "title": "Good parts · plan 1,400",
+                  "y": "good_parts"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "good_parts"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "scrap",
+                "props": {
+                  "kind": "metric",
+                  "title": "Scrap (%) · limit 1.0%",
+                  "y": "scrap"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "scrap"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "minutes",
+                "props": {
+                  "kind": "metric",
+                  "title": "Downtime (min)",
+                  "y": "minutes"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "minutes"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "pressure",
+                "props": {
+                  "kind": "line",
+                  "title": "Press 4 · hydraulic pressure (bar)",
+                  "x": "reading",
+                  "y": "pressure"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "pressure"
+                }
+              },
+              {
+                "part": "Chart",
+                "id": "temp",
+                "props": {
+                  "kind": "line",
+                  "title": "Trim station · die temperature (°C)",
+                  "x": "reading",
+                  "y": "temp"
+                },
+                "bind": {
+                  "records": "line",
+                  "view": "temp"
+                }
+              }
+            ]
+          },
+          {
+            "part": "Stack",
+            "id": "shift-notes",
+            "props": {
+              "gap": 2
+            },
+            "children": [
+              {
+                "part": "Timeline",
+                "label": "Shift plan",
+                "props": {
+                  "view": "shifts"
+                },
+                "bind": {
+                  "content-part": "plan/shifts.json"
+                },
+                "id": "timeline"
+              },
+              {
+                "part": "Text",
+                "label": "Handover notes",
+                "props": {},
+                "bind": {
+                  "content-part": "docs/handover.md"
+                },
+                "id": "text"
+              }
+            ]
+          }
+        ]
       }
     ]
   },

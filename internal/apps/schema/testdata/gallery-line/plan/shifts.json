@@ -2,10 +2,24 @@
   "scale": "hour",
   "items": [
     {
+      "id": "shift-a",
+      "label": "Shift A · Raj",
+      "start": "2026-11-26T06:00:00Z",
+      "end": "2026-11-26T14:00:00Z",
+      "record": "line/01KAT0000A0000000000000001"
+    },
+    {
       "id": "shift-b",
-      "label": "Shift B",
-      "start": "2026-11-25T14:00:00Z",
-      "end": "2026-11-25T22:00:00Z",
+      "label": "Shift B · Mona",
+      "start": "2026-11-26T14:00:00Z",
+      "end": "2026-11-26T22:00:00Z",
+      "record": "line/01KAT0000A0000000000000001"
+    },
+    {
+      "id": "shift-c",
+      "label": "Shift C · Jamie",
+      "start": "2026-11-26T22:00:00Z",
+      "end": "2026-11-27T06:00:00Z",
       "record": "line/01KAT0000A0000000000000001"
     }
   ]
