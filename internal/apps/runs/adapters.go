@@ -73,13 +73,15 @@ type AgentCall struct {
 }
 
 type Approval struct {
-	ID        string         `json:"id"`
-	AskedAt   time.Time      `json:"asked_at,omitzero"`
-	Kind      string         `json:"kind"`
-	Who       string         `json:"who"`
-	Tool      string         `json:"tool,omitempty"`
-	Args      map[string]any `json:"args,omitempty"`
-	MinBudget float64        `json:"min_budget,omitempty"`
+	ID         string           `json:"id"`
+	AskedAt    time.Time        `json:"asked_at,omitzero"`
+	Kind       string           `json:"kind"`
+	Who        string           `json:"who"`
+	Tool       string           `json:"tool,omitempty"`
+	Args       map[string]any   `json:"args,omitempty"`
+	RecordType string           `json:"record_type,omitempty"`
+	Records    []ApprovalRecord `json:"records,omitempty"`
+	MinBudget  float64          `json:"min_budget,omitempty"`
 }
 
 type FakeConnector struct {
