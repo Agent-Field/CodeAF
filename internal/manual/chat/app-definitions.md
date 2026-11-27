@@ -131,6 +131,10 @@ manual action in the plan's `actions` needs a screen control. A data line with
 `create: true` needs a create button or form. These findings go back to the
 Builder for repair, including when Desk is closed.
 
+If a RecordPage names a fixed record, Check requires its saved record ID.
+For a detail panel that follows a list, bind to `$selection.<list>.id`.
+For a detail screen that takes an ID parameter, use `$params.id`.
+
 With the CLI alone, Check still validates the app. The Check result and
 change card show `look: skipped (desk not running)`. You can keep the
 checkpoint and choose **Apply**. The standalone `app look` command returns
@@ -303,6 +307,21 @@ through its `show` command and call `custom_tool` with `tool` and
 Promote a kept function with `codeaf app promote-step '{"app":"APP","id":"NAME"}'`.
 `codeaf app kit-steps` lists the versions. In an editing session,
 `codeaf app use-kit-step` imports the exact version and retains its lineage.
+
+## Check example records, detail pages and app depth
+
+Example records can refer to one another in either direction. Include
+the matching record IDs or titles in the example data, even when each
+record requires a reference to the other. Bind each RecordPage to a
+selected record or a record ID supplied to the screen. Use a record
+command or a Button that starts a run for command controls.
+
+Check reports the example app's screen, related record, chart, sample
+record, saved view, trigger and approved write-back counts. Personal apps
+can keep working with depth warnings. A package whose publisher is
+`codeaf examples` needs three structured screens, a detail with an
+example relationship, a bound chart, 30 example records, a saved view,
+a trigger and an approval-gated write-back Action.
 
 ## Pack an app, export a template to the Kit
 

@@ -47,6 +47,16 @@ func (b *appBackend) appBuildCatalog(exclude string) (builder.Catalog, error) {
 		_ = json.Unmarshal(published.Metadata, &meta)
 		catalog.AppNames[source] = meta.Name
 	}
+	if exclude != "" {
+		if sources, err := b.appConnections().List(exclude); err == nil {
+			catalog.SourceOperations = map[string][]string{}
+			for _, source := range sources {
+				if len(source.Writes) != 0 {
+					catalog.SourceOperations["connections."+source.ID] = source.Writes
+				}
+			}
+		}
+	}
 	return catalog, nil
 }
 

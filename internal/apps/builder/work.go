@@ -180,12 +180,15 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 	if err != nil {
 		return nil, "", BuildCalls{}, err
 	}
+	author := s.author
+	author.keepsSeparate = j.keepsSeparate
 	files, reply, calls, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
 		Reuse:              reuse,
-	}, types, s.author, func(files map[string]string) schema.Report {
+		SourceOperations:   catalog.SourceOperations,
+	}, types, author, func(files map[string]string) schema.Report {
 		if report := j.checkReuse(files, catalog, types, !headless); !report.OK() {
 			return report
 		}

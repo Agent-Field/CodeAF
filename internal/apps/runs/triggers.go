@@ -22,6 +22,8 @@ type Trigger struct {
 	Run       string         `json:"run"`
 	Cron      string         `json:"cron"`
 	Type      string         `json:"type"`
+	At        string         `json:"at"`
+	Lead      string         `json:"lead"`
 	When      string         `json:"when"`
 	Connector string         `json:"connector,omitempty"`
 	Event     string         `json:"event,omitempty"`
@@ -80,6 +82,11 @@ func (e *Engine) schedules() error {
 	all, err := e.cfg.Triggers()
 	now := e.cfg.Now()
 	for _, t := range all {
+		if t.On == "record.before" {
+			if fireErr := e.fireBefore(t, now); fireErr != nil {
+				err = errors.Join(err, fmt.Errorf("%s before trigger %s: %w", t.App, t.ID, fireErr))
+			}
+		}
 		if t.On == "schedule" {
 			if fireErr := e.fire(t, now); fireErr != nil {
 				err = errors.Join(err, fmt.Errorf("%s schedule %s: %w", t.App, t.ID, fireErr))
@@ -303,6 +310,57 @@ func (e *Engine) commitTriggered(receipt triggerReceipt, run Run, raw json.RawMe
 		e.track(run)
 	}
 	return claimed, err
+}
+
+// fireBefore starts one run per record and scheduled time in its lead window.
+func (e *Engine) fireBefore(t Trigger, now time.Time) error {
+	if !validID(t.App) || !validID(t.ID) || !validID(t.Type) || t.At == "" {
+		return errors.New("a before-record trigger needs an app, id, record type and timestamp field")
+	}
+	lead, err := duration(t.Lead)
+	if err != nil {
+		return err
+	}
+	if e.cfg.ReadRecords == nil {
+		return errors.New("a before-record trigger needs app-scoped records")
+	}
+	rows, err := e.cfg.ReadRecords(t.App, t.Type)
+	if err != nil {
+		return err
+	}
+	for _, item := range rows {
+		row, _ := item.(map[string]any)
+		id, _ := row["id"].(string)
+		value, _ := row[t.At].(string)
+		at, err := time.Parse(time.RFC3339Nano, value)
+		if !validID(id) || err != nil || now.Before(at.Add(-lead)) || !now.Before(at) {
+			continue
+		}
+		key := "before/" + t.App + "/" + t.ID + "/" + id + "/" + at.UTC().Format(time.RFC3339Nano)
+		e.mu.Lock()
+		_, fired := e.checkpoints[key]
+		e.mu.Unlock()
+		if fired {
+			continue
+		}
+		record := maps.Clone(row)
+		record["type"] = t.Type
+		input := map[string]any{"record": record}
+		vars := maps.Clone(record)
+		vars["record"], vars["input"], vars["me"] = record, input, "me"
+		vars["now"] = now.UTC().Format(time.RFC3339Nano)
+		e.addRecordReader(t.App, vars)
+		match, err := condition(t.When, vars, nil)
+		if err != nil {
+			return err
+		}
+		if match {
+			if _, err := e.start(t.App, t.Run, nil, input, false, key, true); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) fireGoogle(ctx context.Context, t Trigger, now time.Time) error {

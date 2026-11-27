@@ -51,6 +51,13 @@ func operation(name string) (connectedOperation, error) {
 	return op, nil
 }
 
+// NativeConnectorTool reports whether the app run engine has a dispatch
+// path for this operation, independent of the profile's account grants.
+func NativeConnectorTool(name string) bool {
+	op, err := operation(name)
+	return err == nil && op.native != ""
+}
+
 func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperation, *connect.Manager, bool, error) {
 	op, err := operation(call.Name)
 	if err != nil {

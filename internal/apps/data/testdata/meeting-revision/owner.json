@@ -1,0 +1,127 @@
+{
+  "id": "brief",
+  "records": {
+    "company": {
+      "common": "organization",
+      "fields": {
+        "name": {
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        "website": {
+          "type": "url"
+        }
+      },
+      "title": "name"
+    },
+    "meeting": {
+      "fields": {
+        "attendees": {
+          "type": "text"
+        },
+        "company": {
+          "type": "ref",
+          "to": "company"
+        },
+        "end": {
+          "type": "datetime"
+        },
+        "location": {
+          "type": "text"
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "start": {
+          "type": "datetime"
+        },
+        "title": {
+          "type": "text",
+          "required": true
+        }
+      },
+      "title": "title",
+      "common": "event"
+    },
+    "transcript": {
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "meeting": {
+          "type": "ref",
+          "to": "meeting"
+        },
+        "recorded": {
+          "type": "datetime"
+        },
+        "body": {
+          "type": "longtext"
+        }
+      },
+      "title": "title",
+      "common": "document"
+    },
+    "person": {
+      "common": "person",
+      "fields": {
+        "name": {
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        "email": {
+          "type": "email"
+        },
+        "phone": {
+          "type": "phone"
+        },
+        "organization": {
+          "type": "ref",
+          "to": "company"
+        },
+        "role": {
+          "type": "text"
+        }
+      },
+      "title": "name"
+    },
+    "message": {
+      "fields": {
+        "body": {
+          "type": "longtext"
+        },
+        "from": {
+          "type": "text"
+        },
+        "needs_reply": {
+          "type": "bool",
+          "default": true
+        },
+        "person": {
+          "type": "ref",
+          "to": "person"
+        },
+        "received": {
+          "type": "datetime"
+        },
+        "subject": {
+          "type": "text",
+          "required": true
+        }
+      },
+      "title": "subject"
+    }
+  },
+  "capabilities": {
+    "records": {
+      "company": "rw",
+      "meeting": "rw",
+      "transcript": "rw",
+      "person": "rw",
+      "message": "rw"
+    }
+  }
+}
