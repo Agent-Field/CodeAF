@@ -38,6 +38,9 @@ type fakeChatHost struct {
 	// running names the chats whose row says "running". Every other chat is suspended, which is what a chat is until
 	// somebody opens it.
 	running map[string]bool
+	// titles holds the name a chat has given itself, as the real host keeps it from the chat's own wire. A chat with
+	// no entry has no title, and its rows carry no title field at all.
+	titles map[string]string
 }
 
 type hostSeen struct {
@@ -68,6 +71,16 @@ func (f *fakeChatHost) adopt(id, person string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.owners[id], f.tokens[id] = person, ""
+}
+
+// setTitle is the chat naming itself (or being renamed): the host's rows say it from the next read on.
+func (f *fakeChatHost) setTitle(id, title string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.titles == nil {
+		f.titles = map[string]string{}
+	}
+	f.titles[id] = title
 }
 
 // setRunning makes a chat's row say it has a live process (or not).
@@ -171,6 +184,9 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					"id": id, "state": "suspended", "created": "2026-11-24T00:00:00Z", "last_active": "2026-11-24T00:01:00Z",
 					"model_bearer": fingerprintOf(f.tokens[id]), "warning": "A warning for the chat's owner.",
 				})
+				if title := f.titles[id]; title != "" {
+					mine[len(mine)-1]["title"] = title
+				}
 			}
 		}
 		f.mu.Unlock()
@@ -200,9 +216,13 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.running[id] {
 			state = "running"
 		}
+		row := map[string]string{"id": id, "state": state, "model_bearer": fingerprint}
+		if title := f.titles[id]; title != "" {
+			row["title"] = title
+		}
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"`+id+`","state":"`+state+`","model_bearer":"`+fingerprint+`"}`+"\n")
+		_ = json.NewEncoder(w).Encode(row)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		f.mu.Lock()
 		delete(f.owners, id)

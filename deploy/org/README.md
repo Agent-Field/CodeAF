@@ -472,8 +472,9 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
 
 - **The list.** `GET /v1/hosted/sessions` answers `sessions` (the caller's own chats, the rows P1 gave, so the
   client's `--org` pick is unchanged), `shared` (chats of other people the caller may open: `id`, `owner`, `role`,
-  `access`, `state`, `created`, `last_active`, and nothing about the model access or warnings; the operator's rows,
-  only for a chat the policy does not make private, hold the same without `role` and have `access: operator`) and
+  `access`, `state`, `created`, `last_active`, `title` when the chat has one, and nothing about the model access or
+  warnings; the operator's rows, only for a chat the policy does not make private, hold the same without `role` or
+  `title` and have `access: operator`) and
   `hosting` (`local_sessions`, below). Every row of `sessions` and `shared` also carries `verbs`: what the policy
   gives the caller in that chat right now, in the order of the policy's verbs, decided the way the guest's wire
   decides it (an operator-only row holds none, and the answer to `POST /v1/hosted/sessions` carries the same field
@@ -482,6 +483,11 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
 - **Sharing** is the generic route: `POST /v1/resources/session/<chat>/grants` with a person, a team or the
   organization and a role, and `DELETE .../grants/<grant>`. Share, revoke and a change of the policy publish
   `resource.changed` events to the audience as it stood before and as it stands after.
+- **A chat's title.** Every row of `sessions` and `shared` carries `title`, a string, once the chat has named itself,
+  and no `title` field before. The sessionhost keeps it in the chat's registry row from the `welcome` and the
+  status frames a window's wire carries (`internal/sessionhost/title_linux.go`), so the list shows it for a chat that
+  is not running and reading the list starts nothing; a title earned while no window is open is listed after the
+  next time one opens the chat. A row whose reader may not open the chat (the operator's) never carries it.
 - **A guest's wire.** An owner (by handle, holding `run`) is attached by the same byte-for-byte proxy as in P1.
   Anyone else who may view the chat gets a wire the organization's server terminates itself: it reads each call the
   guest's window sends, checks its method against a table in `internal/factory/serve/hosted_guest_methods.go` and

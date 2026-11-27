@@ -72,7 +72,12 @@ func (s *supervisor) wire(w *requestWriter, r *http.Request, person, id string, 
 		return
 	}
 
-	bridge(attach.ctx, conn, child)
+	// A title read on this wire is kept in the chat's row by a goroutine of its own, so a stalled registry never stalls the
+	// window's stream. The feed is closed once the bridge has returned, and anything a still-ending copy says after that is dropped.
+	feed := s.feedTitles(id)
+	defer feed.close()
+	tap := &titleTap{note: feed.note}
+	bridge(attach.ctx, conn, child, tap)
 	if child.waitErr != nil {
 		// A child can write any text, including credentials. Only a known
 		// diagnostic and the size of the captured tail may reach server logs.
@@ -235,10 +240,16 @@ func (s *supervisor) finishWire(id string, attach *wireAttach) {
 	}
 }
 
-func bridge(ctx context.Context, conn *websocket.Conn, child *engineChild) {
+// bridge joins one window to its engine's standard streams. Everything the engine writes is also shown to tap on the
+// way out (title_linux.go), which changes no byte that reaches the window.
+func bridge(ctx context.Context, conn *websocket.Conn, child *engineChild, tap io.Writer) {
 	tunnel := websocket.NetConn(ctx, conn, websocket.MessageBinary)
 	// NetConn clears the library read limit, so restore it before copying.
 	conn.SetReadLimit(wireReadLimit)
+	var fromEngine io.Reader = child.out
+	if tap != nil {
+		fromEngine = io.TeeReader(child.out, tap)
+	}
 	inDone, outDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(inDone)
@@ -246,7 +257,7 @@ func bridge(ctx context.Context, conn *websocket.Conn, child *engineChild) {
 	}()
 	go func() {
 		defer close(outDone)
-		_, _ = io.Copy(tunnel, child.out)
+		_, _ = io.Copy(tunnel, fromEngine)
 	}()
 	select {
 	case <-inDone:

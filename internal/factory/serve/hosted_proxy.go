@@ -478,6 +478,7 @@ func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusBadGateway, hostedUnreachable)
 			return
 		}
+		row.hideUnreadTitle()
 		h.write(w, http.StatusOK, row)
 		return
 	}

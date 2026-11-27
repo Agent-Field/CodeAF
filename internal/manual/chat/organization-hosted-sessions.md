@@ -8,9 +8,9 @@ This is a different thing from `--host` and `--at`, which reach one computer tha
 
 It is off unless the organization's operator has turned it on. When it is off, the server answers `--org` the way it answers any address it does not know. Nothing about your own chats, on your own computer, changes either way.
 
-## open, start or reopen a hosted chat in a desktop organization window
+## open, start or reopen a hosted chat in a desktop organization window — the chat list and the title each chat is listed under
 
-Sign in to the organization in the desktop app and open its window. The window offers new chat only when the organization has enabled hosted chats. Its chat list shows the chats you started and any chats the server says were shared with you. In a shared chat you can use the actions the organization's server says you hold there, such as reading the conversation or sending messages. The window asks the server each time it lists the chats, so a change to the organization's permissions shows up on the next refresh, and a chat the server named no permissions for is shown as watch only. The server checks every action as you take it, whatever the window shows. Use a Personal window for chats on your computer.
+Sign in to the organization in the desktop app and open its window. The window offers new chat only when the organization has enabled hosted chats. Its chat list shows the chats you started and any chats the server says were shared with you, each under its title once the chat has one: the name the chat gave itself, which the server keeps from the chat's own windows, so a chat that is not running is listed by name without being started. A chat that has no title yet has none in its row, and a title a chat earns while no window of it is open shows in the list after the next time a window opens it. In a shared chat you can use the actions the organization's server says you hold there, such as reading the conversation or sending messages. The window asks the server each time it lists the chats, so a change to the organization's permissions shows up on the next refresh, and a chat the server named no permissions for is shown as watch only. The server checks every action as you take it, whatever the window shows. Use a Personal window for chats on your computer.
 
 The organization chooses where each chat works on its server. The desktop app creates no conversation folder on your computer for that chat. Attachments are refused with `Attachments cannot go to a chat on <host> yet.`
 
@@ -106,7 +106,7 @@ A shared chat always runs in the owner's folder on the machine, with the owner's
 
 ## can the operator open my hosted chat — only metadata, and only if the policy makes the chat visible
 
-By default the operator holds no right on a private chat: it is refused with `There is no such chat.` and is not told the chat exists. When the policy makes new chats not private, or says the operator sees private things, the operator's list shows the chat's identifier, owner, state and times and nothing else, and the operator still cannot open it, read its history or see its folder. Whoever runs the machine itself is another matter: see *what can the operator of the server see*.
+By default the operator holds no right on a private chat: it is refused with `There is no such chat.` and is not told the chat exists. When the policy makes new chats not private, or says the operator sees private things, the operator's list shows the chat's identifier, owner, state and times and nothing else (no title either, because a title is drawn from what was said in the chat), and the operator still cannot open it, read its history or see its folder. Whoever runs the machine itself is another matter: see *what can the operator of the server see*.
 
 ## bots and hosted chats — what a bot may do with a chat, and what it may not, such as whether a bot with view scope can start a hosted chat
 
