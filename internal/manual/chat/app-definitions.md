@@ -497,4 +497,21 @@ The builder fixes mechanical issues in generated drafts before Check. It uses th
 
 ## What makes an app draft ready to try
 
-Check rejects numbered filler titles such as “Title example 2” in the fictional records. The builder uses the sample story for believable records and reuses those examples when an automation needs a matching record. A start-of-day brief shows the work queue and overview. It includes an agenda when the app has scheduled records.
+Check rejects numbered filler titles such as “Title example 2” in fictional records.
+For a new personal app with opening lists, the builder uses the same opening
+queries to check for at least 20 distinct named examples. It fills those
+queries from the app's fictional story and keeps references to related records.
+Work queues open beside the selected record's evidence and actions.
+A start-of-day brief includes the work and an agenda when the app has scheduled records.
+
+## How record triggers and manual commands supply automation inputs
+
+An automation started by a record trigger can read `$input.record`. A manual
+command supplies its own parameters through `$params`. When both entries need
+the same kind of record, a typed reference with default `$input.record.id`
+takes the triggering record automatically or a record ID supplied by the command.
+Check points to a reference if an arrival has no value for that input.
+
+The builder reports a Kit step example when a step's shape is unsupported.
+If a planned automation was never written, Build activity names it when the
+builder removes its plan entry and trigger.

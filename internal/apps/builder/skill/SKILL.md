@@ -21,8 +21,8 @@ Run one `codeaf app` command with JSON arguments at a time.
    records, and `app recipe` or `app markup` to compile screens.
 3. Read `app mark` for pinned feedback. Use `app claim` before editing its
    node, and preserve the rest of the screen and the existing node ids.
-4. Run `app check` with fictional sample rows. Use `app look` for layout and
-   binding findings when the desktop is available.
+4. Save named and linked fictional examples for opening views and automations.
+   The default Builder fills the opening queries. Run `app check` and `app look`.
 5. Say what the person can try. The person applies the checked version.
 
 The app command works with definitions and synthetic examples. Record

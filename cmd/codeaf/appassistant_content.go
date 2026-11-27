@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"maps"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -127,50 +125,9 @@ func appAssistantActions(app schema.App, def store.Definition) ([]appAssistantAc
 }
 
 func declaredViewIR(view schema.QueryIR, arguments map[string]json.RawMessage) (data.QueryIR, error) {
-	ir := data.QueryIR{Type: view.Type, Group: view.Group, Select: view.Select}
-	args := map[string]any{}
-	for key, raw := range arguments {
-		var value any
-		if json.Unmarshal(raw, &value) != nil || !appViewArgument(view.Args[key], value) {
-			return data.QueryIR{}, appwire.Errorf(appwire.CodeBadParams, "Invalid argument %q.", key)
-		}
-		args[key] = value
-	}
-	for _, filter := range view.Filter {
-		value := filter.Value
-		if ref, ok := value.(string); ok {
-			if key, ref := strings.CutPrefix(ref, "$args."); ref {
-				value, ok = args[key]
-				if !ok {
-					return data.QueryIR{}, appwire.Errorf(appwire.CodeBadParams, "Missing argument %q.", key)
-				}
-			}
-		}
-		op := filter.Op
-		neg := op == "!=" || op == "ne"
-		switch op {
-		case "=", "==", "!=", "eq", "ne":
-			op = ":"
-		case "lt":
-			op = "<"
-		case "lte":
-			op = "<="
-		case "gt":
-			op = ">"
-		case "gte":
-			op = ">="
-		}
-		if op == "has" {
-			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op})
-		} else {
-			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op, Value: fmt.Sprint(value), Neg: neg, Literal: true})
-		}
-	}
-	for _, agg := range view.Aggregate {
-		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: agg.Op, Field: agg.Field, As: agg.As})
-	}
-	if view.Window != nil && len(view.Window.OrderBy) == 1 {
-		ir.Sort = view.Window.OrderBy[0]
+	ir, err := data.DeclaredViewIR(view, arguments)
+	if err != nil {
+		return ir, appwire.Errorf(appwire.CodeBadParams, "%v", err)
 	}
 	return ir, nil
 }
@@ -214,27 +171,11 @@ func appAssistantViewSupported(view schema.QueryIR) bool {
 		return false
 	}
 	for _, kind := range view.Args {
-		if appViewArgumentType(kind) == nil {
+		if data.ViewArgumentType(kind) == nil {
 			return false
 		}
 	}
 	return true
-}
-
-func appViewArgumentType(kind string) reflect.Type {
-	switch kind {
-	case "text", "longtext", "enum", "date", "datetime", "ref", "email", "url", "phone", "person":
-		return reflect.TypeFor[string]()
-	case "number", "money":
-		return reflect.TypeFor[float64]()
-	case "bool":
-		return reflect.TypeFor[bool]()
-	}
-	return nil
-}
-
-func appViewArgument(kind string, value any) bool {
-	return value != nil && reflect.TypeOf(value) == appViewArgumentType(kind)
 }
 
 func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app schema.App, def store.Definition, intent appwire.AppActionIntent) (json.RawMessage, error) {
@@ -298,7 +239,7 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		}
 	}
 	for name, parameter := range action.Args {
-		if _, ok := args[name]; !ok && parameter.Default == nil {
+		if _, ok := args[name]; !ok && (parameter.Default == nil || parameter.FromTriggerRecord()) {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "Supply action argument %q.", name)
 		}
 	}
@@ -364,7 +305,7 @@ func appRunArgument(typ string, value any) bool {
 		}
 		return true
 	}
-	return appViewArgument(typ, value)
+	return data.ViewArgument(typ, value)
 }
 
 func marshalAppContent(result any, err error) (json.RawMessage, error) {

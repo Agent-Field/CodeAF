@@ -377,6 +377,12 @@ func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[s
 		if _, supplied := params[name]; param.Default == nil || supplied {
 			continue
 		}
+		if schema.RunParam(param).FromTriggerRecord() {
+			if record, ok := input["record"].(map[string]any); ok && record["id"] != nil {
+				p[name] = record["id"]
+			}
+			continue
+		}
 		p[name] = param.Default
 		if field := schema.TriggerRefsField(schema.RunParam(param)); field != "" {
 			record, _ := input["record"].(map[string]any)

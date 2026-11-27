@@ -31,10 +31,11 @@ type CompiledChange struct {
 }
 
 type authoring struct {
-	keepsSeparate func(string, string) bool
-	compiler      Compiler
-	validateTypes func([]byte) error
-	store         *store.Store
+	keepsSeparate    func(string, string) bool
+	compiler         Compiler
+	validateTypes    func([]byte) error
+	store            *store.Store
+	runShapeRejected map[string]bool
 }
 
 type fileCommand struct {
@@ -193,13 +194,30 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		switch verb {
 		case "set_run":
 			edit.Path = "runs/" + args.ID + ".yaml"
+			app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
+			if app.Kit == 2 {
+				if err := schema.CheckRunStepShapes(edit.Path, []byte(args.Text)); err != nil {
+					if a.runShapeRejected == nil {
+						return nil, err
+					}
+					if !a.runShapeRejected[args.ID] {
+						a.runShapeRejected[args.ID] = true
+						return nil, err
+					}
+					rewritten, rewriteErr := schema.RewriteRunStepAliases([]byte(args.Text))
+					if rewriteErr != nil || schema.CheckRunStepShapes(edit.Path, rewritten) != nil {
+						return nil, err
+					}
+					args.Text = string(rewritten)
+				}
+			}
 			run, err := schema.ParseRun([]byte(args.Text))
 			if err != nil {
 				return nil, err
 			}
 			for _, name := range slices.Sorted(maps.Keys(run.Params)) {
 				param := run.Params[name]
-				if param.Type != "ref" || param.Default == nil {
+				if param.Type != "ref" || param.Default == nil || param.FromTriggerRecord() {
 					continue
 				}
 				id, _ := param.Default.(string)

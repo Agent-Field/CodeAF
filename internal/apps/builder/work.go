@@ -76,8 +76,13 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			existing := externalTypes(catalog.Types, id, j.App)
 			source := j.Working.Files
 			var notes []schema.Problem
+			var depth *schema.Problem
 			if j.Package == nil {
-				files, notes, err = normalizeDraft(source, existing)
+				if j.App == "" && !t.CheckOnly {
+					files, notes, depth, err = completeGeneratedDraft(source, existing)
+				} else {
+					files, notes, err = normalizeDraft(source, existing)
+				}
 				if err == nil {
 					source = files
 				}
@@ -93,6 +98,9 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 					}
 				}
 				report.Warnings = append(report.Warnings, notes...)
+				if depth != nil && report.OK() {
+					report.Problems = append(report.Problems, *depth)
+				}
 			}
 		} else if err == nil {
 			files, reply, calls, err = s.ask(ctx, j, t, catalog, headless)
@@ -207,10 +215,19 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 				source = normalized
 			}
 		}
+		var depth *schema.Problem
+		if j.Package == nil && j.App == "" && t.Stage != Planning {
+			_, _ = composeWorkScreens(source, types)
+			depth, _ = completeLanding(source, types)
+		}
 		if report := j.checkReuse(source, catalog, types, !headless); !report.OK() {
 			return report
 		}
-		return check.Definition(definition(source), types)
+		report := check.Definition(definition(source), types)
+		if depth != nil && report.OK() {
+			report.Problems = append(report.Problems, *depth)
+		}
+		return report
 	}, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -312,7 +329,20 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		j.Presence = nil
 		const maxContinuations = 2
 		if t.Stage != Planning {
-			report = check.Definition(definition(files), externalTypes(catalog.Types, id, j.App))
+			existing := externalTypes(catalog.Types, id, j.App)
+			source := files
+			var notes []schema.Problem
+			if j.App == "" && j.Package == nil {
+				if complete, changes, _, compileErr := completeGeneratedDraft(files, existing); compileErr == nil {
+					source, notes = complete, changes
+				}
+			}
+			report = check.Definition(definition(source), existing)
+			if !report.OK() && (!advanced || t.Continuations >= maxContinuations) {
+				j.Working.Files = source
+				report.Warnings = append(report.Warnings, notes...)
+				j.describeDraft(catalog, headless, false)
+			}
 		}
 		if t.Stage != Planning && report.OK() {
 			// The last allowed call can finish the draft even if the model
