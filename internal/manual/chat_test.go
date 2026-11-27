@@ -3815,6 +3815,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"send Jira tickets to a repository with a routing rule", "factory"},
 		{"route inbox work to a pipeline and start it by itself", "factory"},
 		{"make a new pipeline for docs jobs", "factory"},
+		// Contract P4: These questions must find the factory's pipeline guidance.
+		{"my factory.yaml pipeline is ignored", "factory"},
+		{"jobs run the built-in steps instead of my pipeline", "factory"},
+		{"what is the issues key in factory.yaml", "factory"},
 		{"reuse a pipeline across repos", "factory"},
 		{"where are my pipelines kept", "factory"},
 		{"which pipeline wins, the repo's or the library's", "factory"},
@@ -5177,6 +5181,38 @@ func TestFactoryNoSizeQuestionsReachTheHowBigIsAJobSection(t *testing.T) {
 		}
 		if first := sections[0]; first.Page != "factory" || !strings.HasPrefix(first.Title, heading) {
 			t.Errorf("%q reaches %q but %s · %q ranks above it", asked, heading, first.Page, first.Title)
+		}
+	}
+}
+
+// Contract P4: The questions reach the section that explains the fallback
+// and quotes the job record lines.
+func TestFactoryIssuePipelineQuestionsReachTheFallbackSection(t *testing.T) {
+	for _, asked := range []string{
+		"my factory.yaml pipeline is ignored",
+		"jobs run the built-in steps instead of my pipeline",
+		"what is the issues key in factory.yaml",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, "my factory.yaml pipeline is ignored") {
+				continue
+			}
+			found = true
+			for _, want := range []string{
+				"pipeline:\n  issue: [plan, write]",
+				"`issues:`", "`size.issue`", "`model`", "`label`", "library",
+				"This repository has no .codeaf/factory.yaml on its main branch, so this job runs the built-in steps.",
+				".codeaf/factory.yaml has no pipeline: issue: list, so this job runs the built-in steps.",
+			} {
+				if !strings.Contains(section.Body, want) {
+					t.Errorf("section reached by %q is missing %q", asked, want)
+				}
+			}
+			break
+		}
+		if !found {
+			t.Errorf("%q does not reach the issue pipeline fallback section", asked)
 		}
 	}
 }

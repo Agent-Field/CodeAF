@@ -392,7 +392,7 @@ A joined runner runs every step with the model provider of its own codeaf home: 
 
 Add or remove a key on that home: the runner rereads its provider before each lease poll and updates this state within one poll, without restarting. The app's `keys.set` and `keys.remove` update its running factory runner the same way. Replacing a usable key keeps queued work available, and changing a key leaves a step already running alone.
 
-## from chat to the factory — factory_add, factory_recipe, factory_item and the manager's tools
+## from chat to the factory — hand an issue to the factory with factory_add, factory_recipe, factory_item and the manager's tools
 
 On a machine with a factory set up, a conversation can hand work over. Every one of these raises a card and writes nothing until you say yes; none of them starts a job. The terminal chat draws the `factory_item` card (answered as described below); see the limit in that section for the other two.
 
@@ -610,7 +610,7 @@ Only the factory's operator may save or stop a copy, as with the factory's own r
 
 ## make a new pipeline — a named pipeline of your own, a docs pipeline, rename or remove a pipeline
 
-A repository's `.codeaf/factory.yaml` holds one list of steps per pipeline under `pipeline:`. `issue` is the one a job runs when nothing picks another; any other name (`docs`, `quick`, `careful`) is a pipeline of your own that a person picks at Start or a routing rule names with `then.pipeline`.
+A repository's `.codeaf/factory.yaml` holds one list of steps per pipeline under `pipeline:`. Issue jobs use `issue` by default, with the factory's library or built-in steps filling in when the file omits it. A custom name such as `docs`, `quick` or `careful` names a pipeline a person can pick at Start or a routing rule can pick with `then.pipeline`.
 
 Making one is an edit of the file, previewed like adding a step (`factory.pipeline_preview` over the app protocol), so the result lands the same ways: a pull request, **Use on this factory**, or the factory's library. The app's repository editor has no New pipeline button of its own yet.
 
@@ -644,6 +644,26 @@ A pipeline's name (picked at Start, named by a routing rule, or a job's own `iss
 3. the built-in steps, which only name `issue`.
 
 **A repository pipeline of the same name wins** over the library's. For **Pick the pipeline**, the factory lists every pipeline a job on that repository can run from all of these (`factory.pipeline`, its `pipelines`), each saying where it comes from: `repo`, `factory_copy`, `library` or `built_in`, and which lower one it overrides. A name found nowhere is refused: Start answers `pipeline not found`, and a routing rule is refused with the job left unchanged. With no library, every repository runs exactly what it ran before.
+
+## my factory.yaml pipeline is ignored — jobs run the built-in steps
+
+To set the default steps for issue jobs, put `issue:` under `pipeline:` in `.codeaf/factory.yaml`.
+
+```yaml
+pipeline:
+  issue: [plan, write]
+```
+
+If the file leaves out that list, the default is the factory library's `issue` pipeline when it has one. Otherwise jobs run the built-in steps.
+
+A key such as `issues:` or `isue:` loads as a pipeline of your own, and the file's check points to its line and asks `` Did you mean `issue`? ``. A capitalized `Issue:` loads as the lowercase key and also gets a spelling suggestion.
+
+The separate `size.issue` setting controls sizing. Use `model` to have the model read the item's text, or `label` to use the sizing label on the item.
+
+When the job's pipeline is first decided, its record explains a fallback to the built-in steps with one of these lines.
+
+- `This repository has no .codeaf/factory.yaml on its main branch, so this job runs the built-in steps.`
+- `.codeaf/factory.yaml has no pipeline: issue: list, so this job runs the built-in steps.`
 
 ## my pipelines — kept on this Mac, versus the factory's library
 
@@ -1260,7 +1280,7 @@ The token from either way is kept in the system keychain, the place a pasted tok
 
 **Setup shows each repository's size** in megabytes, as GitHub quotes it, and checks a checkout folder before cloning: whether you can write there and how much free space its disk has, measured at the nearest folder that already exists. A file in the way says `~/notes.txt is a file, not a folder`, and a folder you may not open says `codeaf cannot look inside ~/private`. Checking makes no folder; on Windows it makes and removes one small check file to learn whether you can write there.
 
-## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
+## how big is a job — size of a job, complexity, the size: filter, why does my issue have no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
 

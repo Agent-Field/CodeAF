@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +11,85 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
+
+// Contract P1: A near-miss pipeline key gets a line-numbered suggestion and
+// still loads, while normal built-in and custom names pass the file's check.
+func TestPipelineKeyNearMissesAreReportedAndStillLoad(t *testing.T) {
+	for _, tt := range []struct {
+		key, suggest string
+	}{
+		{"issues", "issue"}, {"isue", "issue"}, {"issu", "issue"}, {"isssue", "issue"},
+		{"Issue", "issue"}, {"issxe", "issue"}, {"prs", "pr"}, {"cis", "ci"},
+		{"issue", ""}, {"pr", ""}, {"ci", ""}, {"docs", ""}, {"quick", ""}, {"careful", ""},
+		{"issue-docs", ""}, {"pri", ""},
+	} {
+		t.Run(tt.key, func(t *testing.T) {
+			f, err := pipeline.Parse("pipeline:\n  " + tt.key + ": [plan, build]\nsteps:\n  build: Build it.\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := f.Pipeline[factory.Kind(strings.ToLower(tt.key))]; !slices.Equal(got, []string{"plan", "build"}) {
+				t.Fatalf("pipeline %q steps = %v", tt.key, got)
+			}
+			if tt.suggest == "" {
+				if len(f.Problems) != 0 {
+					t.Fatalf("problems = %+v, want none", f.Problems)
+				}
+				return
+			}
+			if len(f.Problems) != 1 {
+				t.Fatalf("problems = %+v, want exactly one", f.Problems)
+			}
+			p := f.Problems[0]
+			if p.Line != 2 || p.Where != "pipeline."+tt.key || !strings.Contains(p.Why, "Did you mean `"+tt.suggest+"`?") {
+				t.Fatalf("problem = %+v", p)
+			}
+			if tt.key != "Issue" && !strings.Contains(p.Why, "pipeline of your own") {
+				t.Fatalf("problem doesn't explain how the name is read: %s", p.Why)
+			}
+		})
+	}
+}
+
+// Contract P2: Issue sizing works on its own without a pipeline key warning.
+func TestIssueSizeIsIndependentOfThePipelineKey(t *testing.T) {
+	const sizing = "size:\n  issue: label\n"
+	f, err := pipeline.Parse(sizing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Problems) != 0 || f.Size.Issue != "label" {
+		t.Fatalf("issue size = %q, problems = %+v", f.Size.Issue, f.Problems)
+	}
+	f, err = pipeline.Parse(sizing + "pipeline:\n  issues: [write, proof]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Size.Issue != "label" || len(f.Problems) != 1 || f.Problems[0].Where != "pipeline.issues" {
+		t.Fatalf("issue size = %q, want only a pipeline.issues Problem, got %+v", f.Size.Issue, f.Problems)
+	}
+}
+
+// Contract P1 and P5: The spelling Problem leaves old library pipelines
+// runnable and does not keep a factory copy after the same file lands on main.
+func TestPipelineSpellingProblemPreservesExistingLibraryAndCopyReads(t *testing.T) {
+	const yaml = "pipeline:\n  issues: [write, proof]\n"
+	f, err := pipeline.Parse(yaml)
+	if err != nil || len(f.Problems) != 1 {
+		t.Fatalf("parse = %+v, want one spelling Problem, err = %v", f.Problems, err)
+	}
+	lib, err := pipeline.ParseLibrary(yaml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pipeline.WithLibrary(pipeline.Defaults(), lib).Named("issues")) != 2 {
+		t.Fatal("the library's issues pipeline did not load")
+	}
+	f.From, f.Source = factory.FromMainBranch, pipeline.SourceFile
+	if !pipeline.MainSays(f, "# Only the layout changed.\npipeline: {issues: [write, proof]}\n") {
+		t.Fatal("the spelling Problem made main and the copy compare differently")
+	}
+}
 
 // specFile is the pipeline file from FACTORY-YAML.md, comments and all.
 const specFile = `

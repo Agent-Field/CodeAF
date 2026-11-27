@@ -105,14 +105,15 @@ type File struct {
 	// [WithFactoryCopy] read it in place of main's: Text is then the copy's,
 	// and From is factory.FromFactoryCopy. Nil for every other read.
 	Copy *factory.PipelineCopy
-	// Problems are lines that did not load. The rest of the file did.
+	// Problems describe lines that need attention, including names that load
+	// differently from how they were likely intended.
 	Problems []Problem
 
 	// library is the factory's pipeline library this read was given
 	// ([WithLibrary]); nil for none. It is never written into the file.
 	library *File
 
-	// set records which keys a personal file wrote. A repo file leaves it unused.
+	// set distinguishes keys a file wrote from defaults filled in by the reader.
 	set presence
 	// markdownAdapt preserves the older section-wide constraint until conversion
 	// is explicitly saved; YAML represents fixed steps rather than section modes.
@@ -248,11 +249,25 @@ func stepWord(s string, words []string) (string, bool) {
 	return "", false
 }
 
-// Problem is one thing in a pipeline file that did not load, and why.
+// Problem explains one line in a pipeline file that needs attention.
 type Problem struct {
 	Line  int
 	Where string
 	Why   string
+
+	// A spelling suggestion leaves the file's existing pipeline runnable.
+	spelling bool
+}
+
+// firstReadProblem keeps spelling advice from invalidating previously
+// readable settings when the factory reads or compares stored files.
+func (f File) firstReadProblem() (Problem, bool) {
+	for _, p := range f.Problems {
+		if !p.spelling {
+			return p, true
+		}
+	}
+	return Problem{}, false
 }
 
 func (p Problem) Error() string {

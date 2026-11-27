@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -24,7 +25,7 @@ type goAheadFloor struct {
 	refuse  bool
 }
 
-func newGoAheadFloor(t *testing.T) *goAheadFloor {
+func newGoAheadFloor(t *testing.T, files ...pipeline.File) *goAheadFloor {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -35,13 +36,17 @@ func newGoAheadFloor(t *testing.T) *goAheadFloor {
 	if f.history, err = record.Open(st, record.Options{Now: clock}); err != nil {
 		t.Fatal(err)
 	}
-	f.in = intake.New(st, intake.Options{Record: f.history, Now: clock, Launch: func(id int) error {
+	opts := intake.Options{Record: f.history, Now: clock, Launch: func(id int) error {
 		if f.refuse {
 			return errors.New("no runner")
 		}
 		f.started = append(f.started, id)
 		return st.Update(id, func(it *factory.Item) error { it.State = factory.StateQueued; return nil })
-	}})
+	}}
+	if len(files) > 0 {
+		opts.Load = func(string) (pipeline.File, error) { return files[0], nil }
+	}
+	f.in = intake.New(st, opts)
 	return f
 }
 
@@ -93,6 +98,33 @@ func (f *goAheadFloor) merge(id int) {
 }
 
 const ends = "2026-11-20T00:00:00Z"
+
+// Contract P3: A go-ahead start records the fallback when the repository has
+// no file and the issue runs the built-in steps.
+func TestGoAheadStartRecordsTheBuiltInIssuePipeline(t *testing.T) {
+	const want = "This repository has no .codeaf/factory.yaml on its main branch, so this job runs the built-in steps."
+	t.Setenv("HOME", t.TempDir())
+	file := pipeline.Defaults()
+	file.Source, file.From = pipeline.SourceDefaults, factory.FromDefault
+	f := newGoAheadFloor(t, file)
+	id := f.job(nil)
+	f.policy(false, factory.Allowance{ID: "ga_1", Jobs: []int{id}, CapUSD: 10, EndsAt: ends})
+	f.pass()
+	f.pass()
+	got := f.get(id)
+	if !got.PipelineDecided || got.State != factory.StateQueued {
+		t.Fatalf("pipeline decided = %v, state = %s", got.PipelineDecided, got.State)
+	}
+	count := 0
+	for _, ev := range got.Activity {
+		if ev.What == want {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("fallback note count = %d, activity = %+v", count, got.Activity)
+	}
+}
 
 // A COVERED JOB WAITS FOR WHAT IT WAITS ON TO MERGE, then starts by itself: it
 // becomes the policy owner's, holds its budget, and its start is recorded as
