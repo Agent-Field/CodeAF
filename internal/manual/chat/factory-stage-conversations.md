@@ -887,10 +887,10 @@ history, but is not an unresolved failure after that check passes on the repair.
 Unknown compound commands and skipped branches remain blocking; a passing subset
 does not erase a different failed check.
 
-Factory shell calls look for an installed Cargo executable before fitting their
-check wrapper. Existing PATH selection wins; otherwise they use `CARGO_HOME/bin`,
-or `~/.cargo/bin` when CARGO_HOME is unset. They do not install anything, source
-shell profiles or change the engine's own PATH.
+Factory shell calls look for Cargo before wrapping a check. Cargo lookup uses
+`PATH` first, then `CARGO_HOME/bin` or `~/.cargo/bin` when `CARGO_HOME` is unset.
+The lookup leaves the engine's PATH alone and runs without installing tools or
+loading shell profiles.
 
 After a repair claims completion and verification rejects it, the agent can
 correct the check in the same conversation. Three completion reports repeating

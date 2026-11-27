@@ -68,6 +68,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -104,6 +105,11 @@ const appReleaseWait = 5 * time.Second
 // seventy of [provider.ReceiptWait].
 const appQuitReceiptWait = 3 * time.Second
 
+// inheritLoginPath is a variable so the tests that run the app in this process
+// neither probe the developer's own login shell nor change the test binary's
+// PATH; testenv_test.go swaps it for a no-op.
+var inheritLoginPath = shell.InheritLoginPath
+
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
 	names := newAppFlags()
@@ -122,6 +128,10 @@ func runApp(args []string) error {
 		_, err = os.Stdout.Write(out)
 		return err
 	}
+	// THE ENGINE'S OWN PATH IS WHAT EVERY AGENT SHELL INHERITS. The desktop app
+	// starts this process with the GUI's minimal PATH, which omits Homebrew's
+	// folders, so it is extended here, once, before anything can start a shell.
+	inheritLoginPath()
 	restoreHome, homeErr := useAppHome(*homeFlag)
 	if homeErr != nil {
 		return homeErr

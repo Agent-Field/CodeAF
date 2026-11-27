@@ -31,6 +31,10 @@ import (
 // directory that is thrown away with the run. It answers a cleanup the caller
 // runs last.
 func isolateTestEnvironment() func() {
+	// The app's login-PATH probe would run the developer's own login shell and
+	// append to this binary's PATH, which a test that runs the app in process
+	// must never do (app.go).
+	inheritLoginPath = func() string { return os.Getenv("PATH") }
 	_, launchedByPlanWorker := os.LookupEnv("PLANDB_DB")
 	os.Unsetenv("PLANDB_DB")
 	if launchedByPlanWorker {

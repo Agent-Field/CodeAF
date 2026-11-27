@@ -15,6 +15,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
+const desktopHomebrewQuestion = "the agent says gh or brew is command not found in the desktop app, why is Homebrew missing from PATH"
+
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
 //
 // The chat manual is only worth having if a question asked in a person's own
@@ -3578,6 +3580,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{desktopHomebrewQuestion, "running-from-the-terminal"},
 		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
 		{"codeaf cell list --all", "running-from-the-terminal"},
 		{"a chat is running on my other computer how does home show it", "home"},
@@ -4143,6 +4146,16 @@ func TestNewRepositoryInAddReposHelp(t *testing.T) {
 			t.Errorf("%q did not reach %q", tc.question, tc.heading)
 		}
 	}
+}
+
+// Contract M1: The Homebrew question reaches the section that explains the login PATH probe.
+func TestTheDesktopAppHomebrewQuestionReachesLoginPathGuidance(t *testing.T) {
+	for _, section := range Chat().Search(desktopHomebrewQuestion, DefaultResults) {
+		if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, "$SHELL -l -c") {
+			return
+		}
+	}
+	t.Errorf("%q did not reach the desktop login PATH guidance", desktopHomebrewQuestion)
 }
 
 // #1351: a worker given a repository deleted its `.git` and the folder guard let

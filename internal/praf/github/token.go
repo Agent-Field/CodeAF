@@ -13,11 +13,10 @@ import (
 )
 
 // LookPath finds the gh program. It is a variable so a test can say gh is
-// absent without touching the machine's PATH. The default tries the inherited
-// PATH first, then the standard Homebrew install locations: an app launched from
-// the Dock or Finder inherits a minimal PATH that omits them, so a gh that is
-// installed would read as missing. No login shell is spawned and the process
-// PATH is never changed.
+// absent without touching the machine's PATH. App mode appends login PATH
+// directories at startup. This lookup tries the process PATH first and keeps
+// the standard Homebrew locations as a fallback for terminal entry points,
+// tests, and app starts where the login shell probe fails.
 var LookPath = lookGH
 
 // ghFallbackDirs are where Homebrew puts gh, in the order tried. A variable so
