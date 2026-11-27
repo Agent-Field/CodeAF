@@ -1064,6 +1064,24 @@ var OperatorEnvPins = []string{
 	// it back as a preference.
 	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
+	// The Microsoft 365 app sources read an application registration from
+	// the launch environment (cmd/codeaf's chatv3.go): its ID, its tenant,
+	// and whether transcript reading was granted. They name a registration
+	// the operator made in Entra, not a preference a person dials, so they
+	// are plumbing like the other addresses and credentials here.
+	"CODEAF_MICROSOFT_CLIENT_ID",
+	"CODEAF_MICROSOFT_TENANT_ID",
+	"CODEAF_MICROSOFT_TRANSCRIPTS",
+	// The app builder normally uses the profile's worker-tier model
+	// (cmd/codeaf's appbuild.go). This pin replaces it for one launch so the
+	// app evals can compare models without editing a profile; the person's
+	// own choice is the worker tier row, so this is plumbing.
+	"CODEAF_APPS_BUILDER_MODEL",
+	// An app's AI fields can be served by an AgentField reasoner instead of
+	// the profile's model (cmd/codeaf's appai_external.go). The value names a
+	// node and an operation on an AgentField control plane the operator runs;
+	// it is an address, so plumbing.
+	"CODEAF_APP_AGENTFIELD_REASONER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
