@@ -16,6 +16,12 @@ import (
 
 const RunMarkerEnv = "CODEAF_DELEGATE_RUN"
 
+// keepEnv=1 leaves a run's processes running when it ends, so a service the
+// request asked to be left up outlives the run (#2901).
+const keepEnv = "SENIOR_DEV_KEEP_SHELL_PROCESSES"
+
+func keepProcesses() bool { return os.Getenv(keepEnv) == "1" }
+
 // EnableSubreaper keeps an orphaned shell descendant with the engine after
 // the shell exits, so this run can kill and reap it before releasing its folder.
 func EnableSubreaper() error {
@@ -29,6 +35,9 @@ func EnableSubreaper() error {
 // run's child subreaper. Its process tree includes detached and environment-
 // sanitized shell children, but no process started by the chat or a sibling run.
 func CleanupDescendants() {
+	if keepProcesses() {
+		return
+	}
 	self := os.Getpid()
 	empty := 0
 	for pass := 0; pass < 40; pass++ {
@@ -57,6 +66,9 @@ func CleanupDescendants() {
 // after SIGKILL the engine cannot do that walk, so the private launch marker
 // can find only descendants that kept it in their environment.
 func CleanupRun(marker string) {
+	if keepProcesses() {
+		return
+	}
 	// A setsid wrapper can fork just as the engine exits. A short settle
 	// window lets its final exec inherit the marker before declaring it gone.
 	empty := 0
