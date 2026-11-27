@@ -27,19 +27,21 @@ const lapseAt = (p) => p.sign + p.windowMs;
 
 /**
  * Liveness reads and writes through small seams, so it holds no platform object:
- *   peers()      every open socket as { ws, device, events, send(text), sign, windowMs, lapsed, lapse() }, where
+ *   peers()      every open socket as { ws, device, events, serving, send(text), sign, windowMs, lapsed, lapse() }, where
  *                sign is the time of its last sign of life and lapse() flags it lapsed and closes it
  *   pending      a map of device -> due time, the devices whose offline frame is still to come
  *   arm(at)      wakes the object's alarm at `at` (or sooner)
  *   seen(d, at)  records when device d was last heard from (it moves no version)
+ *   rearmed()    runs after a rearm, so other deadlines that share the object's one alarm are set again with the sweep's
  */
 export class Liveness {
-  constructor({ peers, pending, arm, clock, seen = () => {} }) {
+  constructor({ peers, pending, arm, clock, seen = () => {}, rearmed = () => {} }) {
     this.peers = peers;
     this.pending = pending;
     this.arm = arm;
     this.clock = clock;
     this.seen = seen;
+    this.rearmed = rearmed;
     this.started = clock();
     this.observed = new Set();
   }
@@ -142,11 +144,20 @@ export class Liveness {
   rearm() {
     const at = this.nextSweep();
     if (at !== undefined) this.arm(at);
+    this.rearmed();
   }
 
   /** online is the set of devices that hold a live socket now. */
   online() {
     return new Set(this.#livePeers().map((p) => p.device));
+  }
+
+  /**
+   * serving is the devices that hold a live watch socket opened with serving=1: a runner is alive on them. It is the
+   * same rule as online, read at the moment of asking, so it writes nothing and clears itself when the socket closes or misses its beats.
+   */
+  serving() {
+    return new Set(this.#livePeers().filter((p) => p.serving).map((p) => p.device));
   }
 
   /** present includes computers inside the reconnect debounce, matching watch events. */

@@ -4,6 +4,7 @@
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
 import { signedUri } from './base.js';
+import { WATCHING_HEADER } from './clientwatch.js';
 import { MAX_FABRIC_BODY } from './fabric.js';
 import { approve, deny } from './link/decide.js';
 import { parseBeat } from './presence.js';
@@ -48,7 +49,8 @@ function watching(c) {
   const { searchParams } = new URL(c.request.url);
   const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
   const beat = parseBeat(searchParams.getAll('beat'));
-  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1', receipts: searchParams.get('receipts') === '1' });
+  // Only the exact value 1 marks the device as serving (a runner is alive on it).
+  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1', receipts: searchParams.get('receipts') === '1', serving: searchParams.get('serving') === '1' });
 }
 
 // The directory's version rides on a presence answer as on a list.
@@ -93,6 +95,10 @@ const DIR = { over: 'too_large' };
 const LINK = { over: 'too_big', limit: 16 << 10, write: true }; // an approve body: a device record, a cert and a grant of at most 4 KiB
 const FABRIC = { over: 'too_large', limit: MAX_FABRIC_BODY, fabric: true };
 const FABRIC_WRITE = { ...FABRIC, write: true };
+// `listing` marks a fabric route that needs every device of the identity, not only the caller and the one it names.
+// `wait` marks the one that may be held open, which the host must serve outside its coordination queue.
+const FABRIC_LISTING = { ...FABRIC, listing: true };
+const FABRIC_WAIT = { ...FABRIC, wait: true };
 const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
 
@@ -138,12 +144,49 @@ const ROUTES = [
     });
     return empty();
   }],
-  ['PUT', /^\/v1\/clients\/([^/]+)\/slots\/([^/]+)$/, FABRIC_WRITE, (c, [device, name]) => {
-    c.tenant.fabric.putSlot({ caller: c.device, targetDevice: device, name, body: c.body });
+  // The identity's signed statement admitting a phone. The phone need not be registered yet: approval enrolls first.
+  ['PUT', /^\/v1\/clients\/([^/]+)\/enroll$/, FABRIC_WRITE, async (c, [device]) => {
+    await c.tenant.fabric.putEnrollment({
+      caller: c.device,
+      targetDevice: device,
+      body: c.body,
+      identityHeader: c.request.headers.get('codeaf-identity'),
+    });
     return empty();
   }],
+  // There is no {device} in this path: every computer reads every enrollment.
+  ['GET', /^\/v1\/clients$/, FABRIC, (c) => json(c.tenant.fabric.listEnrollments({ caller: c.device, body: c.body }))],
+  ['GET', /^\/v1\/clients\/([^/]+)\/computers$/, FABRIC_LISTING, (c, [device]) => {
+    const { watchers } = c.tenant;
+    return json(
+      c.tenant.fabric.computers({ caller: c.device, targetDevice: device, body: c.body, online: watchers.online(), serving: watchers.serving() }),
+    );
+  }],
+  // The slot wait. It answers at once when something is newer or no wait was asked, and otherwise says to park: the
+  // host holds the request outside its queue and asks this route again, with the wait forced to zero, when it ends.
+  ['GET', /^\/v1\/clients\/([^/]+)\/slots$/, FABRIC_WAIT, (c, [device]) => {
+    const out = c.tenant.fabric.watchSlots({
+      caller: c.device,
+      targetDevice: device,
+      query: new URL(c.request.url).searchParams,
+      body: c.body,
+      seen: () => c.tenant.watchers?.clients?.touch(device),
+    });
+    if (out.changes) return json(out.changes);
+    const seconds = c.reentered ? 0 : out.seconds;
+    return seconds === 0 ? empty() : { park: { device, since: out.since, seconds } };
+  }],
+  ['PUT', /^\/v1\/clients\/([^/]+)\/slots\/([^/]+)$/, FABRIC_WRITE, (c, [device, name]) => {
+    c.tenant.fabric.putSlot({ caller: c.device, targetDevice: device, name, body: c.body });
+    // Waits parked for this phone end here and re-read; the header tells the writing computer whether the phone is looking.
+    const clients = c.tenant.watchers?.clients;
+    clients?.wake(device);
+    const reply = empty();
+    if (clients?.headerOn(device)) reply.headers.set(WATCHING_HEADER, '1');
+    return reply;
+  }],
   ['GET', /^\/v1\/clients\/([^/]+)\/slots\/([^/]+)$/, FABRIC, (c, [device, name]) =>
-    json(c.tenant.fabric.getSlot({ caller: c.device, targetDevice: device, name, body: c.body })),
+    json(c.tenant.fabric.getSlot({ caller: c.device, targetDevice: device, name, body: c.body, seen: () => c.tenant.watchers?.clients?.touch(device) })),
   ],
   ['POST', /^\/v1\/clients\/([^/]+)\/queue$/, FABRIC_WRITE, (c, [device]) => {
     c.tenant.fabric.appendQueue({
@@ -193,11 +236,11 @@ const ROUTES = [
   ['POST', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotate(c.device, object(c.body)))],
 ];
 
-/** matchRoute answers {limit, over, frames, write, fabric, handler, args} for a request, or throws not_found. */
+/** matchRoute answers {limit, over, frames, write, fabric, listing, wait, handler, args} for a request, or throws not_found. */
 export function matchRoute(method, path) {
-  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false, fabric = false }, handler] of ROUTES) {
+  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false, fabric = false, listing = false, wait = false }, handler] of ROUTES) {
     const hit = m === method && pattern.exec(path);
-    if (hit) return { limit, over, frames, write, fabric, handler, args: hit.slice(1) };
+    if (hit) return { limit, over, frames, write, fabric, listing, wait, handler, args: hit.slice(1) };
   }
   throw notFound();
 }

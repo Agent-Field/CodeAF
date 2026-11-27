@@ -3,6 +3,7 @@
 // quiet holds no memory and bills no time, and it sets no timer and opens no connection for any socket.
 // A socket carries one number, the directory's version, and never a record. The list of sockets is the
 // platform's own (ctx.getWebSockets survives hibernation), so the object keeps none of its own.
+import { ClientWatch } from './clientwatch.js';
 import { Liveness } from './liveness.js';
 import { PRESENCE, windowMs } from './limits.js';
 import { vouchedUntil } from './vouch.js';
@@ -18,7 +19,7 @@ export const CLOSE_SILENT = 4408;
 const ANSWER_HEADERS = { 'Codeaf-Vouch': '1', 'Codeaf-Presence': '1' };
 
 /** What a socket carries through hibernation; an attachment from before a field existed reads as its default. */
-const FRESH = { receipts: false, at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
+const FRESH = { receipts: false, at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false, serving: false };
 const watchSockets=ctx=>ctx.getWebSockets().filter(ws=>ws.deserializeAttachment?.()?.clusterPeer!==true);
 const attachmentOf = (ws) => ({ ...FRESH, ...ws.deserializeAttachment() });
 
@@ -79,6 +80,16 @@ export class Watchers {
       arm,
       clock: Date.now,
       seen,
+      // The off edge of a watching phone shares the object's one alarm, which a sweep or a sleep may clear.
+      rearmed: () => this.clients.rearm(),
+    });
+    // What the phones of the identity are doing (waiting on slots, reading them), told to the event sockets as `watching`.
+    this.clients = new ClientWatch({
+      clock: Date.now,
+      kv: () => ctx.storage.kv,
+      tell: (frame) => this.liveness.tell(frame),
+      arm,
+      listening: () => this.#peers().some((p) => p.events),
     });
     // The platform answers the client's keepalive itself, without running this object, so it never wakes.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -89,15 +100,19 @@ export class Watchers {
    * The holds the socket names and the time it was accepted travel in its attachment, which the platform keeps
    * with the socket through hibernation, so vouching for a lease costs no storage write.
    * A socket opened with `events` also hears the event frames (presence, joined, revoked) and, at once, who is online;
-   * it is also the viewer that makes the presence sweep worth arming. `beat` is the ping period the
-   * client declared, from which the socket's window follows.
+   * it is also the viewer that makes the presence sweep worth arming, and it hears at once which phones are watching.
+   * `beat` is the ping period the client declared, from which the socket's window follows. `serving` marks the device
+   * as serving while this socket is live: a runner holds it.
    */
-  accept(device, version, now, { holds, beat, events = false, receipts = false, certificate = undefined }) {
+  accept(device, version, now, { holds, beat, events = false, receipts = false, certificate = undefined, serving = false }) {
     if (watchSockets(this.ctx).length >= this.cap) throw new Wire('too_many_watchers', 429);
     const { client, server } = acceptHibernatingSocket(this.ctx, [device],
-      { ...FRESH, at: now, holds, events, beat, receipts, ...(certificate?{certificate}:{}) });
+      { ...FRESH, at: now, holds, events, beat, receipts, serving: serving === true, ...(certificate?{certificate}:{}) });
     server.send(frame(version));
-    if (events) for (const text of this.liveness.snapshot(device)) server.send(text);
+    if (events) {
+      for (const text of this.liveness.snapshot(device)) server.send(text);
+      for (const text of this.clients.snapshot()) server.send(text);
+    }
     this.liveness.opened(device);
     this.liveness.rearm(); // any new live socket may lapse before the sweep that is set, but only a viewer makes a sweep worth setting
     return new Response(null, { status: 101, webSocket: client, headers: ANSWER_HEADERS });
@@ -147,6 +162,7 @@ export class Watchers {
       ws,
       device: this.ctx.getTags(ws)[0],
       events: att.events === true,
+      serving: att.serving === true,
       sign: signOfLife(this.ctx, ws, att.at, Date.now()),
       windowMs: windowMs(att.beat),
       lapsed: att.lapsed,
@@ -169,11 +185,17 @@ export class Watchers {
   /** expire sends the offline frames that are due and sweeps the sockets that went silent; the object's alarm calls it. */
   expire() {
     this.liveness.expire();
+    this.clients.expire();
   }
 
   /** online is the set of devices that hold a live watch socket now: one inside its window. */
   online() {
     return this.liveness.online();
+  }
+
+  /** serving is the devices a runner is alive on: those with a live socket opened with serving=1. */
+  serving() {
+    return this.liveness.serving();
   }
 
   /** present agrees with presence events while a computer reconnects. */
