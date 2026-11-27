@@ -478,6 +478,7 @@ func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusBadGateway, hostedUnreachable)
 			return
 		}
+		row.hideUnreadTitle()
 		h.write(w, http.StatusOK, row)
 		return
 	}
@@ -688,6 +689,12 @@ func (h *Handler) hostedWire(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Header = keep
 			pr.Out.Header.Set("Authorization", "Bearer "+hs.secret)
 			pr.Out.Header.Set("X-Codeaf-Person", person)
+			// The proxy never reads a frame, so the chats' host is asked to name this window for the others: the person,
+			// whoever the window's own computer says it is. See hostedWindowHeader.
+			pr.Out.Header.Set(hostedWindowHeader, hostedGuestLabel(v))
+			if v.Agent == nil {
+				pr.Out.Header.Set(hostedWindowDeviceHeader, hostedWindowDeviceOwn)
+			}
 		},
 		FlushInterval: -1,
 		Transport:     hs.transport,

@@ -43,6 +43,8 @@ func TestHostedChatQuestionsReachTheirPage(t *testing.T) {
 		{"how do I let people who can answer allow a tool call in a shared chat in the organization policy", []string{"approvals_by", "allow one command once"}},
 		{"can a guest with view start my hosted chat when it is not running with codeaf chat --org --once", []string{"wake_by", "already open in a different interactive or headless mode"}},
 		{"This chat is not running. Only its owner can start it.", []string{"wake_by", "Ask them to open it."}},
+		{"does the organization's chat list show the title of each chat", []string{"each under its title once the chat has one", "has none in its row"}},
+		{"what do the other windows read when my phone is typing in an organization chat", []string{"typing from abir's phone now", "never stands alone"}},
 		{"how do I stop other people from starting a hosted chat that is not running in the organization policy", []string{"wake_by", "Starting it takes permission to send messages in it"}},
 	}
 	for _, ask := range asked {

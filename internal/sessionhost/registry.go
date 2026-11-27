@@ -20,8 +20,11 @@ type sessionRow struct {
 	UID        int       `json:"uid"`
 	Created    time.Time `json:"created"`
 	LastActive time.Time `json:"last_active"`
-	Doomed     bool      `json:"doomed,omitempty"`
-	Missing    bool      `json:"missing,omitempty"`
+	// Title is the name the chat's engine last stated for it (title_linux.go), kept here so a list can
+	// show it for a chat that is not running. Empty until the chat has one, and never sent as empty.
+	Title   string `json:"title,omitempty"`
+	Doomed  bool   `json:"doomed,omitempty"`
+	Missing bool   `json:"missing,omitempty"`
 }
 
 type quarantineRow struct {

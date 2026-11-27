@@ -166,6 +166,10 @@ type hostedStatusFields struct {
 	State      string `json:"state"`
 	Created    string `json:"created"`
 	LastActive string `json:"last_active"`
+	// Title is the name the chat gave itself, as the chats' host last saw it, and it is left out of the row until the chat
+	// has one (a client that ignores the field reads the row as before). The host keeps it from the chat's own wire
+	// (internal/sessionhost's title_linux.go), so listing never starts a chat that is not running to ask.
+	Title string `json:"title,omitempty"`
 }
 
 type hostedSharedRow struct {
@@ -200,6 +204,15 @@ func hostedWithVerbs(row []byte, verbs []string) []byte {
 		return row
 	}
 	return out
+}
+
+// hideUnreadTitle takes the title off a row whose reader does not hold the chat itself. A title is the chat's own words,
+// drawn from what was said in it, so it travels only with a row that opens the chat (access "shared"): an operator's
+// metadata row says who owns a chat and when it was used, and never what it is about.
+func (r *hostedSharedRow) hideUnreadTitle() {
+	if r.Access != "shared" {
+		r.Title = ""
+	}
 }
 
 // hostedMetadata shows an operator-only row without a role because an operator's metadata access does not open the chat.
@@ -302,6 +315,7 @@ func (h *Handler) hostedSharedList(w http.ResponseWriter, r *http.Request, v Vie
 		for _, status := range rows {
 			if row, ok := owners[owner][status.ID]; ok {
 				row.hostedStatusFields = status
+				row.hideUnreadTitle()
 				shared = append(shared, row)
 			}
 		}

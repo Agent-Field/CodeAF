@@ -118,6 +118,9 @@ type createdChat struct {
 type chatStatus struct {
 	createdChat
 	LastActive time.Time `json:"last_active"`
+	// Title is the name the chat gave itself, left out until it has one. Reading it never starts the
+	// chat: it is what the last window to see the chat saw (title_linux.go).
+	Title string `json:"title,omitempty"`
 	// The fingerprint lets the organization verify its issued credential
 	// is current without this host ever sending back the credential itself.
 	ModelBearer string `json:"model_bearer"`
@@ -136,6 +139,7 @@ func (s *supervisor) status(row sessionRow, live processTable) chatStatus {
 	return chatStatus{
 		createdChat: createdChat{ID: row.ID, State: state, Created: row.Created, Warning: s.warning()},
 		LastActive:  row.LastActive,
+		Title:       row.Title,
 		ModelBearer: fingerprint,
 	}
 }
