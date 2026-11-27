@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The hosted chat list carries each chat's title, and an owner's windows are named by the person
-pr: 0
+pr: 3000
 surface: [chat, remote, docs]
 invalidates:
   - "Was true: a row of the hosted chat list (`GET /v1/hosted/sessions`) had an id, a state, two times and the verbs you hold, but no name, so the phone and the desktop listed every organization chat as untitled until it was opened, and opening a chat that was not running started it. Is true now: each row, your own and shared, carries `title` (the name the chat gave itself) when the chat has one, kept by the chats' host from the chat's own windows, so listing starts nothing; a chat with no title yet has no `title` field at all."
