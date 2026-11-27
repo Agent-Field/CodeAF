@@ -112,6 +112,8 @@ type ProcessChecklistStep struct {
 	ID       string             `json:"id"`
 	Label    string             `json:"label"`
 	Done     bool               `json:"done"`
+	Who      string             `json:"who,omitempty"`
+	At       string             `json:"at,omitempty"`
 	Evidence string             `json:"evidence,omitempty"`
 	Attached *ChecklistEvidence `json:"attached,omitempty"`
 }

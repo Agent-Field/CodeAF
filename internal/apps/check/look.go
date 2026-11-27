@@ -56,7 +56,7 @@ func LookFindings(def schema.Definition, types schema.TypeSet) []schema.Problem 
 				}
 			case "RecordList":
 				views := words(n.Props["views"])
-				hasVisual = hasVisual || n.Bind != nil && (slices.Contains(views, "timeline") || slices.Contains(views, "calendar"))
+				hasVisual = hasVisual || n.Bind != nil && (slices.Contains(views, "timeline") || slices.Contains(views, "calendar") || slices.Contains(views, "agenda"))
 				if search, _ := n.Props["search"].(bool); n.Props["search"] == nil || search {
 					searches[n.ID]++
 				}

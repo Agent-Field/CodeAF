@@ -8,6 +8,10 @@ import (
 // ScreenSlots supplies the parts of the job that the compiler cannot infer.
 // The archetype owns the resulting layout and the references between its parts.
 type ScreenSlots struct {
+	Agenda      *ScreenAgenda     `json:"agenda,omitempty"`
+	Reason      string            `json:"reason,omitempty"`
+	Owner       string            `json:"owner,omitempty"`
+	Due         string            `json:"due,omitempty"`
 	Summary     string            `json:"summary,omitempty"`
 	State       string            `json:"state,omitempty"`
 	Start       string            `json:"start,omitempty"`
@@ -30,6 +34,12 @@ type ReplyMacro struct {
 	Text  string `json:"text"`
 }
 
+type ScreenAgenda struct {
+	Record    string `json:"record"`
+	Start     string `json:"start"`
+	Attendees string `json:"attendees,omitempty"`
+}
+
 type ScreenCollection struct {
 	Record string           `json:"record"`
 	Title  string           `json:"title"`
@@ -39,22 +49,25 @@ type ScreenCollection struct {
 }
 
 type ScreenMetric struct {
-	Format string           `json:"format,omitempty"`
-	Target *float64         `json:"target,omitempty"`
-	Limit  *float64         `json:"limit,omitempty"`
-	Label  string           `json:"label"`
-	Op     string           `json:"op"`
-	Field  string           `json:"field,omitempty"`
-	Where  []QueryPredicate `json:"where,omitempty"`
+	Context string           `json:"context,omitempty"`
+	Format  string           `json:"format,omitempty"`
+	Target  *float64         `json:"target,omitempty"`
+	Limit   *float64         `json:"limit,omitempty"`
+	Label   string           `json:"label"`
+	Op      string           `json:"op"`
+	Field   string           `json:"field,omitempty"`
+	Where   []QueryPredicate `json:"where,omitempty"`
 }
 
 type ScreenVisual struct {
-	Kind    string `json:"kind"`
-	Title   string `json:"title"`
-	Group   string `json:"group,omitempty"`
-	Value   string `json:"value,omitempty"`
-	Content string `json:"content,omitempty"`
-	Field   string `json:"field,omitempty"`
+	Highlight string `json:"highlight,omitempty"`
+	Scale     string `json:"scale,omitempty"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	Group     string `json:"group,omitempty"`
+	Value     string `json:"value,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Field     string `json:"field,omitempty"`
 }
 
 func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
@@ -161,6 +174,33 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			return nil, err
 		}
 	}
+	metrics := func() ([]*Node, error) {
+		var parts []*Node
+		for i, metric := range slots.Metrics {
+			if strings.TrimSpace(metric.Label) == "" {
+				return nil, fmt.Errorf("give every dashboard metric a label")
+			}
+			key := fmt.Sprintf("metric-%d", i+1)
+			props := map[string]any{"kind": "metric", "title": metric.Label}
+			if metric.Context != "" {
+				props["context"] = metric.Context
+			}
+			if metric.Format != "" {
+				props["format"] = metric.Format
+			}
+			if metric.Target != nil {
+				props["target"] = *metric.Target
+			}
+			if metric.Limit != nil {
+				props["limit"] = *metric.Limit
+			}
+			n := node(key, "Chart", metric.Label, props)
+			n.Bind = &Bind{Records: r.Record, View: key}
+			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
+			parts = append(parts, n)
+		}
+		return parts, nil
+	}
 	var pair *Node
 	switch r.As {
 	case "queue-detail", "board-detail", "inbox-thread", "brief", "agenda":
@@ -175,6 +215,33 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			mode = "timeline"
 		}
 		queue := collection("work", view, mode, true)
+		if r.As == "brief" {
+			queue.Label = "Needs you"
+			if slots.Owner != "" {
+				field := fields[slots.Owner]
+				if field.Masked || (field.Type != "person" && field.Type != "ref" && field.Type != "text") {
+					return nil, fmt.Errorf("choose a readable person, reference or text field for the owner slot")
+				}
+				queue.Props["owner"] = slots.Owner
+			}
+			if slots.Due != "" {
+				field := fields[slots.Due]
+				if field.Masked || (field.Type != "date" && field.Type != "datetime") {
+					return nil, fmt.Errorf("choose a readable date for the due slot")
+				}
+				queue.Props["due"] = slots.Due
+			}
+			reason := slots.Reason
+			if reason == "" && fields["reason"].Type != "" {
+				reason = "reason"
+			}
+			if reason != "" {
+				if field := fields[reason]; field.Masked || (field.Type != "text" && field.Type != "longtext") {
+					return nil, fmt.Errorf("choose a readable text field for the reason slot")
+				}
+				queue.Props["reason"] = reason
+			}
+		}
 		if mode == "board" {
 			queue.Props["board_by"] = state
 		} else if mode == "timeline" {
@@ -211,7 +278,7 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			}
 			details = append(details, thread)
 		}
-		if visual != nil {
+		if visual != nil && (r.As != "brief" || visual.Bind.File != "") {
 			details = append(details, visual)
 		}
 		panel := node("detail", "Panel", "Details", map[string]any{"title": "Details"}, details...)
@@ -233,48 +300,67 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		}
 		hero := node("summary", "Text", "", map[string]any{"text": summary, "size": "large", "tone": "primary"})
 		var supporting []*Node
-		if slots.Start != "" {
-			timeline := collection("agenda", ScreenCollection{Record: r.Record, Title: "Agenda", Filter: slots.Filter}, "timeline", false)
-			if err := schedule(timeline); err != nil {
-				return nil, err
+		agenda := slots.Agenda
+		if agenda == nil && slots.Start != "" {
+			agenda = &ScreenAgenda{Record: r.Record, Start: slots.Start}
+		}
+		if agenda != nil {
+			agendaFields, _ := c.typeFields(agenda.Record)
+			start := agendaFields[agenda.Start]
+			if start.Masked || (start.Type != "date" && start.Type != "datetime") {
+				return nil, fmt.Errorf("choose a readable date for the day agenda")
 			}
-			supporting = append(supporting, timeline)
+			dates := map[string]any{"start": agenda.Start}
+			if agenda.Attendees != "" {
+				people := agendaFields[agenda.Attendees]
+				if people.Type == "" || people.Masked {
+					return nil, fmt.Errorf("choose a readable attendee field for the day agenda")
+				}
+				dates["attendees"] = agenda.Attendees
+			}
+			today := collection("agenda", ScreenCollection{Record: agenda.Record, Title: "Today’s agenda", Sort: agenda.Start}, "agenda", false)
+			today.Props["search"] = false
+			today.Props["viewOptions"] = map[string]any{"agenda": dates}
+			supporting = append(supporting, today)
 		}
 		if changed := slots.Changed; changed != nil {
 			recent := collection("changed", *changed, "list", false)
 			recent.Props["search"] = false
-			supporting = append(supporting, recent)
+			label := changed.Title
+			if label == "" {
+				label = "What changed"
+			}
+			supporting = append(supporting, node("changed-title", "Text", "", map[string]any{"text": label, "role": "section", "tone": "primary"}), recent)
 		}
-		work := pair
+		needs := stack("needs-attention", node("needs-title", "Text", "", map[string]any{"text": "Needs you", "role": "section", "tone": "primary"}), pair)
+		work := needs
 		if len(supporting) != 0 {
-			work = node("brief-work", "Row", "", map[string]any{"wrap": true, "gap": 2},
-				stack("needs-attention", pair), stack("around-the-queue", supporting...))
+			work = node("brief-work", "Row", "", map[string]any{"workspace": "brief", "gap": 2},
+				needs, stack("around-the-queue", supporting...))
 		}
-		s.Body = stack("brief", hero, work)
+		parts, err := metrics()
+		if err != nil {
+			return nil, err
+		}
+		var overview []*Node
+		if len(parts) != 0 {
+			overview = append(overview, node("brief-counts", "Row", "", map[string]any{"gap": 2}, parts...))
+		}
+		if visual != nil && visual.Bind.File == "" {
+			overview = append(overview, visual)
+		}
+		sections := []*Node{hero}
+		if len(overview) != 0 {
+			sections = append(sections, node("brief-overview", "Row", "", map[string]any{"workspace": "brief-overview", "gap": 2}, overview...))
+		}
+		s.Body = stack("brief", append(sections, work)...)
 	case "dashboard":
 		if len(slots.Metrics) == 0 || visual == nil {
 			return nil, fmt.Errorf("choose at least one metric and a visual for the dashboard")
 		}
-		var parts []*Node
-		for i, metric := range slots.Metrics {
-			if strings.TrimSpace(metric.Label) == "" {
-				return nil, fmt.Errorf("give every dashboard metric a label")
-			}
-			key := fmt.Sprintf("metric-%d", i+1)
-			props := map[string]any{"kind": "metric", "title": metric.Label}
-			if metric.Format != "" {
-				props["format"] = metric.Format
-			}
-			if metric.Target != nil {
-				props["target"] = *metric.Target
-			}
-			if metric.Limit != nil {
-				props["limit"] = *metric.Limit
-			}
-			n := node(key, "Chart", metric.Label, props)
-			n.Bind = &Bind{Records: r.Record, View: key}
-			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
-			parts = append(parts, n)
+		parts, err := metrics()
+		if err != nil {
+			return nil, err
 		}
 		view.Title = "Exceptions"
 		s.Body = stack("dashboard", node("measures", "Row", "", map[string]any{"wrap": true}, parts...), visual, collection("exceptions", view, "list", false))
@@ -314,6 +400,12 @@ func (c *checker) screenVisual(s *Screen, record, selected string, v ScreenVisua
 		n.Part = "Chart"
 		n.Bind = &Bind{Records: record, View: n.ID}
 		n.Props = map[string]any{"kind": v.Kind, "x": v.Group, "title": v.Title}
+		if v.Highlight != "" {
+			n.Props["highlight"] = v.Highlight
+		}
+		if v.Scale != "" {
+			n.Props["scale"] = v.Scale
+		}
 		if v.Value != "" {
 			n.Props["y"] = v.Value
 		}
