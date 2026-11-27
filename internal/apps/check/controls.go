@@ -14,28 +14,12 @@ import (
 func missingControls(def schema.Definition, types schema.TypeSet) []schema.Problem {
 	app, _ := schema.ParseApp(def.Files[schema.AppFile])
 	plan, _ := schema.ParsePlan(def.Files[schema.PlanFile])
-	controls := screenControls{
-		commands: map[string]bool{}, creates: map[string]bool{}, runs: map[string]bool{},
-		app: app, types: types, collections: map[string]bool{},
-	}
-	for _, file := range def.ScreenFiles() {
-		screen, _ := schema.ParseScreen(def.Files[file])
-		controls.scan(file, screen.Nav, screen.Body)
-	}
+	controls := readScreenControls(def, types, app)
 	issues := controls.issues
 	exposed := map[string]bool{}
 	directRuns := maps.Clone(controls.runs)
 	for _, command := range app.Commands {
-		visible := controls.commands[command.ID] || (command.Run != "" && directRuns[command.Run]) ||
-			(app.Kit == 2 && command.For != "" && controls.collections[command.For])
-		// Inline actions expose a command only when they perform its same write or action sequence.
-		for _, actions := range controls.actions {
-			if len(command.Do) > 0 && reflect.DeepEqual(command.Do, actions) {
-				visible = true
-				break
-			}
-		}
-		if visible {
+		if controls.exposes(command, directRuns) {
 			exposed[command.ID] = true
 			controls.collect(command.Do)
 			if command.Run != "" {
@@ -65,6 +49,39 @@ func missingControls(def schema.Definition, types schema.TypeSet) []schema.Probl
 			fmt.Sprintf("Add an %q button or a create form for %s on a screen.", "Add "+strings.ToLower(label), line.ID)))
 	}
 	return issues
+}
+
+// UnplacedCommands lists commands without a visible entry in the compiled tree.
+func UnplacedCommands(def schema.Definition) []schema.Command {
+	app, _ := schema.ParseApp(def.Files[schema.AppFile])
+	controls := readScreenControls(def, nil, app)
+	var out []schema.Command
+	for _, command := range app.Commands {
+		if !controls.exposes(command, controls.runs) {
+			out = append(out, command)
+		}
+	}
+	return out
+}
+
+func readScreenControls(def schema.Definition, types schema.TypeSet, app schema.App) screenControls {
+	controls := screenControls{
+		commands: map[string]bool{}, creates: map[string]bool{}, runs: map[string]bool{},
+		app: app, types: types, collections: map[string]bool{},
+	}
+	for _, file := range def.ScreenFiles() {
+		screen, _ := schema.ParseScreen(def.Files[file])
+		controls.scan(file, screen.Nav, screen.Body)
+	}
+	return controls
+}
+
+func (c screenControls) exposes(command schema.Command, directRuns map[string]bool) bool {
+	return c.commands[command.ID] || (command.Run != "" && directRuns[command.Run]) ||
+		(c.app.Kit == 2 && command.For != "" && c.collections[command.For]) ||
+		(len(command.Do) > 0 && slices.ContainsFunc(c.actions, func(actions []schema.Action) bool {
+			return reflect.DeepEqual(command.Do, actions)
+		}))
 }
 
 type screenControls struct {

@@ -1,0 +1,179 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "meeting": "rw",
+        "mention": "rw",
+        "message": "rw",
+        "promise": "rw"
+      }
+    },
+    "id": "01M8D5GW7GJ09M97VHGYDJ3NR4",
+    "kit": 2,
+    "name": "Daily Brief",
+    "records": {
+      "meeting": {
+        "fields": {
+          "attendees": {
+            "type": "text"
+          },
+          "end": {
+            "type": "datetime"
+          },
+          "notes": {
+            "type": "text"
+          },
+          "source": {
+            "type": "text"
+          },
+          "start": {
+            "type": "datetime"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "title"
+      },
+      "mention": {
+        "fields": {
+          "channel": {
+            "type": "text"
+          },
+          "from": {
+            "type": "text"
+          },
+          "received": {
+            "type": "datetime"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Needs me",
+              "Handled"
+            ],
+            "required": true,
+            "default": "Needs me"
+          },
+          "text": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "text"
+      },
+      "message": {
+        "fields": {
+          "from": {
+            "type": "text"
+          },
+          "received": {
+            "type": "datetime"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Needs me",
+              "Handled"
+            ],
+            "required": true,
+            "default": "Needs me"
+          },
+          "subject": {
+            "type": "text",
+            "required": true
+          },
+          "summary": {
+            "type": "text"
+          }
+        },
+        "title": "subject"
+      },
+      "promise": {
+        "fields": {
+          "due": {
+            "type": "date"
+          },
+          "made_in": {
+            "type": "enum",
+            "values": [
+              "Sent mail",
+              "Meeting notes"
+            ],
+            "required": true,
+            "default": "Sent mail"
+          },
+          "notes": {
+            "type": "text"
+          },
+          "promise": {
+            "type": "text",
+            "required": true
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Open",
+              "Done"
+            ],
+            "required": true,
+            "default": "Open"
+          },
+          "to": {
+            "type": "text"
+          }
+        },
+        "lifecycle": {
+          "field": "status",
+          "initial": "Open",
+          "transitions": [
+            {
+              "id": "fulfill",
+              "from": [
+                "Open"
+              ],
+              "to": "Done"
+            }
+          ]
+        },
+        "title": "promise"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Build my daily brief with meetings, messages that need me, and Slack mentions. Track promises from my sent mail and meeting notes, and give me a weekly update draft.",
+    "data": [
+      {
+        "id": "meeting",
+        "line": "Today meetings with their notes and attendees",
+        "create": true
+      },
+      {
+        "id": "message",
+        "line": "Messages that need me, with whether I have handled them"
+      },
+      {
+        "id": "mention",
+        "line": "Slack mentions that need me"
+      },
+      {
+        "id": "promise",
+        "line": "Promises made in sent mail and meeting notes, with who I owe and due date",
+        "create": true
+      }
+    ],
+    "screens": [
+      {
+        "id": "brief",
+        "line": "Today priorities: summary, ranked attention list, day agenda, recent changes"
+      },
+      {
+        "id": "promises",
+        "line": "Promises I owe, grouped by status and source"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: app.json: Add a control for \\\"Mark message handled\\\" (command mark-message-handled) on a screen. app.json: Add a control for \\\"Mark Slack mention handled\\\" (command mark-slack-mention-handled) on a screen.\"}"
+}

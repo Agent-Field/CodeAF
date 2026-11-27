@@ -1,0 +1,143 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "item": "rw",
+        "note": "rw"
+      }
+    },
+    "id": "01M8D5JEY0NH3G6HPKMTFAT5DW",
+    "kit": 2,
+    "name": "Test",
+    "records": {
+      "item": {
+        "fields": {
+          "due_at": {
+            "type": "datetime"
+          },
+          "kind": {
+            "type": "enum",
+            "values": [
+              "PR review",
+              "Issue",
+              "On-call alert"
+            ],
+            "required": true,
+            "default": "Issue"
+          },
+          "priority": {
+            "type": "enum",
+            "values": [
+              "P0",
+              "P1",
+              "P2",
+              "P3"
+            ],
+            "required": true,
+            "default": "P2"
+          },
+          "reason": {
+            "type": "longtext",
+            "label": "Why it ranks here"
+          },
+          "repo": {
+            "type": "text"
+          },
+          "source_url": {
+            "type": "url"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Open",
+              "In progress",
+              "Waiting",
+              "Done"
+            ],
+            "required": true,
+            "default": "Open"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "label": "Queue item",
+        "title": "title"
+      },
+      "note": {
+        "fields": {
+          "body": {
+            "type": "longtext"
+          },
+          "counterpart": {
+            "type": "text"
+          },
+          "kind": {
+            "type": "enum",
+            "values": [
+              "Weekly status",
+              "1:1 prep",
+              "Morning brief"
+            ],
+            "required": true,
+            "default": "Weekly status"
+          },
+          "period": {
+            "type": "text"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Draft",
+              "Final"
+            ],
+            "required": true,
+            "default": "Draft"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "label": "Draft note",
+        "title": "title"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Rank my engineering work - PR reviews, issues and on-call alerts - in one queue, showing the reason each item ranks where it does. Draft my weekly status and 1:1 prep from that work, give me a morning brief of today priorities plus agenda and recent changes, and always ask before posting any issue comment. The assistant should offer four actions: give the morning brief, draft the weekly status, draft 1:1 prep, and draft an issue comment that waits for my approval before posting.",
+    "data": [
+      {
+        "id": "item",
+        "line": "Queue item: a PR review, issue or on-call alert with its rank reason",
+        "create": true
+      },
+      {
+        "id": "note",
+        "line": "Draft note: weekly status, 1:1 prep or morning brief",
+        "create": true
+      }
+    ],
+    "screens": [
+      {
+        "id": "queue",
+        "line": "Ranked queue of PR reviews, issues and on-call alerts, each with its reason"
+      },
+      {
+        "id": "brief",
+        "line": "Morning brief: today priorities, agenda and recent changes"
+      },
+      {
+        "id": "status",
+        "line": "Weekly status draft built from finished and in-flight work"
+      },
+      {
+        "id": "prep",
+        "line": "1:1 prep notes for the next conversation"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: add_type: bad_params: item.updated_at: updated_at is a name every record already has\"}"
+}

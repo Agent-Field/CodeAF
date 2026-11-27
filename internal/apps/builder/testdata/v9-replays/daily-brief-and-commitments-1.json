@@ -1,0 +1,210 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "meeting": "rw",
+        "mention": "rw",
+        "message": "rw",
+        "person": "rw",
+        "promise": "rw"
+      }
+    },
+    "id": "01M8D5GRZ8MT2H46P8FG3YDZ4M",
+    "kit": 2,
+    "name": "Daily Brief",
+    "records": {
+      "meeting": {
+        "fields": {
+          "agenda": {
+            "type": "longtext"
+          },
+          "attendees": {
+            "type": "refs",
+            "to": "person"
+          },
+          "ends_at": {
+            "type": "datetime"
+          },
+          "notes": {
+            "type": "longtext"
+          },
+          "starts_at": {
+            "type": "datetime",
+            "required": true
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "title"
+      },
+      "mention": {
+        "fields": {
+          "channel": {
+            "type": "text"
+          },
+          "from": {
+            "type": "text"
+          },
+          "link": {
+            "type": "url"
+          },
+          "mentioned_at": {
+            "type": "datetime"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Needs me",
+              "Done"
+            ],
+            "required": true,
+            "default": "Needs me"
+          },
+          "text": {
+            "type": "longtext",
+            "required": true
+          }
+        },
+        "title": "text"
+      },
+      "message": {
+        "fields": {
+          "from": {
+            "type": "text"
+          },
+          "link": {
+            "type": "url"
+          },
+          "received_at": {
+            "type": "datetime"
+          },
+          "snippet": {
+            "type": "longtext"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Needs reply",
+              "Done"
+            ],
+            "required": true,
+            "default": "Needs reply"
+          },
+          "subject": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "subject"
+      },
+      "person": {
+        "fields": {
+          "email": {
+            "type": "email"
+          },
+          "name": {
+            "type": "text",
+            "required": true
+          },
+          "organization": {
+            "type": "text"
+          }
+        },
+        "title": "name"
+      },
+      "promise": {
+        "fields": {
+          "detail": {
+            "type": "longtext"
+          },
+          "due": {
+            "type": "date"
+          },
+          "meeting": {
+            "type": "ref",
+            "to": "meeting"
+          },
+          "message": {
+            "type": "ref",
+            "to": "message"
+          },
+          "promised_to": {
+            "type": "ref",
+            "to": "person"
+          },
+          "source": {
+            "type": "enum",
+            "values": [
+              "Sent mail",
+              "Meeting notes"
+            ],
+            "required": true,
+            "default": "Sent mail"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Open",
+              "Kept",
+              "Dropped"
+            ],
+            "required": true,
+            "default": "Open"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "title"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Build my daily brief with meetings, messages that need me, and Slack mentions. Track promises from my sent mail and meeting notes, and give me a weekly update draft.",
+    "data": [
+      {
+        "id": "person",
+        "line": "People in meetings and promise recipients",
+        "create": true
+      },
+      {
+        "id": "meeting",
+        "line": "Calendar meetings with agenda and notes"
+      },
+      {
+        "id": "message",
+        "line": "Emails that need a reply",
+        "create": true
+      },
+      {
+        "id": "mention",
+        "line": "Slack mentions that need me",
+        "create": true
+      },
+      {
+        "id": "promise",
+        "line": "Promises I made, from sent mail and meeting notes",
+        "create": true
+      }
+    ],
+    "screens": [
+      {
+        "id": "brief",
+        "line": "Daily brief: agenda, what needs me, recent changes"
+      },
+      {
+        "id": "attention",
+        "line": "Triage emails and Slack mentions needing me"
+      },
+      {
+        "id": "promises",
+        "line": "Promises board from sent mail and meeting notes"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: app.json: Add a control for \\\"Mark Slack mention done\\\" (command mark-slack-mention-done) on a screen.\"}"
+}

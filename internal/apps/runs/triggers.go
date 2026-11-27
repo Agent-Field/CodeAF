@@ -213,23 +213,10 @@ func (e *Engine) matchRecordTriggers(change Change, all []Trigger, intake bool) 
 		if t.fieldFill && (scoped.After == nil || change.Cause == aiFieldStep || scoped.After["_rev"] == nil) {
 			continue
 		}
-		record := maps.Clone(scoped.After)
-		if record == nil {
-			record = make(map[string]any)
-		}
-		record["id"], record["type"] = change.ID, scoped.Type
-		input := map[string]any{"record": record, "before": scoped.Before, "after": scoped.After}
+		input, vars := recordChangeValues(scoped, e.cfg.Now())
 		if intake {
 			input["channel"] = change.Intake.Channel
 		}
-		vars := maps.Clone(record)
-		for field := range scoped.Before {
-			if _, present := vars[field]; !present {
-				vars[field] = nil
-			}
-		}
-		vars["record"], vars["input"], vars["me"] = record, input, "me"
-		vars["now"] = e.cfg.Now().UTC().Format(time.RFC3339Nano)
 		e.addRecordReader(t.App, vars)
 		ok, conditionErr := condition(t.When, vars, scoped.changed)
 		if conditionErr != nil {
@@ -245,6 +232,32 @@ func (e *Engine) matchRecordTriggers(change Change, all []Trigger, intake bool) 
 }
 
 // startTriggered commits the run before publishing it to workers or clients.
+// MatchesSampleArrival evaluates a trigger against a synthetic record arrival.
+func MatchesSampleArrival(when, typ string, row map[string]any, now time.Time) (bool, error) {
+	id, _ := row["id"].(string)
+	change := Change{Type: typ, ID: id, Before: map[string]any{}, After: row}
+	_, vars := recordChangeValues(change, now)
+	return condition(when, vars, change.changed)
+}
+
+func recordChangeValues(change Change, now time.Time) (map[string]any, map[string]any) {
+	record := maps.Clone(change.After)
+	if record == nil {
+		record = make(map[string]any)
+	}
+	record["id"], record["type"] = change.ID, change.Type
+	input := map[string]any{"record": record, "before": change.Before, "after": change.After}
+	vars := maps.Clone(record)
+	for field := range change.Before {
+		if _, present := vars[field]; !present {
+			vars[field] = nil
+		}
+	}
+	vars["record"], vars["input"], vars["me"] = record, input, "me"
+	vars["now"] = now.UTC().Format(time.RFC3339Nano)
+	return input, vars
+}
+
 func (e *Engine) startTriggered(t Trigger, receipt triggerReceipt, input map[string]any) error {
 	if receipt.Seq == 0 {
 		_, err := e.start(t.App, t.Run, nil, input, false, "", nil)

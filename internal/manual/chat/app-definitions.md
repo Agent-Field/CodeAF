@@ -470,3 +470,7 @@ visible PNG and JPEG attachments on the selected record. The file preview
 uses the same access rules as the record's attachments.
 In a record panel with a signing order, the roles appear in the bottom bar
 beside the record actions.
+
+## What the app builder fixes before Check
+
+The builder fixes mechanical issues in generated drafts before Check. It uses the record store’s built-in fields, keeps shared fields with their owner, and puts unattached commands and synthetic trigger examples where the app can use them. Build activity records these corrections. It asks you to settle choices that could change what the app does or which shared records it can access.

@@ -56,6 +56,9 @@ var reserved = map[string]bool{
 	"id": true, "type": true, "created_at": true, "updated_at": true, "deleted_at": true,
 }
 
+// IsRecordMetadata reports fields supplied by the record store.
+func IsRecordMetadata(name string) bool { return reserved[name] }
+
 // celReserved are CEL's reserved words; a field named one is stored and
 // queried like any other but cannot be named in an expression.
 var celReserved = map[string]bool{

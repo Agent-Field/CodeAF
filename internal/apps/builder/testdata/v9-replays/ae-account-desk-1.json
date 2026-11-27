@@ -1,0 +1,259 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "company": "rw",
+        "contact": "rw",
+        "deal": "rw",
+        "meeting": "rw",
+        "message": "r",
+        "note": "rw"
+      }
+    },
+    "id": "01M8D5GRZ6EHPDMBEXR1QRENH2",
+    "kit": 2,
+    "name": "CRM",
+    "records": {
+      "company": {
+        "fields": {
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "summary": {
+            "type": "longtext"
+          },
+          "website": {
+            "type": "url"
+          }
+        },
+        "title": "name"
+      },
+      "contact": {
+        "fields": {
+          "company": {
+            "type": "ref",
+            "to": "company"
+          },
+          "email": {
+            "type": "email"
+          },
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "phone": {
+            "type": "phone"
+          },
+          "title": {
+            "type": "text"
+          }
+        },
+        "title": "name"
+      },
+      "deal": {
+        "fields": {
+          "close_date": {
+            "type": "date"
+          },
+          "company": {
+            "type": "ref",
+            "to": "company"
+          },
+          "contact": {
+            "type": "ref",
+            "to": "contact"
+          },
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "next_step": {
+            "type": "text"
+          },
+          "next_step_due": {
+            "type": "datetime"
+          },
+          "owner": {
+            "type": "ref",
+            "to": "contact"
+          },
+          "stage": {
+            "type": "enum",
+            "values": [
+              "Discovery",
+              "Qualified",
+              "Proposal",
+              "Negotiation",
+              "Won",
+              "Lost"
+            ],
+            "required": true,
+            "default": "Discovery"
+          },
+          "value": {
+            "type": "money",
+            "currency": "USD"
+          }
+        },
+        "title": "name"
+      },
+      "meeting": {
+        "fields": {
+          "attendees": {
+            "type": "refs",
+            "to": "contact"
+          },
+          "company": {
+            "type": "ref",
+            "to": "company"
+          },
+          "ends_at": {
+            "type": "datetime"
+          },
+          "external": {
+            "type": "bool"
+          },
+          "location": {
+            "type": "text"
+          },
+          "starts_at": {
+            "type": "datetime"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          },
+          "transcript": {
+            "type": "longtext"
+          }
+        },
+        "title": "title"
+      },
+      "message": {
+        "fields": {
+          "body": {
+            "type": "longtext"
+          },
+          "contact": {
+            "type": "ref",
+            "to": "contact"
+          },
+          "deal": {
+            "type": "ref",
+            "to": "deal"
+          },
+          "direction": {
+            "type": "enum",
+            "values": [
+              "Inbound",
+              "Outbound"
+            ]
+          },
+          "received_at": {
+            "type": "datetime"
+          },
+          "subject": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "subject"
+      },
+      "note": {
+        "fields": {
+          "body": {
+            "type": "longtext"
+          },
+          "contact": {
+            "type": "ref",
+            "to": "contact"
+          },
+          "deal": {
+            "type": "ref",
+            "to": "deal"
+          },
+          "kind": {
+            "type": "enum",
+            "values": [
+              "Follow-up draft",
+              "Meeting brief",
+              "Risk brief"
+            ],
+            "required": true,
+            "default": "Follow-up draft"
+          },
+          "meeting": {
+            "type": "ref",
+            "to": "meeting"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          }
+        },
+        "title": "title"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Build my account desk that pulls the deal, mail and calendar together, briefs me 30 minutes before external meetings, drafts my follow-up from the transcript, explains deal risks and asks me before changing the CRM stage or next step.",
+    "data": [
+      {
+        "id": "deal",
+        "line": "Deals with stage, value, next step and the linked account and contact",
+        "create": true
+      },
+      {
+        "id": "company",
+        "line": "Accounts the deals belong to",
+        "create": true
+      },
+      {
+        "id": "contact",
+        "line": "People on the deal and in the mail thread",
+        "create": true
+      },
+      {
+        "id": "meeting",
+        "line": "Calendar meetings; external ones carry the transcript the follow-up is written from"
+      },
+      {
+        "id": "message",
+        "line": "Mail pulled into the desk and linked to a deal or contact"
+      },
+      {
+        "id": "note",
+        "line": "Drafted follow-ups, meeting briefs and risk explainers saved on the deal",
+        "create": true
+      }
+    ],
+    "screens": [
+      {
+        "id": "brief",
+        "line": "Today brief: summary line, ranked attention list, day agenda and recent changes"
+      },
+      {
+        "id": "pipeline",
+        "line": "Deals board by stage with the selected deal record and its asking actions"
+      },
+      {
+        "id": "meetings",
+        "line": "Calendar agenda flagging external meetings and the transcripts ready for a draft"
+      },
+      {
+        "id": "threads",
+        "line": "Mail threads linked to deals and contacts"
+      },
+      {
+        "id": "deal",
+        "line": "Deal record: stage, value, next step, notes, and the actions that ask before writing"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The draft needs another change before you can keep it. See Build activity for details.\"}"
+}

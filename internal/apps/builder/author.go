@@ -81,6 +81,12 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		text := string(args.Plan)
 		edit = DefinitionEdit{Path: schema.PlanFile, Text: &text}
 	case "add_type", "add_field", "configure":
+		if verb == "add_field" {
+			var field struct{ Name string }
+			if json.Unmarshal(raw, &field) == nil && data.IsRecordMetadata(field.Name) {
+				return files, nil
+			}
+		}
 		manifest, err := changeManifest(files[schema.AppFile], verb, raw)
 		if err != nil {
 			return nil, err
@@ -264,6 +270,22 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 		return errors.New("the app has no record definitions")
 	}
 	if verb == "add_type" {
+		var definition map[string]json.RawMessage
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(args.Definition, &definition)
+		if json.Unmarshal(definition["fields"], &fields) == nil {
+			removed := false
+			for name := range fields {
+				if data.IsRecordMetadata(name) {
+					delete(fields, name)
+					removed = true
+				}
+			}
+			if removed {
+				definition["fields"], _ = json.Marshal(fields)
+				args.Definition, _ = json.Marshal(definition)
+			}
+		}
 		records[args.Name] = args.Definition
 		if err := declareRecordAccess(manifest, args.Name, args.Access); err != nil {
 			return err
