@@ -160,7 +160,7 @@ func TestTheSecondConversationKeepsTheLaunchsPosture(t *testing.T) {
 	next := v3CurrentGate(launch, dir, dir, true)
 	wantAction(t, *next.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionAllow)
 	// And the floors the flag never lifted are still where they were.
-	wantAction(t, *next.ApprovalPolicy, "bash", `{"command":"rm -rf /"}`, approval.ActionPrompt)
+	wantAction(t, *next.ApprovalPolicy, "bash", `{"command":"rm -rf /var/tmp/victim"}`, approval.ActionPrompt)
 }
 
 // A rebuild that cannot read the rows leaves the launch's gate in place. The
@@ -201,7 +201,7 @@ func TestTheFloorDoesNotWidenAnySafetyFloor(t *testing.T) {
 	wantAction(t, policy, "gmail_send", `{"to":"a@b.c"}`, approval.ActionPrompt)
 	wantAction(t, policy, "stripe_request", `{"method":"POST"}`, approval.ActionPrompt)
 	// The critical-command table still overrides an allow.
-	wantAction(t, policy, "bash", `{"command":"rm -rf /"}`, approval.ActionPrompt)
+	wantAction(t, policy, "bash", `{"command":"rm -rf /var/tmp/victim"}`, approval.ActionPrompt)
 	// And a bash call whose command cannot be read degrades rather than runs.
 	wantAction(t, policy, "bash", `{}`, approval.ActionPrompt)
 }

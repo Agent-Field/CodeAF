@@ -19,10 +19,9 @@ import (
 //
 // AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, IN ANY APPROVAL MODE.
 //
-// The other floors in this package are questions. This one is a refusal, because
-// a crew running under the default allow has nobody to answer a question, and a
-// person who did answer would be pasting their login into a transcript. It sits
-// above every policy, memo, guardian and remembered rule. The engine's own
+// This floor refuses the call because approving it would paste the person's
+// login into a transcript. It sits above every policy, memo, guardian and
+// remembered rule. The engine's own
 // GitHub calls and the person's own `!` commands do not come through this door.
 //
 // It stops an agent that runs the ordinary command for the job, and it stops the

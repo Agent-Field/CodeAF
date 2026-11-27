@@ -1745,6 +1745,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is a job's log path", "tasks"},
 		{"stop a job from its page", "tasks"},
 		{"do you ask before running rm", "permissions"},
+		{"can the agent run rm -rf / or delete my home folder with no Approve button", "permissions"},
 		{"why did it say denied by the person when I did not deny", "permissions"},
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
@@ -4151,6 +4152,25 @@ func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
 			t.Errorf("%q does not reach %s · %q; it reached %v", ask.question, ask.page, ask.title, where)
 		}
 	}
+}
+
+// Contract C7: The question about wiping a protected folder reaches the
+// section that explains the hard refusal and the approval of other removals.
+func TestProtectedDeletionQuestionReachesItsPermissionsSection(t *testing.T) {
+	question := "can the agent run rm -rf / or delete my home folder with no Approve button"
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "permissions" || !strings.HasPrefix(section.Title, "Can the agent run rm -rf / or delete my home folder") {
+			continue
+		}
+		for _, phrase := range []string{"every approval mode", "`--yolo`", "`!` commands", "There is no Approve option.",
+			"`rm --no-preserve-root`", "`find ... -delete`", "`rm -rf /var/tmp/x`", "`rm -rf build`"} {
+			if !strings.Contains(section.Body, phrase) {
+				t.Errorf("the protected-deletion section omits %q", phrase)
+			}
+		}
+		return
+	}
+	t.Fatalf("%q did not reach the protected-deletion section", question)
 }
 
 func TestMemoryTabNameAndMemoriesQuestions(t *testing.T) {

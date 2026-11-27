@@ -20,16 +20,16 @@ func bashArgs(command string) json.RawMessage {
 
 func TestAlwaysAsksCoversTheCriticalShapes(t *testing.T) {
 	for _, command := range []string{
-		"rm -rf /",
-		"rm -rf / --no-preserve-root",
-		"sudo rm -rf /var",
+		"rm -rf /var/tmp/victim",
+		"rm -rf /var/tmp/victim --preserve-root",
+		"sudo rm -rf /var/tmp/victim",
 		"mkfs.ext4 /dev/sda1",
 		"dd if=/dev/zero of=/dev/sda",
 		"echo hi > /dev/sda",
 		"shutdown -h now",
 		"reboot",
 		":(){ :|:& };:",
-		"cd /tmp && rm -rf /",
+		"cd /tmp && rm -rf /var/tmp/victim",
 	} {
 		if !AlwaysAsks(ToolBash, bashArgs(command)) {
 			t.Fatalf("%q is not on the floor", command)

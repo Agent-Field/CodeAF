@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"github.com/Agent-Field/codeaf/internal/approval"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 func TestUserBashPersistsLiteralOutputForTheNextModelTurn(t *testing.T) {
@@ -68,6 +68,34 @@ func TestUserBashPersistsLiteralOutputForTheNextModelTurn(t *testing.T) {
 	if c.requests() == 0 {
 		t.Fatal("follow-up never reached the model")
 	}
+}
+
+// Contract C5: Submitting ! through the public door reports the refusal in the
+// tool result and sends no approval request. The false segment makes the
+// fixture safe even if the gate ever lets the line through.
+func TestProtectedDeletionTextReachesUserBashToolOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const command = "false && rm -rf /"
+	policy := &approval.Policy{Default: approval.ActionAllow}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ApprovalPolicy = policy
+		cfg.AskConsent = true
+	})
+	stream, err := agent.SubmitBash(t.Context(), "!"+command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := drainAnswering(t, stream, func(ask Event) {
+		t.Error("the protected deletion opened an approval question")
+		agent.ResolveConsent(ask.ID, false)
+	})
+	want := policy.CheckBash(command)
+	for _, event := range events {
+		if event.Kind == EventToolFailed && IsUserBashCall(event.CallID) && event.Output == want.Rule && want.Never {
+			return
+		}
+	}
+	t.Fatalf("the tool output did not carry the refusal %q: %+v", want.Rule, events)
 }
 
 func TestUserBashHasNoStdinAndDoesNotKeepShellState(t *testing.T) {
@@ -320,4 +348,34 @@ func TestUserBashRetainsOutputBeyondToolPreview(t *testing.T) {
 		}
 	}
 	t.Fatal("replay clipped shell output")
+}
+
+// Contract C5: Entering a protected deletion as a ! command produces the same
+// refusal as a model call, without opening an approval question.
+func TestProtectedDeletionRefusesUserBashWithoutConsent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	userCommand, ok := BashCommand("!rm -rf /")
+	if !ok {
+		t.Fatal("command was not read as user bash")
+	}
+	policy := &approval.Policy{Default: approval.ActionAllow}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ApprovalPolicy = policy
+		cfg.AskConsent = true
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	hub := &eventHub{observe: func(e Event) {
+		t.Errorf("approval sent an event to the hub: %+v", e)
+		cancel()
+	}}
+	call := gateCall(approval.ToolBash, bashJSON(t, userCommand))
+	result, allowed := agent.approveUserBash(ctx, hub, call)
+	want := policy.CheckBash(userCommand)
+	if want.Action != approval.ActionDeny || allowed || !result.isError || result.text != want.Rule {
+		t.Errorf("allowed=%v, result=%+v, want the verbatim refusal %q", allowed, result, want.Rule)
+	}
+	if len(agent.PendingConsent()) != 0 {
+		t.Error("the refusal left a consent question pending")
+	}
 }

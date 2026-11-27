@@ -547,7 +547,7 @@ func TestEveryLiveDoorStillSpeaksTheRefusalTheSidecarKnows(t *testing.T) {
 		}
 		refused = append(refused, text)
 	}
-	refused = append(refused, refusal("refused in a task: rm -rf / — nobody to ask").text)
+	refused = append(refused, refusal("refused in a task: rm -rf /var/tmp/victim — nobody to ask").text)
 	refused = append(refused, "Unknown tool: nosuchtool")
 
 	for _, text := range refused {

@@ -72,7 +72,7 @@ func TestThePushedGateIsWhatPromptModeReads(t *testing.T) {
 // a push is a thing that can say otherwise.
 func TestAnUngatedSessionStaysUngatedUntilSomethingIsPushed(t *testing.T) {
 	agent := gateAgent(t, nil)
-	call := gateCall("bash", `{"command":"rm -rf /"}`)
+	call := gateCall("bash", `{"command":"rm -rf /var/tmp/victim"}`)
 	if _, governed := agent.decide(call); governed {
 		t.Fatal("a session with no gate answered as though it had one")
 	}

@@ -5,12 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/approval"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/shell"
@@ -59,10 +59,13 @@ func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan Event, erro
 // question uses, so the floor's card reaches both roads alike; with no hub the
 // critical question has nobody to put it to and refuses unattended.
 func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
+	decision, governed := a.decide(call)
+	if decision.Never {
+		return refusal(decision.Rule), false
+	}
 	if off := a.capabilityRefusal(call.Function.Name, json.RawMessage(call.Function.Arguments)); off != "" {
 		return refusal(off), false
 	}
-	decision, governed := a.decide(call)
 	// THE PERSON'S OWN COMMAND IS NOT THE AGENT'S. Typing `! gh auth token` is what
 	// the credential floor sends a person to do, so it does not refuse them here.
 	if governed && decision.Action == approval.ActionDeny && !decision.Credential {

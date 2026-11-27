@@ -65,7 +65,7 @@ func TestTheOpenPostureCannotLiftTheCriticalFloor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("allow did not build: %v", err)
 	}
-	if got := policy.Check("bash", json.RawMessage(`{"command":"rm -rf /"}`)); got.Action == approval.ActionAllow {
+	if got := policy.Check("bash", json.RawMessage(`{"command":"rm -rf /var/tmp/victim"}`)); got.Action != approval.ActionPrompt {
 		t.Fatalf("the open posture let a grave command through: %s", got)
 	}
 }

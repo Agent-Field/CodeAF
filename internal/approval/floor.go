@@ -11,13 +11,11 @@ import (
 // [ActsInThePersonsName]).
 //
 // It exists for internal/session's consent gate, which keeps a memo of "stop
-// asking me about this tool" and consults it before running anything. Both
-// floors here answer PROMPT rather than deny — they are questions, not
-// refusals — so a memo that stood in for a person would swallow them, and one
-// approved `git status` would buy silence for `rm -rf /` for the rest of the
-// session. A memo is a person saying they are done being asked about ordinary
-// work; it is not a person saying they have read a message that has not been
-// written yet.
+// asking me about this tool" and consults it before running anything. A memo
+// could otherwise turn one approved `git status` into silence for
+// `rm -rf /var/tmp/x` for the rest of the session. Protected deletions can
+// still match the critical table here because the policy refuses them before
+// the session consults this predicate for a memo or a question.
 //
 // It is deliberately NOT the whole policy asked again. Everything else the
 // policy has to say about a call is a rule somebody wrote, and a memo standing

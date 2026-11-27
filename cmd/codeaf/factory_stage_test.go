@@ -429,7 +429,7 @@ func TestAStagesAllowIsNotNarrowedByThePersonsRows(t *testing.T) {
 	if d := policy.CheckBash("go test ./..."); d.Action != approval.ActionAllow {
 		t.Errorf("a stage's go test = %+v, want allow", d)
 	}
-	if d := policy.CheckBash("rm -rf /"); d.Action == approval.ActionAllow {
+	if d := policy.CheckBash("rm -rf /var/tmp/victim"); d.Action != approval.ActionPrompt {
 		t.Error("the critical-command floor did not hold under a stage's allow")
 	}
 	if d := policy.Check("stage_result", json.RawMessage(`{}`)); d.Action != approval.ActionAllow {

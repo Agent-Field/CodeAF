@@ -37,7 +37,7 @@ func TestUnreadableProfileApprovalRequiresPersonEveryTime(t *testing.T) {
 func TestUnreadableProfileApprovalUserBashRefusesWithoutPerson(t *testing.T) {
 	const file = "/profile/config.json"
 	agent := gateAgent(t, &approval.Policy{ProfileReadError: "open " + file + ": permission denied"})
-	for _, args := range []string{`{"command":"git status"}`, `{"command":"rm -rf /"}`} {
+	for _, args := range []string{`{"command":"git status"}`, `{"command":"rm -rf /var/tmp/victim"}`} {
 		result, allowed := agent.approveUserBash(context.Background(), nil, gateCall("bash", args))
 		if allowed || !result.isError || !strings.Contains(result.text, file) {
 			t.Errorf("user bash %s: allowed=%v result=%+v; want refusal naming file", args, allowed, result)

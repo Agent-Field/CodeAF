@@ -4,9 +4,45 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
+
+// Contract C5: The terminal keeps the refusal on the tool result without
+// opening an approval card.
+func TestProtectedDeletionIsShownAsARefusalWithoutAnApprovalCard(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const command = "rm -rf /"
+	decision := (approval.Policy{Default: approval.ActionAllow}).CheckBash(command)
+	if !decision.Never {
+		t.Fatalf("the protected deletion did not produce a hard refusal: %s", decision)
+	}
+	a, agent := formingTurn(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "bash", CallID: "c1", Hint: "bash " + command,
+	}})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventToolFailed, Tool: "bash", CallID: "c1", Output: decision.Rule, HarnessMade: true, Refused: true,
+	}})
+	if _, ok := a.questionHead(); ok {
+		t.Fatal("the refusal opened an approval card")
+	}
+	found := false
+	for _, e := range a.entries {
+		if e.kind == entryTool && e.callID == "c1" {
+			found = true
+			if e.detail.Output != decision.Rule {
+				t.Errorf("tool detail = %q, want %q", e.detail.Output, decision.Rule)
+			}
+		}
+	}
+	if !found {
+		t.Error("the refusal left no tool row")
+	}
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
 
 // #2678: A question graded as a critical command resolves its default pointer
 // index to the deny option for both 2-row and 3-row cards, so an unaimed enter

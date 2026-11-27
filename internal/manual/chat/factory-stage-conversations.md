@@ -266,10 +266,11 @@ tests, `git`) there without asking anyone. Your own approval settings
 (the tool approval mode, the tool rules, the command rules) do not narrow it: a rule that says
 "ask me" would only ever be refused there, because nobody is at its keyboard to answer.
 
-Two limits still apply, as they do under `--yolo`: a critical command such as `rm -rf /`,
-`mkfs` or `shutdown`, and a call that acts in your name such as `gmail_send`, would ask, and in a
-stage that ask is refused with `needs approval but no resolver is attached: <rule>`. Nothing in a
-stage ever waits on you.
+As under `--yolo`, a recursive delete of `/`, the home folder or a top-level system folder
+is refused outright. A critical command such as `rm -rf /var/tmp/x`, `mkfs` or `shutdown`,
+or a call that acts in your name such as `gmail_send`, would still ask in chat. In a stage,
+that call is refused with `needs approval but no resolver is attached: <rule>`. Nothing in
+a stage ever waits on you.
 
 A stage cannot post to its team either: its brief says `You have no team_post tool; report
 through stage_result only.`
