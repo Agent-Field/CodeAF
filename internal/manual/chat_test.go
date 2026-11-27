@@ -4045,6 +4045,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does loopback_trust do", "factory"},
 		{"is a request through a reverse proxy on the same machine treated as local", "factory"},
 		{"can a runner on the same machine as my team server attach without a token", "factory"},
+		{"my new repository is not in Add repos, I created it on GitHub just now", "factory"}, // Contract M1.
 		// Joining, living in and hosting an organization, in the words of the
 		// person who joins one and of the person who runs one.
 		{"can my admin read my chats", "organization-hosted-sessions"},
@@ -4101,6 +4102,45 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// Contract M1: The exact question reaches the recovery steps, and the refresh
+// section explains how a picker request fits with the ordinary cache interval.
+func TestNewRepositoryInAddReposHelp(t *testing.T) {
+	chat := Chat()
+	for _, tc := range []struct {
+		question string
+		heading  string
+		facts    []string
+	}{
+		{
+			"my new repository is not in Add repos, I created it on GitHub just now",
+			"my new repository is not in Add repos",
+			[]string{"restarted", "repository not found"},
+		},
+		{
+			"when does the factory repository list refresh available_read_at",
+			"factory repository list refresh",
+			[]string{"five minutes", "30 seconds", "factory.repos_refresh"},
+		},
+	} {
+		found := false
+		for _, section := range chat.Search(tc.question, DefaultResults) {
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, tc.heading) {
+				continue
+			}
+			found = true
+			for _, fact := range tc.facts {
+				if !strings.Contains(section.Body, fact) {
+					t.Errorf("%q omits %q", section.Title, fact)
+				}
+			}
+			break
+		}
+		if !found {
+			t.Errorf("%q did not reach %q", tc.question, tc.heading)
 		}
 	}
 }

@@ -45,6 +45,25 @@ import (
 // factory.repo_set.
 const FeatureFactoryReposManage = "factory.repos_manage"
 
+// FeatureFactoryReposRefresh is announced in hello when the engine serves
+// factory.repos_refresh.
+const FeatureFactoryReposRefresh = "factory.repos_refresh"
+
+// FactoryReposRefresher is the engine's optional repository discovery read.
+type FactoryReposRefresher interface {
+	FactoryReposRefresh(ctx context.Context, id string) (FactoryRepos, error)
+}
+
+func withFactoryReposRefreshFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(Factory); !ok {
+		return hello
+	}
+	if _, ok := e.(FactoryReposRefresher); ok {
+		hello = withFeature(hello, FeatureFactoryReposRefresh)
+	}
+	return hello
+}
+
 // The longest an owner and a name may be (GitHub's own limits), so a request
 // that cannot name a repository is never sent.
 const (
@@ -120,6 +139,31 @@ func init() {
 	const name = "factory.repo_set"
 	methods[name] = repoSetMethod(name)
 	factoryRepoMethods[name] = methods[name]
+	// The method and its feature share one name, the way factory.repo_set's
+	// feature is named for it, so a client that sees the feature knows the method.
+	methods[FeatureFactoryReposRefresh] = shaped[FactoryRef, FactoryRepos](factoryReposRefresh)
+}
+
+func factoryReposRefresh(e Engine, raw json.RawMessage) (*FactoryRepos, error) {
+	refresher, ok := e.(FactoryReposRefresher)
+	if _, isFactory := e.(Factory); !ok || !isFactory {
+		return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s", FeatureFactoryReposRefresh)
+	}
+	var p FactoryRef
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	id, err := factoryID(p.ref())
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := factoryCall()
+	defer cancel()
+	out, err := refresher.FactoryReposRefresh(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // repoSetMethod reads params STRICTLY, checks them, then asks the engine once.

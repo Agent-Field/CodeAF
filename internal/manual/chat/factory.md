@@ -17,12 +17,24 @@ list, a failed discovery still reports its error. After a failure, a read may
 start another discovery after 30 seconds; a success restores the five-minute
 refresh interval.
 
+A read can also ask for a refresh. `GET /v1/repos?refresh=1` (over the app
+protocol, `factory.repos_refresh`, announced in `hello` as the feature of the
+same name) starts a discovery now even when the saved list is younger than five
+minutes, and waits for it, sharing one that is already running. The factory
+starts at most one discovery every 30 seconds however often it is asked,
+counting from when the last one started; inside that window the saved list is
+answered. A read that does not ask keeps the five-minute rule, and a factory
+older than this ignores the query and answers its ordinary list.
+
 A saved list belongs to the GitHub identity and credential that read it. A
 different connection must read its own list. The existing GitHub identity and
 caller-access checks still apply. A transient identity-lookup failure can reuse
 the saved list only with the same credential; a refused sign-in fails the read.
 Turning a repository on or off changes `watched` immediately, including a newly
-watched repository absent from the saved available list. A repository removed
+watched repository absent from the saved available list. On a team factory, when
+the operator turns on a repository that only the saved list could have shown
+them and the list lacks it, the factory reads GitHub once (under the same
+30-second limit) before it answers `repository not found`. A repository removed
 on GitHub disappears from the available list after the next successful discovery.
 
 Discovery preserves registered checkout folders and uses conditional GitHub reads.
@@ -31,6 +43,21 @@ it keeps the previous issue counts without another GraphQL count request. A
 partial failed walk cannot restore removed repositories on a retry. Open pipeline
 pull requests reuse their files for the same head SHA and base SHA in the bounded
 process cache. A change to either SHA reads the files again.
+
+## my new repository is not in Add repos — created it on GitHub just now, refresh the repository list, repository not found when turning it on
+
+The list Add repos shows is read from GitHub at most every five minutes, so a
+repository created a moment ago can be missing from it. Nothing has to be
+restarted: the next read after five minutes brings it in, and a client can ask
+the factory to read again sooner (`factory.repos_refresh`), at most once every 30
+seconds however often it is asked. The app's Add repos picker does not ask for
+that refresh yet; until it does, wait for the five-minute read.
+
+Turning on a repository that is missing from the list no longer fails at once on
+a team factory: the factory reads GitHub one more time, and only if the
+repository is still not there does the switch say `repository not found`. The
+factory's GitHub connection has to be able to read the repository for either
+to find it.
 
 ## save a job note after steps finish — who reads it and PR comments
 

@@ -498,10 +498,10 @@ func (h *Handler) Close() {
 		if h.reposRead.cancel != nil {
 			h.reposRead.cancel()
 		}
-		done := h.reposRead.done
+		walk := h.reposRead.walk
 		h.reposRead.mu.Unlock()
-		if done != nil {
-			<-done
+		if walk != nil {
+			<-walk.done
 		}
 		h.setupMu.Lock()
 		h.setupClosed = true
@@ -957,7 +957,8 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	if !h.require(w, h.seam.Repos != nil) {
 		return
 	}
-	watched, available, readAt, err := h.readRepos(r.Context())
+	refresh := r.URL.Query().Get("refresh")
+	watched, available, readAt, err := h.readRepos(r.Context(), refresh == "1" || refresh == "true")
 	if h.failed(w, err) {
 		return
 	}
