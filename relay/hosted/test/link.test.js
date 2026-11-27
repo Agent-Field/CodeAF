@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Counters } from '../src/counters.js';
 import { Directory } from '../src/directory.js';
-import { asGrant, checkDigits, codeOf, CODE_ALPHABET, deviceIdOf, newCode, newRequest, platformOf } from '../src/link/code.js';
+import { asGrant, checkDigits, classOf, codeOf, CODE_ALPHABET, deviceIdOf, newCode, newRequest, platformOf } from '../src/link/code.js';
 import { settled } from '../src/link/state.js';
 import { parseBeat, presenceOf } from '../src/presence.js';
 import { STAGE1 } from '../src/rules.js';
@@ -142,4 +142,29 @@ test('approving a device stores it live, with a created time and a bumped versio
   assert.equal(dir.version, v + 1);
   dir.approveDevice('dev_b', vectors.device_new);
   assert.equal(dir.version, v + 1, 'the same approve again changes nothing a person sees');
+});
+
+// R3, P6: a phone's request (class "client") has a 10-character code; the computer vectors above are untouched.
+// The full matrix and the Worker round trips are in link-client.test.js.
+test('R3 a code is 8 characters for a computer and 10 for a phone, and every lookup reads both', () => {
+  for (let i = 0; i < 100; i++) {
+    assert.match(newCode(), /^[0-9a-hjkmnp-tv-z]{8}$/);
+    assert.match(newCode(10), /^[0-9a-hjkmnp-tv-z]{10}$/);
+  }
+  assert.equal(codeOf('K7M2Q9XDHZ'), 'k7m2q9xdhz');
+  assert.equal(codeOf('k7m2q9xdh'), null, 'nine characters is neither');
+  assert.equal(codeOf('k7m2q9xdhzz'), null, 'eleven is not a code');
+});
+
+test('R3 P6 P9 a create body names class and bind together or not at all, and the relay carries bind as sent', async () => {
+  const bind = b64u(new Uint8Array(16).fill(7));
+  const phone = await newRequest(goodBody({ class: 'client', bind }));
+  assert.deepEqual([phone.class, phone.bind], ['client', bind]);
+  assert.equal(phone.check, await checkDigits(new Uint8Array(32).fill(1)), 'the check is still the relay\'s own');
+  assert.equal('class' in (await newRequest(goodBody())), false, 'a computer request has no class');
+  assert.equal(await fail(() => newRequest(goodBody({ class: 'client' }))), 'bad_request 400');
+  assert.equal(await fail(() => newRequest(goodBody({ bind }))), 'bad_request 400');
+  assert.equal(await fail(() => newRequest(goodBody({ class: 'tablet', bind }))), 'bad_request 400');
+  assert.equal(await fail(() => newRequest(goodBody({ class: 'client', bind: b64u(new Uint8Array(15)) }))), 'bad_request 400');
+  assert.deepEqual(classOf({}), {});
 });

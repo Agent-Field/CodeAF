@@ -32,6 +32,24 @@ export class RaftEffectsFacade {
     const public_key = btoa(String.fromCharCode(...key));
     await this.commit({ admit_join: { code, public_key, expires: r.expires_at, platform:r.platform } }, now);
   }
+  // A phone's (client-class) request is decided without Raft: the device row and its enrollment are already
+  // stored, approving writes nothing to the directory, and so there is no committed decision to deliver.
+  // The decision only reserves the code for this identity's cluster, so another identity cannot decide it, and
+  // hands the request its outcome through a delivery with a deterministic id: an approval is named by its grant, so
+  // a repeat is the same delivery and a different grant is already_decided, and a denial has one id of its own.
+  // Nothing is committed to Raft: no admit_join row and no decision.
+  async approveClient(box, code, grant) {
+    await this.#decideClient(box, code, 'client:' + hex(await sha256(enc.encode(grant))), 'approved', grant);
+  }
+  async denyClient(box, code) {
+    await this.#decideClient(box, code, 'client:deny', 'denied', null);
+  }
+  async #decideClient(box, code, id, state, grant) {
+    code = String(code).trim().toLowerCase();
+    const request = unwrap(await box.bind(this.cluster));
+    if (request.code !== code || request.class !== 'client') throw new Wire('bad_request', 400);
+    unwrap(await box.deliver(this.cluster, id, state, grant, request.device));
+  }
   async replay(boxOf, after, now) {
     const rows = await this.host.barrierOutbox(after, 64);
     if (rows.length > 64) throw new Wire('full', 503);
