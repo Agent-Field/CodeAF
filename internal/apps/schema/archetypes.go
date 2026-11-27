@@ -49,6 +49,7 @@ type ScreenCollection struct {
 }
 
 type ScreenMetric struct {
+	Record  string           `json:"record,omitempty"`
 	Context string           `json:"context,omitempty"`
 	Format  string           `json:"format,omitempty"`
 	Target  *float64         `json:"target,omitempty"`
@@ -195,8 +196,12 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 				props["limit"] = *metric.Limit
 			}
 			n := node(key, "Chart", metric.Label, props)
-			n.Bind = &Bind{Records: r.Record, View: key}
-			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
+			subject := metric.Record
+			if subject == "" {
+				subject = r.Record
+			}
+			n.Bind = &Bind{Records: subject, View: key}
+			s.Views[key] = QueryIR{Type: subject, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
 			parts = append(parts, n)
 		}
 		return parts, nil

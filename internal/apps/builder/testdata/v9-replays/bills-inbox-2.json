@@ -1,0 +1,163 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "gl_account": "rw",
+        "invoice": "rw",
+        "line_item": "rw",
+        "vendor": "rw"
+      }
+    },
+    "id": "01M8D5HPSCB1M8ZVGB0WF1HYJ3",
+    "kit": 2,
+    "name": "Bills Inbox",
+    "records": {
+      "gl_account": {
+        "fields": {
+          "category": {
+            "type": "enum",
+            "values": [
+              "Expense",
+              "Asset",
+              "Liability",
+              "Equity",
+              "Income"
+            ]
+          },
+          "code": {
+            "type": "text",
+            "required": true
+          },
+          "name": {
+            "type": "text"
+          }
+        },
+        "title": "code"
+      },
+      "invoice": {
+        "fields": {
+          "due_date": {
+            "type": "date"
+          },
+          "duplicate_of": {
+            "type": "ref",
+            "to": "invoice"
+          },
+          "invoice_date": {
+            "type": "date"
+          },
+          "notes": {
+            "type": "longtext"
+          },
+          "number": {
+            "type": "text",
+            "required": true
+          },
+          "source": {
+            "type": "url"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "New",
+              "Needs review",
+              "Duplicate",
+              "Approved",
+              "Exported"
+            ],
+            "default": "New",
+            "required": true
+          },
+          "total": {
+            "type": "money",
+            "currency": "USD"
+          },
+          "vendor": {
+            "type": "ref",
+            "to": "vendor"
+          }
+        },
+        "title": "number"
+      },
+      "line_item": {
+        "fields": {
+          "amount": {
+            "type": "money",
+            "currency": "USD"
+          },
+          "description": {
+            "type": "text",
+            "required": true
+          },
+          "gl_account": {
+            "type": "ref",
+            "to": "gl_account"
+          },
+          "invoice": {
+            "type": "ref",
+            "to": "invoice"
+          }
+        },
+        "title": "description"
+      },
+      "vendor": {
+        "fields": {
+          "domain": {
+            "type": "text"
+          },
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "usual_account": {
+            "type": "ref",
+            "to": "gl_account"
+          }
+        },
+        "title": "name"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Build my bills inbox for invoice PDFs from Gmail, with extracted totals, line items, and suggested GL accounts. Flag duplicates and approve QuickBooks bill drafts, and send me a weekly due-this-week digest.",
+    "data": [
+      {
+        "id": "invoice",
+        "line": "Each invoice PDF from Gmail, with vendor, extracted total, dates and its triage status"
+      },
+      {
+        "id": "line_item",
+        "line": "Extracted line items on an invoice, each with an amount and a suggested GL account"
+      },
+      {
+        "id": "vendor",
+        "line": "Vendors seen on invoices, with their domain and a usual GL account"
+      },
+      {
+        "id": "gl_account",
+        "line": "Chart of accounts used to code line items"
+      }
+    ],
+    "screens": [
+      {
+        "id": "inbox",
+        "line": "Bills inbox: triage new invoices, spot duplicates, open one to review"
+      },
+      {
+        "id": "review",
+        "line": "Invoice review: vendor, extracted total and dates, line items with suggested GL accounts"
+      },
+      {
+        "id": "drafts",
+        "line": "QuickBooks bill drafts waiting on approval"
+      },
+      {
+        "id": "digest",
+        "line": "Weekly due-this-week digest of invoices"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: runs/extract-due-date.yaml: Include an example record that matches the automation's record change trigger. runs/extract-invoice-date.yaml: Include an example record that matches the automation's record change trigger. runs/extract-invoice-number.yaml: Include an example record that matches the automation's record change trigger. runs/extract-invoice-total\\u2026\"}"
+}

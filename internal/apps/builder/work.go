@@ -74,14 +74,25 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		var calls BuildCalls
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
-			def := definition(j.Working.Files)
-			report = j.checkReuse(j.Working.Files, catalog, existing, !headless)
-			if report.OK() {
-				if s.opts.Check != nil {
-					report = s.opts.Check(ctx, id, def, existing)
-				} else {
-					report = check.Definition(def, existing)
+			source := j.Working.Files
+			var notes []schema.Problem
+			if j.Package == nil {
+				files, notes, err = normalizeDraft(source, existing)
+				if err == nil {
+					source = files
 				}
+			}
+			if err == nil {
+				def := definition(source)
+				report = j.checkReuse(source, catalog, existing, !headless)
+				if report.OK() {
+					if s.opts.Check != nil {
+						report = s.opts.Check(ctx, id, def, existing)
+					} else {
+						report = check.Definition(def, existing)
+					}
+				}
+				report.Warnings = append(report.Warnings, notes...)
 			}
 		} else if err == nil {
 			files, reply, calls, err = s.ask(ctx, j, t, catalog, headless)
@@ -189,10 +200,17 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		Reuse:              reuse,
 		SourceOperations:   catalog.SourceOperations,
 	}, types, author, func(files map[string]string) schema.Report {
-		if report := j.checkReuse(files, catalog, types, !headless); !report.OK() {
+		source := files
+		if j.Package == nil {
+			normalized, _, err := normalizeDraft(files, types)
+			if err == nil {
+				source = normalized
+			}
+		}
+		if report := j.checkReuse(source, catalog, types, !headless); !report.OK() {
 			return report
 		}
-		return check.Definition(definition(files), types)
+		return check.Definition(definition(source), types)
 	}, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -339,6 +357,11 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}}})
 	}
 	if checking {
+		if files != nil {
+			j.Working.Files = files
+			j.Screens = screens(files)
+			j.Presence = nil
+		}
 		ok := report.OK()
 		event := Event{Stage: Checking, Round: t.Round, OK: &ok, Report: &report}
 		if ok {

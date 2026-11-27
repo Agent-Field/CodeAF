@@ -1,0 +1,195 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "bill": "rw",
+        "gl_account": "rw",
+        "line_item": "rw",
+        "vendor": "rw"
+      }
+    },
+    "id": "01M8D5JD1Z2AJ6D4B0DATVPKHJ",
+    "kit": 2,
+    "name": "Bills Inbox",
+    "records": {
+      "bill": {
+        "fields": {
+          "due_date": {
+            "type": "date"
+          },
+          "duplicate_of": {
+            "type": "ref",
+            "to": "bill"
+          },
+          "gl_account": {
+            "type": "ref",
+            "to": "gl_account"
+          },
+          "invoice_date": {
+            "type": "date"
+          },
+          "invoice_number": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "source": {
+            "type": "url"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Received",
+              "Extracted",
+              "Needs review",
+              "Duplicate",
+              "Approved",
+              "Exported",
+              "Paid"
+            ],
+            "required": true,
+            "default": "Received"
+          },
+          "total": {
+            "type": "money",
+            "currency": "USD"
+          },
+          "vendor": {
+            "type": "ref",
+            "to": "vendor"
+          }
+        },
+        "lifecycle": {
+          "field": "status",
+          "initial": "Received",
+          "transitions": [
+            {
+              "id": "extract",
+              "from": [
+                "Received"
+              ],
+              "to": "Extracted"
+            },
+            {
+              "id": "flag_duplicate",
+              "from": [
+                "Extracted",
+                "Needs review"
+              ],
+              "to": "Duplicate"
+            },
+            {
+              "id": "approve",
+              "from": [
+                "Extracted",
+                "Needs review"
+              ],
+              "to": "Approved"
+            },
+            {
+              "id": "push_quickbooks",
+              "from": [
+                "Approved"
+              ],
+              "to": "Exported"
+            },
+            {
+              "id": "mark_paid",
+              "from": [
+                "Exported"
+              ],
+              "to": "Paid"
+            }
+          ]
+        },
+        "title": "invoice_number"
+      },
+      "gl_account": {
+        "fields": {
+          "code": {
+            "type": "text"
+          },
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          }
+        },
+        "title": "name"
+      },
+      "line_item": {
+        "fields": {
+          "amount": {
+            "type": "money",
+            "currency": "USD"
+          },
+          "bill": {
+            "type": "ref",
+            "to": "bill"
+          },
+          "description": {
+            "type": "text",
+            "required": true
+          },
+          "gl_account": {
+            "type": "ref",
+            "to": "gl_account"
+          }
+        },
+        "title": "description"
+      },
+      "vendor": {
+        "fields": {
+          "name": {
+            "type": "text",
+            "required": true,
+            "unique": true
+          },
+          "website": {
+            "type": "url"
+          }
+        },
+        "title": "name"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Build my bills inbox for invoice PDFs from Gmail, with extracted totals, line items, and suggested GL accounts. Flag duplicates and approve QuickBooks bill drafts, and send me a weekly due-this-week digest.",
+    "data": [
+      {
+        "id": "vendor",
+        "line": "Vendors that send invoices",
+        "create": true
+      },
+      {
+        "id": "gl_account",
+        "line": "Chart of accounts used to code each charge",
+        "create": true
+      },
+      {
+        "id": "bill",
+        "line": "Invoice PDFs pulled from Gmail, with totals, due dates, duplicate flags and QuickBooks approval status"
+      },
+      {
+        "id": "line_item",
+        "line": "Individual charges on an invoice with a suggested GL account"
+      }
+    ],
+    "screens": [
+      {
+        "id": "inbox",
+        "line": "Triage incoming invoice PDFs, spot duplicates and approve bills"
+      },
+      {
+        "id": "bill",
+        "line": "One invoice with its extracted totals, line items and suggested GL codes"
+      },
+      {
+        "id": "overview",
+        "line": "Spend by GL account, open items and what is due this week"
+      }
+    ]
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: runs/extract-invoice-charges.yaml: Include an example record that matches the automation's record change trigger. runs/extract-the-due-date.yaml: Include an example record that matches the automation's record change trigger. runs/extract-the-invoice-date.yaml: Include an example record that matches the automation's record change trigger. runs/extract-the-\\u2026\"}"
+}

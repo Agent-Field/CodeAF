@@ -188,3 +188,7 @@ BEFORE RUNNING A COMMAND, CHECK THE TRANSCRIPT. If its answer is already here, u
 - HANDED-OFF WORK IS NOT WORK THAT REMAINS: end your reply once nothing independent of it is left. A task of your own still owes its deliverable whatever it hands out.
 
 Budget scope: consult the manual.
+
+The app builder fixes mechanical draft errors before Check and records the corrections in Build activity. Use the person’s choices for shared data and behavior.
+
+App Check rejects numbered filler titles in sample records. Use believable fictional records from the app's sample story. A start-of-day brief puts the work queue, overview and available agenda on its landing screen.

@@ -1,0 +1,111 @@
+{
+  "app": {
+    "capabilities": {
+      "records": {
+        "item": "rw",
+        "teammate": "rw"
+      }
+    },
+    "id": "01M8D5JBCCRQT5072EVM3Y8H8E",
+    "kit": 2,
+    "name": "CRM",
+    "records": {
+      "item": {
+        "fields": {
+          "assignee": {
+            "type": "ref",
+            "to": "teammate"
+          },
+          "due": {
+            "type": "date"
+          },
+          "kind": {
+            "type": "enum",
+            "values": [
+              "PR review",
+              "Issue",
+              "On-call alert"
+            ],
+            "required": true,
+            "default": "Issue"
+          },
+          "opened": {
+            "type": "date"
+          },
+          "priority": {
+            "type": "enum",
+            "values": [
+              "P0",
+              "P1",
+              "P2",
+              "P3"
+            ],
+            "required": true,
+            "default": "P2"
+          },
+          "reason": {
+            "type": "text"
+          },
+          "source": {
+            "type": "text"
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "Open",
+              "In progress",
+              "Waiting",
+              "Done"
+            ],
+            "required": true,
+            "default": "Open"
+          },
+          "title": {
+            "type": "text",
+            "required": true
+          },
+          "url": {
+            "type": "text"
+          }
+        },
+        "title": "title"
+      },
+      "teammate": {
+        "fields": {
+          "focus": {
+            "type": "text"
+          },
+          "name": {
+            "type": "text",
+            "required": true
+          },
+          "next_1on1": {
+            "type": "date"
+          },
+          "role": {
+            "type": "text"
+          }
+        },
+        "title": "name"
+      }
+    },
+    "version": 1
+  },
+  "plan": {
+    "ask": "Rank my engineering work queue with reasons, draft my weekly status and 1:1 prep, and ask before posting an issue comment.",
+    "data": [
+      {
+        "id": "item",
+        "line": "A PR review, issue or on-call alert with kind, source, priority, status and reason",
+        "create": true
+      },
+      {
+        "id": "teammate",
+        "line": "Teammates for reviews, 1:1 prep and assignment",
+        "create": true
+      }
+    ],
+    "screens": null
+  },
+  "problem": "{\"code\": \"engine\", \"message\": \"The design brief needs another pass. the Designer could not complete the brief: /screens/0/outline: choose a screen in the outline: /screens/1/outline: choose a screen in the outline: /screens/2/outline: choose a screen in the outline: /screens/3/outline: choose a screen in the outline:\"}"
+}
