@@ -122,10 +122,33 @@ list allows offline reads only; adding methods requires a new paired key.
 A full device can replace a named sealed slot for one scoped client of the same
 identity. Only that client reads the slot. The relay adds the writer device and
 write time; readers can show when a snapshot was last refreshed. Each client has
-at most 64 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
+at most 128 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
 deletes its slots. The relay sees ciphertext and slot names, so names must not
 contain private content. Slots persist across relay restarts. The publishing box
 must seal to the client's current key and respect chat lease ownership.
+
+## Enrolled phones, the computers list and live slot waits — which of my computers are serving my phone, how a phone is told to refresh
+
+A phone is enrolled once, with a statement signed by the identity key naming the
+phone, its two public keys, the methods it may call and the names it may read. The
+relay stores that statement beside the phone's other data. At most 16 phones can
+be enrolled per identity, and a statement can be replaced only by one with a
+higher version. The relay reads none of it; it checks only the shape and the
+identity signature, and every computer checks the statement again itself.
+
+A phone can ask the relay for the identity's computers. The list names each
+non-revoked computer, whether it is serving phones right now and when it was last
+seen. A computer counts as serving only while it holds a directory watch open
+with `serving=1`, so a computer that is switched off or asleep stops showing as serving
+shortly after its socket goes quiet.
+
+A phone can also wait for its slots to change: a read that names the last version
+it saw and a wait of up to 25 seconds returns as soon as any slot changes, or with
+nothing when the time is up. A phone may hold two waits, and revoking the phone
+ends them at once. While a phone is waiting or reading, the relay tells serving
+computers that it is watching, and a write to a slot answers with a
+`Codeaf-Client-Watching: 1` header, so computers publish at once only for a phone
+that is looking. The relay never reads slot contents.
 
 ## Client queue, offline calls and replay protection
 
