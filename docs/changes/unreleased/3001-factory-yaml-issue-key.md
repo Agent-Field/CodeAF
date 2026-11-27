@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A mistyped pipeline key in factory.yaml is flagged, and a job says why it runs the built-in steps
-pr: 3000
+pr: 3001
 surface: [factory, docs]
 invalidates:
   - "A key such as `issues:` under `pipeline:` in `.codeaf/factory.yaml` loaded as a pipeline of your own with no word from the file's check, so every issue job ran the built-in steps and nothing said why. The check now reports a key that is a plural of, or one edit away from, `issue`, `pr` or `ci` and asks `Did you mean ...?`; the key still loads as the pipeline it is. Any other name under `pipeline:` stays a legitimate pipeline of your own and is not reported."
