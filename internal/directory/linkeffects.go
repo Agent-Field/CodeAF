@@ -1,5 +1,18 @@
 package directory
 
+// Lookup reads a live request and its bound cluster without reserving it, so an
+// invalid or unenrolled approval attempt leaves the request pending and unbound.
+func (l *Links) Lookup(code string) (Request, string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sweep(l.now())
+	e := l.reqs[NormalizeCode(code)]
+	if e == nil {
+		return Request{}, "", ErrRequestGone
+	}
+	return e.rec, e.cluster, nil
+}
+
 // Bind reserves a temporary request for one cluster before it can enter that
 // cluster's committed outbox. Legacy decisions cannot write a bound request.
 // A failed admission leaves the reservation until expiry; it never permits two

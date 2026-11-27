@@ -281,11 +281,12 @@ type Sub struct {
 	sent      uint64
 	started   bool
 
-	device string
-	shut   atomic.Bool
-	events chan dirwatch.Event // event frames, once Events was called
-	keys   []holdKey
-	alive  atomic.Int64 // unix ms of the last sign of life
+	device  string
+	serving atomic.Bool
+	shut    atomic.Bool
+	events  chan dirwatch.Event // event frames, once Events was called
+	keys    []holdKey
+	alive   atomic.Int64 // unix ms of the last sign of life
 
 	// beat is the period the socket promised to ping at; it sets how long the
 	// socket stays live (contract 21.12.2).

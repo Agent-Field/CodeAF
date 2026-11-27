@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
@@ -40,9 +41,21 @@ type presence struct {
 	socks    map[string]map[*Sub]struct{} // sockets held, by device, live or not
 	waiting  map[string]*gap              // devices in their debounce: still told online
 	gone     map[string]bool              // devices already announced offline since they last arrived
+	lastSeen map[string]int64             // newest sign of life observed for each device
+	watching map[string]*watchClient      // scoped clients' watching state and dampen timers
 	watchers map[*Sub]struct{}            // the sockets that asked for events
 	seen     func(device string, at int64)
 	alarm    alarm
+}
+
+// watchClient tracks one scoped client's watching state and its 2-second dampen window.
+type watchClient struct {
+	current   bool
+	sent      bool
+	hasSent   bool
+	lastSent  int64
+	pending   bool
+	stopTimer func() bool
 }
 
 // gap is one device's debounce. Identity is the pointer: a timer that fires
@@ -66,6 +79,8 @@ func newPresence(clock func() time.Time) *presence {
 		socks:    map[string]map[*Sub]struct{}{},
 		waiting:  map[string]*gap{},
 		gone:     map[string]bool{},
+		lastSeen: map[string]int64{},
+		watching: map[string]*watchClient{},
 		watchers: map[*Sub]struct{}{},
 	}
 }
@@ -97,16 +112,18 @@ func (p *presence) stamp(hook func(string, int64), stamps ...seenAt) {
 // was announced offline is news again whenever it returns.
 func (p *presence) opened(s *Sub) {
 	p.mu.Lock()
+	now := p.now()
 	had := len(p.socks[s.device]) > 0
 	if p.socks[s.device] == nil {
 		p.socks[s.device] = map[*Sub]struct{}{}
 	}
 	p.socks[s.device][s] = struct{}{}
+	p.lastSeen[s.device] = max(p.lastSeen[s.device], now)
 	p.arrived(s.device, had)
 	p.arm()
 	hook := p.seen
 	p.mu.Unlock()
-	p.stamp(hook, seenAt{s.device, p.now()})
+	p.stamp(hook, seenAt{s.device, now})
 }
 
 func (p *presence) arrived(device string, had bool) {
@@ -133,6 +150,11 @@ func (p *presence) closed(s *Sub) {
 	p.mu.Lock()
 	now := p.now()
 	wasLive := s.liveAt(now)
+	if wasLive {
+		p.lastSeen[s.device] = max(p.lastSeen[s.device], now)
+	} else {
+		p.lastSeen[s.device] = max(p.lastSeen[s.device], s.alive.Load())
+	}
 	delete(p.socks[s.device], s)
 	if len(p.socks[s.device]) == 0 {
 		delete(p.socks, s.device)
@@ -209,15 +231,33 @@ func (p *presence) liveSocks(device string, now int64) int {
 	return n
 }
 
-// subscribe makes s an event socket and queues who is online for it, itself
-// excluded. The sweep exists from here on, until the last event socket leaves.
+// liveServingSocks counts the live sockets of device opened with serving=1 at unix ms now. The caller holds p.mu.
+func (p *presence) liveServingSocks(device string, now int64) int {
+	n := 0
+	for s := range p.socks[device] {
+		if s.serving.Load() && s.liveAt(now) {
+			n++
+		}
+	}
+	return n
+}
+
+// subscribe makes s an event socket and queues who is online and which clients
+// are watching for it, itself excluded from presence. The sweep exists from
+// here on, until the last event socket leaves.
 func (p *presence) subscribe(s *Sub) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.watchers[s] = struct{}{}
+	now := p.now()
 	for _, device := range slices.Sorted(maps.Keys(p.believed())) {
 		if device != s.device {
-			s.offer(dirwatch.PresenceEvent(device, true, p.now()))
+			s.offer(dirwatch.PresenceEvent(device, true, now))
+		}
+	}
+	for _, device := range slices.Sorted(maps.Keys(p.watching)) {
+		if w := p.watching[device]; w != nil && w.current {
+			s.offer(dirwatch.WatchingEvent(device, true, now))
 		}
 	}
 	p.arm()
@@ -283,7 +323,7 @@ func (p *presence) revokedSince(prev, next map[string]bool) {
 	}
 }
 
-// stop cancels every gap and the sweep, for the directory's own Close.
+// stop cancels every gap, watching timer and the sweep, for the directory's own Close.
 func (p *presence) stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -291,7 +331,93 @@ func (p *presence) stop() {
 		g.stop()
 		delete(p.waiting, d)
 	}
+	for _, w := range p.watching {
+		if w != nil && w.stopTimer != nil {
+			w.stopTimer()
+			w.stopTimer = nil
+		}
+	}
 	p.alarm.cancel()
+}
+
+// setWatching updates a scoped client's watching state and broadcasts changes
+// to event sockets at most once per WatchingDampen window (contract L4, L7).
+func (p *presence) setWatching(device string, on bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	w := p.watching[device]
+	if w == nil {
+		w = &watchClient{}
+		p.watching[device] = w
+	}
+	if w.current == on {
+		return
+	}
+	w.current = on
+	if w.current == w.sent {
+		if w.stopTimer != nil {
+			w.stopTimer()
+			w.stopTimer = nil
+		}
+		w.pending = false
+		return
+	}
+	now := p.now()
+	dampenMs := clientproto.WatchingDampen.Milliseconds()
+	if !w.hasSent || now-w.lastSent >= dampenMs {
+		if w.stopTimer != nil {
+			w.stopTimer()
+			w.stopTimer = nil
+		}
+		w.pending = false
+		w.sent = w.current
+		w.hasSent = true
+		w.lastSent = now
+		p.tell(dirwatch.WatchingEvent(device, w.sent, now), "")
+		return
+	}
+	if w.pending {
+		return
+	}
+	w.pending = true
+	delay := time.Duration(w.lastSent+dampenMs-now) * time.Millisecond
+	w.stopTimer = p.after(delay, func() {
+		p.flushWatching(device, w)
+	})
+}
+
+func (p *presence) flushWatching(device string, w *watchClient) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.watching[device] != w || !w.pending {
+		return
+	}
+	w.pending = false
+	w.stopTimer = nil
+	if w.current == w.sent {
+		return
+	}
+	now := p.now()
+	w.sent = w.current
+	w.hasSent = true
+	w.lastSent = now
+	p.tell(dirwatch.WatchingEvent(device, w.sent, now), "")
+}
+
+// computerStatus reports whether device currently holds a live serving=1 watch
+// socket and its last_seen timestamp as presence reports it (contract L8).
+func (p *presence) computerStatus(device string, storedLastSeen, now int64) (serving bool, at int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	serving = p.liveServingSocks(device, now) > 0
+	at = max(storedLastSeen, p.lastSeen[device])
+	for s := range p.socks[device] {
+		at = max(at, s.alive.Load())
+	}
+	if serving || p.believed()[device] {
+		at = now
+	}
+	return serving, at
 }
 
 // offer queues e for the socket. A full buffer drops e: events are hints, and
@@ -364,4 +490,15 @@ func (f *Feed) OnSeen(fn func(device string, at int64)) {
 	f.pres.mu.Lock()
 	defer f.pres.mu.Unlock()
 	f.pres.seen = fn
+}
+
+// SetWatching updates a scoped client's watching state for event sockets (contract L4, L7).
+func (f *Feed) SetWatching(device string, on bool) {
+	f.pres.setWatching(device, on)
+}
+
+// ComputerStatus reports whether a full device holds a live serving=1 watch socket
+// and its last_seen timestamp as presence reports it (contract L8).
+func (f *Feed) ComputerStatus(device string, storedLastSeen, now int64) (serving bool, at int64) {
+	return f.pres.computerStatus(device, storedLastSeen, now)
 }

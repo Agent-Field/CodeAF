@@ -11,6 +11,7 @@ const (
 	EventJoined   = "joined"
 	EventPresence = "presence"
 	EventRevoked  = "revoked"
+	EventWatching = "watching"
 )
 
 // MaxJoined is how many joined events State keeps. A consumer that reads State
@@ -25,6 +26,7 @@ type Event struct {
 	Name     string `json:"name,omitempty"`
 	Platform string `json:"platform,omitempty"`
 	Online   *bool  `json:"online,omitempty"`
+	On       *bool  `json:"on,omitempty"`
 	At       int64  `json:"at"`
 }
 
@@ -41,6 +43,11 @@ func JoinedEvent(device, name, platform string, at int64) Event {
 // RevokedEvent is the frame that says device was revoked at at.
 func RevokedEvent(device string, at int64) Event {
 	return Event{T: EventRevoked, Device: device, At: at}
+}
+
+// WatchingEvent is the frame that says a scoped client started or stopped watching at at.
+func WatchingEvent(device string, on bool, at int64) Event {
+	return Event{T: EventWatching, Device: device, On: &on, At: at}
 }
 
 // Joined is a device-joined event as State keeps it. Seq counts joined events

@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
@@ -97,12 +98,21 @@ func subscribe(c call) (*Sub, error) {
 	if err != nil {
 		return nil, err
 	}
+	var sub *Sub
 	if authenticated, ok := c.dir.(interface {
 		SubscribeWatch(string, *http.Request, []Hold, time.Duration) (*Sub, error)
 	}); ok {
-		return authenticated.SubscribeWatch(c.device, c.r, holds, beat)
+		sub, err = authenticated.SubscribeWatch(c.device, c.r, holds, beat)
+	} else {
+		sub, err = feed.Feed().SubscribeBeat(c.device, holds, beat)
 	}
-	return feed.Feed().SubscribeBeat(c.device, holds, beat)
+	if err != nil {
+		return nil, err
+	}
+	if vals := c.r.URL.Query()[clientproto.ServingParam]; len(vals) == 1 && vals[0] == "1" {
+		sub.serving.Store(true)
+	}
+	return sub, nil
 }
 
 func isUpgrade(r *http.Request) bool {
@@ -136,10 +146,10 @@ func serveWatchReceipts(ctx context.Context, conn *websocket.Conn, sub *Sub, dev
 	// The version is the first frame; an event socket then hears who is online.
 	first := func() { close(ready) }
 	if events {
+		ev := sub.Events()
 		first = func() {
 			close(ready)
-			events := sub.Events()
-			go sendEvents(ctx, cancel, conn, events)
+			go sendEvents(ctx, cancel, conn, ev)
 		}
 	}
 	conn.Close(tell(ctx, conn, sub, device, first))
