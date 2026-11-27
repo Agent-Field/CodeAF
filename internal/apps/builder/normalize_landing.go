@@ -3,6 +3,7 @@ package builder
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -32,7 +33,7 @@ func normalizeLanding(files map[string]string, app schema.App, types schema.Type
 	if section == nil && (screen.Body.Part == "RecordList" || screen.Body.Part == "Table") && len(screen.Body.On) == 0 {
 		section = screen.Body
 	}
-	if section == nil || nodeHasID(section, "brief-overview") {
+	if section == nil {
 		return nil, nil
 	}
 	initial := mainCollection(section)
@@ -50,21 +51,26 @@ func normalizeLanding(files map[string]string, app schema.App, types schema.Type
 		name := collection.Bind.Records
 		record := app.Records[name]
 		if agenda == nil {
-			if start := calendarStart(record); start != "" {
-				agenda = &schema.ScreenAgenda{Record: name, Start: start}
-				for _, field := range []string{"attendees", "participants", "organizer"} {
-					if showableStoryField(record.Fields[field]) {
-						agenda.Attendees = field
-						break
-					}
-				}
-			}
+			agenda = storyAgenda(name, app)
 		}
 		if !draftSummaryType(record, name) && app.Capabilities.Records[name] != "" &&
 			(draftSummaryType(app.Records[work], work) || queueRelevant(plan.Ask, name) > queueRelevant(plan.Ask, work)) {
 			work = name
 		}
 	}
+	if agenda == nil {
+		// The Designer can declare meetings without making a calendar
+		// screen. That does not remove today's agenda from the landing.
+		for _, name := range slices.Sorted(maps.Keys(app.Records)) {
+			if agenda = storyAgenda(name, app); agenda != nil {
+				break
+			}
+		}
+	}
+	if nodeHasID(section, "brief-overview") && (agenda == nil || nodeHasID(section, "agenda")) {
+		return nil, nil
+	}
+
 	label := displayName(app.Records[work].Label, work)
 	slots := schema.ScreenSlots{Agenda: agenda,
 		Summary: displayName(plan.Screens[0].Line, screen.Title),
@@ -158,6 +164,22 @@ func mainCollection(node *schema.Node) *schema.Node {
 
 func showableStoryField(field schema.Field) bool {
 	return field.Type != "" && !field.Masked && !field.Class.Restricted()
+}
+
+func storyAgenda(name string, app schema.App) *schema.ScreenAgenda {
+	record := app.Records[name]
+	start := calendarStart(record)
+	if start == "" || app.Capabilities.Records[name] == "" {
+		return nil
+	}
+	agenda := &schema.ScreenAgenda{Record: name, Start: start}
+	for _, field := range []string{"attendees", "participants", "organizer"} {
+		if showableStoryField(record.Fields[field]) {
+			agenda.Attendees = field
+			break
+		}
+	}
+	return agenda
 }
 
 func calendarStart(record schema.RecordType) string {

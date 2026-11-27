@@ -28,6 +28,17 @@ func TestSavedV10BriefsGetOverviewAgendaAndWorkQueue(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := "screens/" + plan.Screens[0].ID + ".json"
+			// The saved data offers meetings even when their dedicated
+			// route is missing, as happens in the compact Designer.
+			for i, line := range plan.Screens {
+				if line.ID == "meetings" {
+					plan.Screens = append(plan.Screens[:i], plan.Screens[i+1:]...)
+					if err := saveJSON(files, schema.PlanFile, plan); err != nil {
+						t.Fatal(err)
+					}
+					break
+				}
+			}
 			notes, err := normalizeLanding(files, app, nil)
 			if err != nil {
 				t.Fatal(err)
