@@ -41,7 +41,7 @@ func TestHeadlessApprovalRequiresAnExplicitChoice(t *testing.T) {
 					t.Errorf("%s: %s, want %s", command, got, tc.want)
 				}
 			}
-			if got := policy.Check("bash", json.RawMessage(`{"command":"rm -rf /"}`)).Action; got == approval.ActionAllow {
+			if got := policy.Check("bash", json.RawMessage(`{"command":"rm -rf /var/tmp/victim"}`)).Action; got == approval.ActionAllow {
 				t.Fatal("critical floor lifted")
 			}
 		})

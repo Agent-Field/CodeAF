@@ -30,7 +30,7 @@ func TestAutoJobPolicyAllowsOnlyRoutineControlsAndKeepsFloors(t *testing.T) {
 	}
 	// Even a pre-existing allow posture continues to ask for critical commands.
 	allowed := automaticJobPolicy(&approval.Policy{Default: approval.ActionAllow})
-	if d := allowed.Check("bash", json.RawMessage(`{"command":"rm -rf /"}`)); d.Action != approval.ActionPrompt {
+	if d := allowed.Check("bash", json.RawMessage(`{"command":"rm -rf /var/tmp/victim"}`)); d.Action != approval.ActionPrompt {
 		t.Fatalf("critical floor=%s", d.Action)
 	}
 }

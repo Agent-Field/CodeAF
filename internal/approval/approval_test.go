@@ -136,7 +136,7 @@ func TestCheckCriticalCommands(t *testing.T) {
 		command string
 		want    Action
 	}{
-		{"root delete", "rm -rf /", ActionPrompt},
+		{"absolute descendant delete", "rm -rf /var/tmp/victim", ActionPrompt},
 		{"mkfs", "mkfs.ext4 /dev/sda1", ActionPrompt},
 		{"dd to device", "dd if=/dev/zero of=/dev/sda", ActionPrompt},
 		{"fork bomb", ":(){ :|:& };:", ActionPrompt},
@@ -158,22 +158,22 @@ func TestCheckCriticalCommands(t *testing.T) {
 	// A blanket allow with no pattern list at all is the same story: the
 	// default alone must not carry a critical command through.
 	bare := Policy{Default: ActionAllow}
-	if decision := bare.CheckBash("rm -rf /"); decision.Action != ActionPrompt {
-		t.Errorf("bare allow-all CheckBash(rm -rf /) = %+v, want prompt", decision)
+	if decision := bare.CheckBash("rm -rf /var/tmp/victim"); decision.Action != ActionPrompt {
+		t.Errorf("bare allow-all CheckBash(rm -rf /var/tmp/victim) = %+v, want prompt", decision)
 	}
 
 	// An explicit deny is not softened into a prompt.
 	denying := Policy{Default: ActionAllow, BashPatterns: []Rule{{Match: "rm *", Action: ActionDeny}}}
-	decision := denying.CheckBash("rm -rf /")
+	decision := denying.CheckBash("rm -rf /var/tmp/victim")
 	if decision.Action != ActionDeny || decision.Rule != `bash pattern "rm *"` {
-		t.Errorf("CheckBash(rm -rf /) = %+v, want deny by pattern", decision)
+		t.Errorf("CheckBash(rm -rf /var/tmp/victim) = %+v, want deny by pattern", decision)
 	}
 
 	// Nor is an explicit prompt relabelled: the pattern the author wrote is
 	// what gets shown.
 	asking := Policy{Default: ActionAllow, BashPatterns: []Rule{{Match: "rm *", Action: ActionPrompt}}}
-	if decision := asking.CheckBash("rm -rf /"); decision.Rule != `bash pattern "rm *"` {
-		t.Errorf("CheckBash(rm -rf /) rule = %q, want the author's pattern", decision.Rule)
+	if decision := asking.CheckBash("rm -rf /var/tmp/victim"); decision.Rule != `bash pattern "rm *"` {
+		t.Errorf("CheckBash(rm -rf /var/tmp/victim) rule = %q, want the author's pattern", decision.Rule)
 	}
 }
 

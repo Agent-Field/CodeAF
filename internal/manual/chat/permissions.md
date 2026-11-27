@@ -30,7 +30,7 @@ when the countdown is off. Silence is never a no.
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
 else. On a **grave one** — a call codeaf will always stop you for, such as a
-critical command (`rm -rf /`, `rm -rf /*`, `rm -rf *`, `mkfs*`), a force-push,
+critical command (`rm -rf /var/tmp/x`, `rm -rf *`, `mkfs*`), a force-push,
 or anything sent out in your name — the pointer opens on `3 deny` instead,
 whether the model asked for the command or you typed it after `!`. So `enter`
 you have not aimed means "allow it once" when the call can be lived with and
@@ -313,7 +313,7 @@ rules' own words. It can read:
 - `default (unset)`
 - `tool "edit"`
 - `bash pattern "rm -rf *"`
-- `critical command "rm -rf /"`
+- `critical command "rm -rf /*"`
 - `<tool> acts in your name outside this machine`
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
@@ -793,39 +793,49 @@ are asked, exactly as if it had said `ASK`.
 
 ## The floor nothing lifts: dangerous shell commands
 
-A short table of shell shapes is asked about **whichever way your settings are
-set**, including a `!` command you type. A blanket `allow` does not switch it off.
-`--yolo` does not switch it off. A pushed policy cannot widen it.
+These commands still ask under a blanket `allow` or `--yolo`, including as a
+`!` command you type. This includes `mkfs*`, `dd *of=/dev/*`, redirects onto
+`/dev/sd*`, `shutdown`, `reboot`, `halt`, `poweroff`, and the fork bomb
+reported as `:(){:|:&};:`.
 
-The entries, verbatim:
+**Recursive deletes of other absolute paths still ask.** For example,
+`rm -rf /var/tmp/x` asks under `allow` with the reason
+`critical command "rm -rf /*"`. This also covers a path inside your home
+folder, such as `~/projects/old` or `$HOME/.cache/x`. A bare `*` asks with the
+reason `critical command "rm -rf *"`. Relative cleanup such as `rm -rf build`
+or `rm -r ./tmp` follows your approval rules.
 
-`rm -rf /`, `rm -rf /*`, `rm -fr /`, `rm -fr /*`, `mkfs*`, `dd *of=/dev/*`,
-`*>/dev/sd*`, `shutdown`, `shutdown *`, `reboot`, `reboot *`, `halt`, `halt *`,
-`poweroff`, `poweroff *` — plus the fork bomb, matched with all whitespace
-removed and reported to you as `:(){:|:&};:`.
+The table changes an allowance to a prompt and preserves explicit rules that
+already ask or deny. Protected recursive deletions are refused outright, as
+described below.
 
-**A recursive delete asks in any spelling.** An `rm` with `-r`, `-R` or
-`--recursive` — clustered as `-rf` or `-fR`, split as `-r -f`, with or without
-`-f`, after `sudo` or as `/bin/rm`, with the path quoted or after `--` — is asked
-about when it is aimed at an absolute path, `~`, `$HOME` or a bare `*`. The first
-three are reported as `critical command "rm -rf /*"`, a bare `*` as
-`critical command "rm -rf *"`. A relative target such as `rm -rf build` or
-`rm -r ./tmp` is not.
+## Can the agent run rm -rf / or delete my home folder — wipe the disk, approve a root delete, no Approve button
 
-Before matching, the line is normalised: runs of whitespace collapse to one
-space, the gap after `>` closes (so `> /dev/sda` and `>/dev/sda` are the same
-thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
-`reboot`).
+codeaf refuses a recursive `rm` aimed at the filesystem root, your home folder
+or a top-level system folder in every approval mode, including `--yolo`. This
+applies to model calls and to `!` commands you type. There is no Approve option.
 
-The `/*` entries deliberately over-fire: they catch
-`rm -rf / --no-preserve-root`, and they also catch plain `rm -rf /var/tmp/x`.
+The protected targets are `/` and `/*`, and each of the following with an
+optional trailing `/` or `/*`.
 
-**The table is a floor under allow only.** It turns an allow into a **prompt**,
-with the rule `critical command "rm -rf /"`. It is never a refusal of its own:
-an explicit deny still denies, and an existing prompt still prompts.
+- `~`, `$HOME`, `${HOME}`, and your absolute home path, including the path it
+  resolves to if your home folder is a symlink.
+- `/home`, `/Users`, `/root`, `/etc`, `/usr`, `/var`, `/bin`, `/sbin`,
+  `/lib`, `/lib64`, `/opt`, `/boot`, `/System`, `/Library`, `/Applications`.
 
-This is a floor, not a sandbox. It is not an attempt to enumerate every way a
-shell can ruin a machine.
+The check treats absolute spellings such as `//`, `/./` and `/tmp/..` as `/`.
+It covers `rm -r`, `rm -R`, `rm --recursive` and its GNU abbreviations, including
+combined flags, quoted paths, `sudo` and commands joined with `&&`. It also
+refuses `rm --no-preserve-root` with any target and `find ... -delete` starting
+at a protected target.
+
+For example, codeaf says
+
+> Refused: "rm -rf /". codeaf never runs this command in any approval mode. There is no Approve option. Do not try another route: a script, find -delete, or another spelling is treated the same way. If this is really the work, stop and tell the person. They can run it themselves in their own terminal.
+
+`rm -rf /var/tmp/x` and other recursive deletes of deeper absolute paths
+still ask. Relative cleanup such as `rm -rf build` follows your approval rules
+and runs without a question under `--yolo`.
 
 ## The floor nothing lifts: anything acting in your name
 
@@ -879,7 +889,8 @@ call matching the critical-command table.
 
 Both bypass the memo entirely and put the question to you **every time**. One
 approved `git status` plus "stop asking me about bash" cannot quietly run
-`rm -rf /` for the rest of the session.
+`rm -rf /var/tmp/x` for the rest of the session. Protected deletions such as
+`rm -rf /` are refused before a memo or a question is considered.
 
 It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules

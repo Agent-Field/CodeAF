@@ -67,7 +67,7 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 		{"read", `{}`, approval.ActionAllow},                           // the default
 		{"bash", `{"command":"go test ./..."}`, approval.ActionPrompt}, // the exception
 		{"write", `{"path":"x"}`, approval.ActionDeny},
-		{"bash", `{"command":"rm -rf /"}`, approval.ActionPrompt}, // matched, not judged
+		{"bash", `{"command":"rm -rf /var/tmp/victim"}`, approval.ActionPrompt}, // matched, not judged
 	} {
 		if got := policy.Check(want.tool, json.RawMessage(want.args)); got.Action != want.action {
 			t.Fatalf("%s %s → %s, want %s", want.tool, want.args, got, want.action)
@@ -114,7 +114,7 @@ func TestAnEmptyProfileUsesYoloAndFollowsTheSessionModel(t *testing.T) {
 	if got := cfg.ApprovalGate.Standing(); got != session.PostureAllow {
 		t.Fatalf("the new-conversation seam would show %q, want allow", got)
 	}
-	if got := cfg.ApprovalPolicy.Check("bash", json.RawMessage(`{"command":"rm -rf /"}`)); got.Action != approval.ActionPrompt {
+	if got := cfg.ApprovalPolicy.Check("bash", json.RawMessage(`{"command":"rm -rf /var/tmp/victim"}`)); got.Action != approval.ActionPrompt {
 		t.Fatalf("the default YOLO posture lifted the critical floor: %s", got)
 	}
 	// Pure reads never ask — the gate's business is what can change the system.

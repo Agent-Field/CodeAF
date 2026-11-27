@@ -3,10 +3,54 @@ package pipeline
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+const (
+	noPipelineFileNote = "This repository has no " + RepoFile + " on its main branch, so this job runs the built-in steps."
+	noIssueListNote    = RepoFile + " has no pipeline: issue: list, so this job runs the built-in steps."
+)
+
+// DecideJobPipeline records the file used when a door decides from a clean
+// read. A door that only copies an existing decision uses Item.DecidePipeline
+// because it has no new read to explain.
+func (f File) DecideJobPipeline(it *factory.Item, now time.Time, pick string) {
+	if it.PipelineIsDecided() {
+		return
+	}
+	it.DecidePipeline(f.Copy, now)
+	if !factory.IsIssueJob(*it) || it.RunOn != "" || pick != "" && pick != string(factory.KindIssue) {
+		return
+	}
+	var note string
+	switch f.From {
+	case factory.FromDefault:
+		note = noPipelineFileNote
+	case factory.FromMainBranch, factory.FromWorkingTree, factory.FromFactoryCopy:
+		note = noIssueListNote
+	default:
+		return
+	}
+	res, ok := f.Resolve(string(factory.KindIssue))
+	if !ok || res.From != FromBuiltIn {
+		return
+	}
+	// A routing rule can have chosen other steps while the job was in
+	// Backlog. Those steps are kept when Start does not pick a pipeline.
+	if pick == "" && it.Route != "" && !sameSteps(it.Stages, res.Stages) {
+		return
+	}
+	// Bring back forgets the decision but keeps the job's activity.
+	if !slices.ContainsFunc(it.Activity, func(ev factory.Event) bool {
+		return ev.What == noPipelineFileNote || ev.What == noIssueListNote
+	}) {
+		it.Note(now, note)
+	}
+}
 
 // CopyKeeper is where a factory keeps its own copies of repositories' pipeline
 // files ([factory.PipelineCopy]): its store.
@@ -107,7 +151,8 @@ func CopyFile(c factory.PipelineCopy) (File, error) {
 // MainSays is whether main, a read of the main branch before any personal
 // file is merged, is a clean file that is the same as text ([SameFile]).
 func MainSays(main File, text string) bool {
-	return main.From == factory.FromMainBranch && main.Source == SourceFile && len(main.Problems) == 0 && SameFile(main.Text, text)
+	_, unread := main.firstReadProblem()
+	return main.From == factory.FromMainBranch && main.Source == SourceFile && !unread && SameFile(main.Text, text)
 }
 
 // SameFile says whether two pipeline files are the same file: both read
@@ -131,7 +176,7 @@ func canonical(text string) ([]byte, bool) {
 		return nil, false
 	}
 	f, err := Parse(text)
-	if err != nil || len(f.Problems) > 0 {
+	if _, unread := f.firstReadProblem(); err != nil || unread {
 		return nil, false
 	}
 	data, err := Encode(f)

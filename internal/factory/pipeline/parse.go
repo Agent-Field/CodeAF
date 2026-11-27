@@ -13,8 +13,8 @@ import (
 
 // Parse reads a repository's pipeline file. A syntax error is the error, and
 // the file answered is [Defaults]: a file that cannot be read does not take
-// the floor down with it. Everything else loads, and each key that does not
-// is a [Problem].
+// the floor down with it. Other problems and spelling suggestions are
+// reported with the file that did load.
 func Parse(text string) (File, error) {
 	f, err := parse(text, true)
 	if err != nil {
@@ -329,6 +329,9 @@ func (d *draft) readPipeline(n *yaml.Node) {
 		if !validStepName(string(kind)) {
 			d.problems = append(d.problems, Problem{Line: p.line, Where: "pipeline." + p.name, Why: "not a kind"})
 			continue
+		}
+		if why := pipelineNameSuggestion(p.name, kind); why != "" {
+			d.problems = append(d.problems, Problem{Line: p.line, Where: "pipeline." + p.name, Why: why, spelling: true})
 		}
 		names, ps, ok := nameList(p.val)
 		d.problems = append(d.problems, tag("pipeline."+string(kind), ps)...)

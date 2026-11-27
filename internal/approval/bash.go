@@ -303,7 +303,8 @@ func globMatch(pattern, text string) bool {
 
 // ── critical commands ───────────────────────────────────────────────────────
 
-// criticalCommands is the table that a blanket allow cannot switch off.
+// criticalCommands is the prompt table that a blanket allow cannot switch off.
+// CheckBash refuses protected deletions before it consults this table.
 //
 // It is deliberately short and unglamorous. It is not a sandbox, not a threat
 // model, and not an attempt to enumerate every way a shell can ruin a machine
@@ -314,13 +315,9 @@ func globMatch(pattern, text string) bool {
 //
 // Matched against the whole line and each segment, after normalizeCritical.
 var criticalCommands = []string{
-	// Recursive force-remove of a root path. The '/*' glob deliberately
-	// over-fires: it catches "rm -rf / --no-preserve-root" and also plain
-	// "rm -rf /var/tmp/x". Prompting on an absolute recursive delete under an
-	// allow-all policy is the trade this table exists to make.
-	"rm -rf /",
+	// Keep the rule spellings for existing absolute-path prompts, including
+	// the broad '/*' glob that matches a descendant such as /var/tmp/x.
 	"rm -rf /*",
-	"rm -fr /",
 	"rm -fr /*",
 	// Making a filesystem — mkfs, mkfs.ext4, mkfs.xfs …
 	"mkfs*",
@@ -351,8 +348,8 @@ func criticalHit(command string, segments []string) (string, bool) {
 	// below matches text, and every `rm` entry in it spells `rm -rf /`, so a
 	// model refused that line ran `rm -r /tmp/victim` one call later and was
 	// never asked (#2813). The table still answers first, so a line it already
-	// catches keeps the rule it has always been reported under (`rm -rf /` is
-	// `rm -rf /`). Only what it misses is then read the way the shell reads it —
+	// catches keeps the rule it has always been reported under. Only what it
+	// misses is then read the way the shell reads it —
 	// quotes stripped, flags in any spelling, a path-qualified `rm`.
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, command)
@@ -411,37 +408,15 @@ const (
 //
 // A RELATIVE TARGET IS NOT GRADED. `rm -rf build` and `rm -r ./tmp/x` are the
 // ordinary cleanup of a project, and a floor that asked about them would be
-// pressed through without reading. The table is a floor and not a sandbox:
-// `find -delete` and a script that removes a tree are the policy's job, and the
-// sentence the model reads after a no is what covers those ([consent.go]).
+// pressed through without reading. The earlier protected-delete check also
+// covers `find -delete` starting at a protected path.
 func recursiveRemoveHit(command string) (string, bool) {
 	for _, words := range CommandWords(command) {
 		words = unwrap(words, map[string]string{}, CredentialScope{})
 		if len(words) == 0 || commandBase(words[0]) != "rm" {
 			continue
 		}
-		recursive, options := false, true
-		var targets []string
-		for _, word := range words[1:] {
-			switch {
-			case !options:
-				targets = append(targets, word)
-			case word == "--":
-				options = false
-			case len(word) > 2 && strings.HasPrefix("--recursive", word):
-				// GNU rm takes any unambiguous prefix of a long option, and
-				// `--r` is only ever --recursive, so `--rec` and `--recurs`
-				// are the same flag.
-				recursive = true
-			case strings.HasPrefix(word, "--"):
-			case strings.HasPrefix(word, "-") && len(word) > 1:
-				if strings.ContainsAny(word[1:], "rR") {
-					recursive = true
-				}
-			default:
-				targets = append(targets, word)
-			}
-		}
+		recursive, _, targets := removeArguments(words[1:])
 		if !recursive {
 			continue
 		}
@@ -452,6 +427,31 @@ func recursiveRemoveHit(command string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// removeArguments reads options and operands together because rm accepts flags
+// after targets until the option terminator.
+func removeArguments(words []string) (recursive, noPreserveRoot bool, targets []string) {
+	options := true
+	for _, word := range words {
+		switch {
+		case !options:
+			targets = append(targets, word)
+		case word == "--":
+			options = false
+		case word == "--no-preserve-root":
+			noPreserveRoot = true
+		case len(word) > 2 && strings.HasPrefix("--recursive", word):
+			// GNU rm accepts unambiguous long-option prefixes.
+			recursive = true
+		case strings.HasPrefix(word, "--"):
+		case strings.HasPrefix(word, "-") && len(word) > 1:
+			recursive = recursive || strings.ContainsAny(word[1:], "rR")
+		default:
+			targets = append(targets, word)
+		}
+	}
+	return recursive, noPreserveRoot, targets
 }
 
 // removeTargetHit names the table entry one delete target falls under, or ""

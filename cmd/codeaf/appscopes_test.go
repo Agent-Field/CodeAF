@@ -31,7 +31,7 @@ func TestAppPermissionScopesOnTheWire(t *testing.T) {
 		{"write", "", "", []string{"write"}},
 		{"bash", "git status && git push", "compound", nil},
 		{"slack_send", "", "acts_as_you", nil},
-		{"bash", "rm -rf /", "critical", nil},
+		{"bash", "rm -rf /var/tmp/victim", "critical", nil},
 	} {
 		t.Run(tc.tool+tc.command, func(t *testing.T) {
 			attempts := tc.scopes

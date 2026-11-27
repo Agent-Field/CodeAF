@@ -267,7 +267,11 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					run.RelayTail(cur)
 				}
 				if file != nil {
-					cur.DecidePipeline(file.Copy, h.clock())
+					if fileErr == nil {
+						file.DecideJobPipeline(cur, h.clock(), pick)
+					} else {
+						cur.DecidePipeline(file.Copy, h.clock())
+					}
 				}
 				if rules != nil && !queued {
 					// A person's start judges nothing: what the factory's own

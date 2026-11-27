@@ -199,19 +199,23 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // it is answered before this, in [Agent.approve], because a capability that is
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
+	tool, args := call.Function.Name, json.RawMessage(call.Function.Arguments)
 	// THE CREDENTIAL FLOOR HOLDS WITH NO POLICY AT ALL, and it is asked here so the
 	// early start of a read (loop.go) refuses it too. It runs with the workspace,
 	// which the policy does not have, so a relative path and a link are placed.
 	if read, hit := a.credentialRead(call); hit {
+		// A compound line can reach both floors. The deletion refusal must
+		// also hold at the user's bash door, which exempts credential reads.
+		if decision, denied := approval.ProtectedDeletion(tool, args); denied {
+			return decision, true
+		}
 		return read.Decision(), true
 	}
 	policy := a.approvalGate()
 	if policy == nil {
-		return approval.Decision{}, false
+		return approval.ProtectedDeletion(tool, args)
 	}
-	args := json.RawMessage(call.Function.Arguments)
-	decision := policy.Check(call.Function.Name, args)
-	return a.capabilitySays(call.Function.Name, args, decision), true
+	return a.capabilitySays(tool, args, policy.Check(tool, args)), true
 }
 
 // capabilitySays applies the person's word about the account to the policy's
@@ -252,23 +256,21 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
-	// AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, and nothing below can say
-	// otherwise: no mode, rule, memo, guardian or setup grant is asked about it
-	// (internal/approval's credentials.go). It reads as the refusal itself, with
-	// no rule's name in front of it, because the wording is what ends the attempt.
-	if read, hit := a.credentialRead(call); hit {
-		return refusal(read.Message()), false
+	decision, governed := a.decide(call)
+	// The hard floors supply the entire message because their wording is what
+	// ends the attempt. No other source of consent is consulted.
+	if decision.Never || decision.Credential {
+		return refusal(decision.Rule), false
 	}
 	// WHAT THE PERSON HAS TURNED OFF NEVER RUNS, and it is answered here rather
 	// than by the policy: it is not a judgement about this call, it is a hand
-	// this build does not have. It comes FIRST, ahead of the policy, the memo
-	// and the guardian, so that nothing downstream can allow it and nobody is
+	// this build does not have. It takes precedence over ordinary policy answers,
+	// the memo and the guardian, so that nothing downstream can allow it and nobody is
 	// asked a question whose only honest answer is already known. See
 	// [Agent.capabilityRefusal] for why an armed tool can be off at all.
 	if off := a.capabilityRefusal(call.Function.Name, json.RawMessage(call.Function.Arguments)); off != "" {
 		return refusal(off), false
 	}
-	decision, governed := a.decide(call)
 	if governed {
 		decision = a.setupFloor(ctx, decision)
 	}
@@ -288,13 +290,10 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//   - AN OUTRIGHT DENY, which returned above and never reaches this line. A
 	//     rule that refuses is not a question anybody was asked, so there is no
 	//     answer to remember about it.
-	//   - THE FLOOR. The critical shapes and the calls that act in the person's
-	//     name answer PROMPT and not deny (internal/approval), so without this
-	//     they were exactly the questions a memo could swallow: one approved
-	//     `git status` with "stop asking me about bash" behind it, and `rm -rf /`
-	//     ran silently for the rest of the session. The memo is somebody saying
-	//     they are done being asked about ordinary work. It is not somebody
-	//     saying they have read a message that has not been written yet.
+	//   - THE FLOORS THAT ASK. A memo could otherwise turn approval for one
+	//     `git status` into silent permission for `rm -rf /var/tmp/x`. The same
+	//     holds for calls that act in the person's name, where the memo was
+	//     recorded before the message was written.
 	if decision.ProfileReadError == "" && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {

@@ -15,7 +15,7 @@ import (
 // shapes, and the calls that leave this machine in their name. Both of those
 // answer PROMPT rather than deny (internal/approval), so a memo consulted ahead
 // of them swallowed them whole — one approved `git status` bought silence for
-// `rm -rf /` for the rest of the session.
+// `rm -rf /var/tmp/victim` for the rest of the session.
 
 // bashCallTurn is one turn that asks for these shell commands in order, one per
 // step, so the answers to the earlier ones are in hand before the later ones
@@ -57,7 +57,7 @@ func bashAgent(t *testing.T, policy *approval.Policy, commands ...string) (*Agen
 	// THE BELT'S OWN BASH IS TAKEN OFF. The floor is a table of commands that
 	// destroy a disk or drop the machine, so the one thing these tests must never
 	// do is let one through to a shell — the assertion is that the gate ASKED, and
-	// a test that proved it by running `rm -rf /` would be proving it once.
+	// a test that proved it by running the delete would be proving it once.
 	for index := range agent.tools {
 		if agent.tools[index].Name == "bash" {
 			agent.tools[index] = countingTool("bash", runs, nil)
@@ -74,7 +74,7 @@ func TestTheMemoDoesNotAnswerForACriticalCommand(t *testing.T) {
 		Default:      approval.ActionAllow,
 		BashPatterns: []approval.Rule{{Match: "ls*", Action: approval.ActionPrompt}},
 	}
-	agent, runs := bashAgent(t, policy, "ls -la", "ls /tmp", "rm -rf /")
+	agent, runs := bashAgent(t, policy, "ls -la", "ls /tmp", "rm -rf /var/tmp/victim")
 
 	var asked []Event
 	events := drainAnswering(t, mustSubmit(t, agent, "clean up"), func(request Event) {
@@ -88,7 +88,7 @@ func TestTheMemoDoesNotAnswerForACriticalCommand(t *testing.T) {
 	if asked[1].Rule == "" || asked[1].Hint == "" {
 		t.Fatalf("the second question says nothing about itself: %+v", asked[1])
 	}
-	if got := asked[1].Rule; got != `critical command "rm -rf /"` {
+	if got := asked[1].Rule; got != `critical command "rm -rf /*"` {
 		t.Fatalf("the second question is about %q, want the critical shape", got)
 	}
 	if len(runs) != 3 {
@@ -198,5 +198,60 @@ func TestAConsentRequestNamesTheCallItIsAbout(t *testing.T) {
 	}
 	if asked[0].CallID != "call-a" {
 		t.Fatalf("the question names call %q, want the one it is about", asked[0].CallID)
+	}
+}
+
+// Contract C5: Approval of a protected deletion ends at the refusal, before a
+// memo, an open conversation, a task policy, the guardian, or a setup grant.
+func TestProtectedDeletionRefusesModelBashBeforeConsent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const command = "rm -rf /"
+	call := gateCall(approval.ToolBash, bashJSON(t, command))
+	allow := &approval.Policy{Default: approval.ActionAllow}
+	prompt := &approval.Policy{Default: approval.ActionPrompt}
+
+	for _, scenario := range []struct {
+		name                 string
+		policy               *approval.Policy
+		memo, task, guardian bool
+		setup                bool
+	}{
+		{name: "without policy"},
+		{name: "conversation", policy: prompt},
+		{name: "memo", policy: prompt, memo: true},
+		{name: "task", policy: allow, task: true},
+		{name: "guardian", policy: prompt, guardian: true},
+		{name: "setup grant", policy: prompt, setup: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			guardian := &guardianCompleter{inner: &scriptedCompleter{}, verdict: "ALLOW"}
+			agent, _ := newTestAgent(t, guardian, func(cfg *Config) {
+				cfg.ApprovalPolicy = scenario.policy
+				cfg.AskConsent = true
+				cfg.InTask = scenario.task
+				cfg.Guardian = scenario.guardian
+			})
+			if scenario.memo {
+				agent.rememberConsent(approval.ToolBash, true)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if scenario.setup {
+				ctx = context.WithValue(ctx, setupKey{}, true)
+				ctx = context.WithValue(ctx, grantsKey{}, []string{command})
+			}
+			hub := &eventHub{observe: func(e Event) {
+				t.Errorf("approval sent an event to the hub: %+v", e)
+				cancel()
+			}}
+			result, allowed := agent.approve(ctx, hub, call)
+			want := allow.CheckBash(command)
+			if want.Action != approval.ActionDeny || allowed || !result.isError || result.text != want.Rule {
+				t.Errorf("allowed=%v, result=%+v, want the verbatim refusal %q", allowed, result, want.Rule)
+			}
+			if len(guardian.questions()) != 0 || len(agent.PendingConsent()) != 0 {
+				t.Error("the refusal reached the guardian or left a consent question pending")
+			}
+		})
 	}
 }

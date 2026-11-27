@@ -202,6 +202,9 @@ type Decision struct {
 	// Credential marks a refusal by the credential floor (credentials.go), which
 	// is the one deny a person's own `!` command is not bound by.
 	Credential bool
+	// Never marks a refusal that also binds the person's own `!` command.
+	// Rule is the full message to show.
+	Never bool
 }
 
 // String is the one-line form: `bash pattern "rm -rf *" → prompt`.
@@ -211,7 +214,11 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 // is read only for bash, and only for its "command" field.
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
-	if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
+	if tool == ToolBash {
+		if command, ok := bashCommand(args); ok {
+			return p.CheckBash(command)
+		}
+	} else if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
 		return read.Decision()
 	}
 	if p.ProfileReadError != "" {
@@ -222,24 +229,21 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	if tool != ToolBash {
 		return p.maybeAllowSelfAsking(tool, p.maybeAllowReadOnly(tool, args, base))
 	}
-	command, ok := bashCommand(args)
-	if !ok {
-		// A bash call whose command cannot be read cannot be matched against
-		// anything, so an allow here would be a blanket allow for the one tool
-		// that most needs the patterns. Deny and prompt stand; allow becomes a
-		// prompt and the person sees the raw arguments.
-		if base.Action == ActionAllow {
-			return Decision{Action: ActionPrompt, Rule: "bash call with no readable command"}
-		}
-		return base
+	// A bash call whose command cannot be read cannot be matched against the
+	// patterns. An allow becomes a prompt so the person sees the raw arguments.
+	if base.Action == ActionAllow {
+		return Decision{Action: ActionPrompt, Rule: "bash call with no readable command"}
 	}
-	return p.checkBash(command, base)
+	return base
 }
 
 // CheckBash judges a command line directly, for callers that already have the
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
+	if decision, denied := CheckProtectedDeletion(command); denied {
+		return decision
+	}
 	if read, hit := DefaultCredentialScope("").Command(command); hit {
 		return read.Decision()
 	}
@@ -271,7 +275,8 @@ func (p Policy) base(tool string, args json.RawMessage) Decision {
 	return decision
 }
 
-// checkBash walks the patterns in order and then applies the critical table.
+// checkBash walks the patterns and applies the critical prompt floor after
+// CheckBash has handled the refusals that no policy can override.
 func (p Policy) checkBash(command string, base Decision) Decision {
 	segments, compound := splitSegments(command)
 	whole := strings.TrimSpace(command)

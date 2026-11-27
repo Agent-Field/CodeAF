@@ -214,7 +214,7 @@ func ParseLibrary(text string) (File, error) {
 // A LIBRARY IS `pipeline:` AND `steps:` ONLY: start rules, sizes, budgets,
 // rules, fixed, adapt and merge belong to a repository (or to the factory's
 // own rules and spending) and are refused rather than kept where nothing
-// reads them. It must read with no problem, list no pipeline named pr or ci,
+// reads them. It must read cleanly, list no pipeline named pr or ci,
 // and run every step it lists ([runtimeDrops]). The answer is the canonical
 // encoding ([Encode]), which writes only what the text wrote: a shipped step
 // it names but leaves as shipped is not written out. "" (or a text that
@@ -251,8 +251,8 @@ func CheckLibrary(text string) ([]byte, string) {
 	if err != nil {
 		return nil, err.Error()
 	}
-	if len(f.Problems) > 0 {
-		return nil, f.Problems[0].Error()
+	if problem, unread := f.firstReadProblem(); unread {
+		return nil, problem.Error()
 	}
 	if why := libraryRefusal(f); why != "" {
 		return nil, why

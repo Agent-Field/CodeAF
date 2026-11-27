@@ -1463,8 +1463,14 @@ func shellCommandOf(call ai.ToolCall) string {
 	if call.Function.Name != "sh" {
 		return ""
 	}
+	return ShellCommand(call.Function.Arguments)
+}
+
+// ShellCommand returns the command an sh call will run, in the same form used
+// by the toolbox, so a caller can check the line before dispatch.
+func ShellCommand(arguments string) string {
 	var args map[string]any
-	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return ""
 	}
 	return shellCommand(args)

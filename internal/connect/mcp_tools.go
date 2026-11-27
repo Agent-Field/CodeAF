@@ -33,7 +33,9 @@ import (
 // that a caller holds nothing but a [Manager]. The cost is one round-trip of
 // setting up, on top of a call that is already crossing the internet.
 //
-// WHAT IS NOT PAID TWICE IS THE TOOL LIST. See [Manager.MCPTools].
+// THE BELT'S TOOL LIST IS NOT PAID TWICE, BUT EVERY CALL LISTS FOR ITSELF, because a
+// session only knows the tools it has listed. See [Manager.MCPTools] and the
+// note in [Manager.MCPCall].
 
 const (
 	// mcpCallTimeout is the outer backstop on one exchange with a tool server.
@@ -127,6 +129,31 @@ func (m *Manager) MCPCall(ctx context.Context, service, tool string, args json.R
 	}
 	defer func() { _ = session.Close() }()
 
+	// THE SESSION MUST HAVE LISTED THE TOOLS BEFORE IT CALLS ONE. A tool's input
+	// schema can mark an argument with `x-mcp-header` (GitHub's server does this
+	// for owner and repo), and from protocol 2026-07-28 a call that does not carry
+	// the matching `Mcp-Param-*` headers is refused with a 400. The SDK builds
+	// those headers only from the tool definitions this session has already
+	// listed, and every call here opens a session of its own, so without this
+	// line every GitHub tool that takes an owner or a repo failed. The price is
+	// one extra `tools/list` round trip per call, which is small beside a call a
+	// model is already waiting on.
+	if err := listToolsForCall(ctx, session); err != nil && ctx.Err() == nil {
+		// A SERVER THAT WILL NOT LIST IS NOT A SERVER THAT WILL NOT CALL. Carry on
+		// to the call and let it say what is wrong. The SDK can treat a refused
+		// listing as a lost session and reject the next request on it, so the call
+		// goes out on a session that has not been through that.
+		fresh, openErr := m.open(ctx, plug)
+		if openErr != nil {
+			return "", openErr
+		}
+		// THE DEFERRED CLOSE ABOVE READS THIS VARIABLE, so it closes the session in
+		// use at return; the one set aside is closed here, after its replacement
+		// exists, so a failed reopen never leaves a nil session to close.
+		_ = session.Close()
+		session = fresh
+	}
+
 	answer, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", plug.service.Name, err)
@@ -139,6 +166,18 @@ func (m *Manager) MCPCall(ctx context.Context, service, tool string, args json.R
 		return "", fmt.Errorf("%s refused %s: %s", plug.service.Name, name, said)
 	}
 	return said, nil
+}
+
+// listToolsForCall reads every page of the session's tool list and answers the
+// first error. Only the side effect matters: the SDK keeps what a session has
+// listed and consults it when that session calls a tool.
+func listToolsForCall(ctx context.Context, session *mcp.ClientSession) error {
+	for _, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // open connects to one tool server on the person's behalf.

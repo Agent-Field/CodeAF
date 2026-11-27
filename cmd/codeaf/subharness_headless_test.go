@@ -458,6 +458,33 @@ func TestTheThreeToolRefusalsAreThreeDifferentFacts(t *testing.T) {
 	}
 }
 
+// Contract C5: The headless sh tool returns the same refusal as the bash
+// preview for both command input forms. The first segment keeps a regression
+// in the gate from reaching the delete.
+func TestHeadlessShellReturnsProtectedDeletionRefusalVerbatim(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	space, err := exec.NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const command = "false && rm -rf /"
+	manifest := testManifest("tidy-notes", "file loose notes")
+	manifest.Whitelist = []string{"sh"}
+	policy := approval.Policy{Default: approval.ActionAllow}
+	var journal runJournal
+	env := newHeadlessEnv(nil, exec.NewToolbox(space, "tidy-notes", nil), policy, manifest, &journal, io.Discard)
+	want := policy.CheckBash(command)
+	for _, cmd := range []any{command, []string{"false", "rm -rf /"}} {
+		_, err := env.Tool(t.Context(), "sh", map[string]any{"cmd": cmd})
+		if !want.Never || err == nil || err.Error() != want.Rule {
+			t.Fatalf("sh %v returned %v, want %q", cmd, err, want.Rule)
+		}
+	}
+	if len(journal.entries) != 2 || journal.entries[0].Err != want.Rule || journal.entries[1].Err != want.Rule {
+		t.Fatalf("journal did not preserve the refusals: %+v", journal.entries)
+	}
+}
+
 // TestTheBundleMemoryIsAbsentRatherThanQuietlyDropped pins the store lane's seam.
 // A note accepted and thrown away would teach a program it had learned something
 // it had not, so both doors answer the contract's own typed absence.

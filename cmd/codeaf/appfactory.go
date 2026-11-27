@@ -1151,6 +1151,17 @@ func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Jo
 }
 
 func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.FactoryRepos, error) {
+	return b.factoryRepos(ctx, id, "/v1/repos")
+}
+
+var _ appwire.FactoryReposRefresher = (*appBackend)(nil)
+
+func (b *appBackend) FactoryReposRefresh(ctx context.Context, id string) (appwire.FactoryRepos, error) {
+	// Older factories ignore the refresh query and return their ordinary list.
+	return b.factoryRepos(ctx, id, "/v1/repos?refresh=1")
+}
+
+func (b *appBackend) factoryRepos(ctx context.Context, id, path string) (appwire.FactoryRepos, error) {
 	var body struct {
 		AvailableReadAt time.Time   `json:"available_read_at"`
 		Factory         api.Factory `json:"factory"`
@@ -1166,7 +1177,7 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 			OpenIssues *int `json:"open_issues"`
 		} `json:"available"`
 	}
-	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
+	if err := b.factoryHub().read(ctx, id, path, appFactoryBody, &body); err != nil {
 		return appwire.FactoryRepos{}, err
 	}
 	out := appwire.FactoryRepos{AvailableReadAt: body.AvailableReadAt, Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}

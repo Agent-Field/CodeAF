@@ -28,10 +28,26 @@ func (h *Handler) repoPower(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "repo must be owner/name")
 		return
 	}
-	if !h.repoVisible(r, repo) {
+	visible := h.repoVisible(r, repo)
+	if !visible {
 		if h.githubVisibilityLimited(w, r) {
 			return
 		}
+		// A team operator may gain sight of the repository through the team's
+		// GitHub grant after discovery publishes a new list.
+		if h.mode() == api.FactoryTeam && !isBotCall(r) && h.seam.Repos != nil && h.seam.GitHub != nil {
+			if _, _, _, err := h.readRepos(r.Context(), true); err == nil {
+				// The read can wait as long as a first discovery does, and a sign-in
+				// can end in that time, so the operator is confirmed again before the
+				// answer to "can this person see it now" is believed.
+				if !h.requireOperator(w, r) {
+					return
+				}
+				visible = h.repoVisible(r, repo)
+			}
+		}
+	}
+	if !visible {
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}

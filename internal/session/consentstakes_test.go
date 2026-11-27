@@ -22,7 +22,7 @@ import (
 // STAKES ARE INTERNAL/APPROVAL'S OWN JUDGEMENT PASSED THROUGH (consent.go):
 // [approval.AlwaysAsks] is true for exactly the shapes that hold under a
 // blanket allow — bash's critical table and the calls that act in the person's
-// name — so a recursive delete of a root path is graded [StakesIrreversible]
+// name — so a recursive delete of an absolute descendant is graded [StakesIrreversible]
 // and an ordinary call stays [StakesCostly]. Nothing in this package reads the
 // command's text: one predicate decides asking and grading, and a second list
 // here would be two judgements about the same call that one day disagree.
@@ -46,11 +46,11 @@ func TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer(t *testing.T) 
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	call := ai.ToolCall{
 		ID:       "c1",
-		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"rm -rf /"}`},
+		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"rm -rf /var/tmp/victim"}`},
 	}
 	decision := approval.Policy{}.Check("bash", json.RawMessage(call.Function.Arguments))
 	if decision.Action != approval.ActionPrompt {
-		t.Fatalf("the default rules do not even ask about `rm -rf /`: %+v", decision)
+		t.Fatalf("the default rules do not even ask about `rm -rf /var/tmp/victim`: %+v", decision)
 	}
 
 	ask := agent.consentAsk(9, call, decision)
@@ -60,7 +60,7 @@ func TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer(t *testing.T) 
 	// about, so the gate grades it irreversible and leaves the widening
 	// `always` off the answers.
 	if ask.Stakes != StakesIrreversible {
-		t.Fatalf("the gate stamped something other than irreversible on `rm -rf /`: %q", ask.Stakes)
+		t.Fatalf("the gate stamped something other than irreversible on `rm -rf /var/tmp/victim`: %q", ask.Stakes)
 	}
 	for _, option := range ask.Options {
 		if option.Widening {
@@ -105,7 +105,7 @@ func TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer(t *testing.T) 
 	assertConsentGolden(t, ask)
 }
 
-// consentGolden is where the engine's own answer to `rm -rf /` is kept for the
+// consentGolden is where the engine's own answer to `rm -rf /var/tmp/victim` is kept for the
 // surface's tests to raise. It sits beside the code that produces it, because
 // the producer is what owes it accuracy.
 const consentGolden = "testdata/consentask-rm-rf.json"

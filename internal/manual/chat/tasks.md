@@ -473,7 +473,7 @@ the opening line within an 80-byte limit. It stops at a whole word and removes
 trailing glue such as `and` or `of`. A single word longer than the limit is
 shortened without breaking its characters. The full brief stays with the task.
 
-## Why my task is called something I did not type — who names a task, why a row is named after a folder path or the first few words I typed, and can I rename it
+## Why my task is called something I did not type — who names a task, why the task on the right is named after a folder path like /var/folders or the first few words I typed, and can I rename it
 
 The name on the roster is written by a model, not cut out of your sentence.
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -222,6 +223,12 @@ func (e *headlessEnv) Tool(ctx context.Context, name string, args map[string]any
 		return exec.ToolResult{}, fmt.Errorf(
 			"%s may use %q and this build does not have it, so there is nothing here to call", e.programName(), name)
 	}
+	// The toolbox's shell has its own policy name and argument shape.
+	if name == "sh" {
+		if decision, denied := approval.CheckProtectedDeletion(exec.ShellCommand(string(arguments))); denied {
+			return exec.ToolResult{}, errors.New(decision.Rule)
+		}
+	}
 	// NOBODY IS WATCHING, and denying is the only honest answer. This is
 	// internal/session/consent.go's own reasoning, reached without importing it:
 	// waiting would hang the run forever on a question with no reader, and
@@ -229,6 +236,9 @@ func (e *headlessEnv) Tool(ctx context.Context, name string, args map[string]any
 	// not a terminal. Nothing here auto-approves and nothing here remembers an
 	// approval, because there is nobody whose answer could be remembered.
 	if decision := e.policy.Check(name, json.RawMessage(arguments)); decision.Action != approval.ActionAllow {
+		if decision.Never {
+			return exec.ToolResult{}, errors.New(decision.Rule)
+		}
 		return exec.ToolResult{}, fmt.Errorf(
 			"%q needs somebody to say yes (%s) and nobody is here to ask, so it was refused", name, decision.Rule)
 	}

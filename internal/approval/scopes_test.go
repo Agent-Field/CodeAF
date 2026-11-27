@@ -13,7 +13,8 @@ func TestApprovalDecisionCarriesOnlyTheMatchedScope(t *testing.T) {
 	}{
 		{"bash", "git status --porcelain", "git status*", ActionAllow},
 		{"bash", "git push", "", ActionPrompt},
-		{"bash", "rm -rf /", "", ActionPrompt},
+		{"bash", "rm -rf /", "", ActionDeny},
+		{"bash", "rm -rf /var/tmp/victim", "", ActionPrompt},
 		{"write", "", "write", ActionAllow},
 		{"edit", "", "", ActionPrompt},
 	} {

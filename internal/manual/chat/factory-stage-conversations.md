@@ -266,10 +266,11 @@ tests, `git`) there without asking anyone. Your own approval settings
 (the tool approval mode, the tool rules, the command rules) do not narrow it: a rule that says
 "ask me" would only ever be refused there, because nobody is at its keyboard to answer.
 
-Two limits still apply, as they do under `--yolo`: a critical command such as `rm -rf /`,
-`mkfs` or `shutdown`, and a call that acts in your name such as `gmail_send`, would ask, and in a
-stage that ask is refused with `needs approval but no resolver is attached: <rule>`. Nothing in a
-stage ever waits on you.
+As under `--yolo`, a recursive delete of `/`, the home folder or a top-level system folder
+is refused outright. A critical command such as `rm -rf /var/tmp/x`, `mkfs` or `shutdown`,
+or a call that acts in your name such as `gmail_send`, would still ask in chat. In a stage,
+that call is refused with `needs approval but no resolver is attached: <rule>`. Nothing in
+a stage ever waits on you.
 
 A stage cannot post to its team either: its brief says `You have no team_post tool; report
 through stage_result only.`
@@ -886,10 +887,10 @@ history, but is not an unresolved failure after that check passes on the repair.
 Unknown compound commands and skipped branches remain blocking; a passing subset
 does not erase a different failed check.
 
-Factory shell calls look for an installed Cargo executable before fitting their
-check wrapper. Existing PATH selection wins; otherwise they use `CARGO_HOME/bin`,
-or `~/.cargo/bin` when CARGO_HOME is unset. They do not install anything, source
-shell profiles or change the engine's own PATH.
+Factory shell calls look for Cargo before wrapping a check. Cargo lookup uses
+`PATH` first, then `CARGO_HOME/bin` or `~/.cargo/bin` when `CARGO_HOME` is unset.
+The lookup leaves the engine's PATH alone and runs without installing tools or
+loading shell profiles.
 
 After a repair claims completion and verification rejects it, the agent can
 correct the check in the same conversation. Three completion reports repeating

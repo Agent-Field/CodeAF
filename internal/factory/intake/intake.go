@@ -310,6 +310,10 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 		}
 	}
 	kind, reason := record.AutoStarted, startReason(routed)
+	var pick string
+	if routed != nil {
+		pick = routed.rule.Then.Pipeline
+	}
 	var staged []factory.Stage
 	if decision.Ask {
 		kind, reason = record.AskedFirst, strings.Join(decision.Reasons, "; ")
@@ -322,7 +326,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			}
 			staged = cur.Stages
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
-			cur.DecidePipeline(f.Copy, time.Now())
+			f.DecideJobPipeline(cur, time.Now(), pick)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -346,7 +350,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			// THE JOB'S FILE IS DECIDED WITH ITS STEPS: the launch just below
 			// reads this one, not a copy saved in between.
-			cur.DecidePipeline(f.Copy, time.Now())
+			f.DecideJobPipeline(cur, time.Now(), pick)
 			own(cur)
 			cur.SetStartCheck(factory.CheckPassed)
 			if cur.Cap <= 0 {

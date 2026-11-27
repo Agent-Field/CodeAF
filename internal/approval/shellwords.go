@@ -16,21 +16,32 @@ import "strings"
 // stated here because it is the shape of the next escalation, and because a
 // reader of this file should not have to discover it by testing.
 func CommandWords(command string) [][]string {
+	return commandWords(command, true)
+}
+
+// commandWords can omit redirections when the caller only needs command
+// operands. The lexer still knows whether a '<' or '>' came from a quote.
+func commandWords(command string, keepRedirects bool) [][]string {
 	var segments [][]string
 	var words []string
 	var word strings.Builder
 	var quote rune
+	var redirectTarget bool
 	// resume is the double quote a substitution was opened INSIDE, kept so the
 	// quote goes back on when that substitution closes. See the `$` case below.
 	var resume rune
 	flushWord := func() {
 		if word.Len() > 0 {
-			words = append(words, word.String())
+			if !redirectTarget {
+				words = append(words, word.String())
+			}
+			redirectTarget = false
 			word.Reset()
 		}
 	}
 	flushSegment := func() {
 		flushWord()
+		redirectTarget = false
 		if len(words) > 0 {
 			segments = append(segments, words)
 			words = nil
@@ -70,6 +81,10 @@ func CommandWords(command string) [][]string {
 			resume = 0
 			continue
 		}
+		if !keepRedirects && letter == '&' && index+1 < len(runes) && runes[index+1] == '>' {
+			index++
+			letter = '>'
+		}
 		switch letter {
 		case '\'', '"':
 			quote = letter
@@ -105,10 +120,23 @@ func CommandWords(command string) [][]string {
 			}
 			word.WriteRune(letter)
 		case '>', '<':
-			flushWord()
+			// A number joined to the operator is the file descriptor.
+			if !keepRedirects && index > 0 && runes[index-1] >= '0' && runes[index-1] <= '9' &&
+				strings.Trim(word.String(), "0123456789") == "" {
+				word.Reset()
+			} else {
+				flushWord()
+			}
 			operator, last := redirectOperator(runes, index)
 			index = last
-			words = append(words, operator)
+			if keepRedirects {
+				words = append(words, operator)
+			} else {
+				if operator == "<" && index+1 < len(runes) && runes[index+1] == '&' {
+					index++
+				}
+				redirectTarget = true
+			}
 		default:
 			word.WriteRune(letter)
 		}

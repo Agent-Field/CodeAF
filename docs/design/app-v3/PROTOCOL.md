@@ -728,6 +728,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
+| `factory.repos_refresh` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.rules` | `in.FactoryRef` | `FactoryRules` |
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
@@ -767,6 +768,14 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
 | `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
 | `factory.waits_set` | `in.FactoryWaitsSetParams` | `FactoryWaitsSetResult` |
+
+`factory.repos_refresh` in `hello.features` says the engine serves
+`factory.repos_refresh {factory}`. It reads `GET /v1/repos?refresh=1` with the
+same caller and returns the same `FactoryRepos` shape as `factory.repos`.
+The factory waits for an active discovery or starts one if at least 30 seconds
+have passed since the last discovery started. During the cooldown it returns
+the saved list. Older factories ignore the query and return their ordinary list.
+Clients can use `factory.repos` when the engine omits the feature.
 
 An engine whose hello carries the features `factory.default_budget`,
 `factory.auto_start_cap` and `factory.default_model` serves

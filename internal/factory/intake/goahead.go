@@ -241,7 +241,7 @@ func (in *Intake) startGoAhead(ctx context.Context, it factory.Item, c covering,
 		if file != nil {
 			cur.Stages = factory.CopyStages(file.Recipe().For(cur.Kind))
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(*file), ""
-			cur.DecidePipeline(file.Copy, now)
+			file.DecideJobPipeline(cur, now, "")
 			if cur.Cap <= 0 {
 				cur.Cap = file.DefaultBudget
 			}

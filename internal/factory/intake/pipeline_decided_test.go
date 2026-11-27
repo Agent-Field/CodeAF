@@ -12,6 +12,42 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
+// Contract P3: Intake records the fallback when it stamps an issue's steps
+// for an automatic start or holds the start for a person.
+func TestIntakeRecordsTheBuiltInIssuePipelineWhenItStampsSteps(t *testing.T) {
+	const want = ".codeaf/factory.yaml has no pipeline: issue: list, so this job runs the built-in steps."
+	t.Setenv("HOME", t.TempDir())
+	for _, tt := range []struct {
+		name, extra string
+		state       factory.State
+	}{
+		{"automatic start", "", factory.StateQueued},
+		{"asks first", "size:\n  issue: label\n", factory.StateNeedsYou},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			file, err := pipeline.Parse("start:\n  labels: [agent-ready]\npipeline:\n  docs: [write, proof]\n" + tt.extra)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file.Source, file.From = pipeline.SourceFile, factory.FromMainBranch
+			floor := newPickUp(t, file)
+			got := floor.poll(t, "agent-ready")
+			if !got.PipelineDecided || got.State != tt.state {
+				t.Fatalf("pipeline decided = %v, state = %s, want %s", got.PipelineDecided, got.State, tt.state)
+			}
+			count := 0
+			for _, ev := range got.Activity {
+				if ev.What == want {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("fallback note count = %d, activity = %+v", count, got.Activity)
+			}
+		})
+	}
+}
+
 // INTAKE DECIDES A JOB'S PIPELINE FILE WHEN IT STAMPS THE JOB FIRST: a rule's
 // start stamps the copy the factory keeps on the job with its steps, so the
 // launch right after runs that file and not one saved in between; and a job

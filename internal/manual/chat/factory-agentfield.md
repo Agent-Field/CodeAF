@@ -816,8 +816,10 @@ does every question of a job in Manual.
 - A note to a step reaches it at its next turn boundary, not mid-sentence.
 - A harness step on a node is not sandboxed. It runs codeaf with every tool
   allowed, the same gate a factory step has by default, so its shell can
-  install software or pull images on the node's machine; only codeaf's
-  built-in floor of critical commands is refused, with nobody there to ask.
+  install software or pull images on the node's machine. Recursive deletes of
+  `/`, the home folder or a top-level system folder are refused outright.
+  Other critical commands, such as `rm -rf /var/tmp/x`, would ask in chat
+  and are refused on the node because nobody is there to answer.
   Confine the node's machine itself if that matters.
 - Jira is not an AgentField source; it has its own connector (see "connect
   Jira").

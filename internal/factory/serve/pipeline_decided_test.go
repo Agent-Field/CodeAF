@@ -3,6 +3,7 @@ package serve_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +12,107 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
+
+// Contract P3: The first start records why an issue uses the built-in steps,
+// and a later start keeps the same single line.
+func TestStartRecordsWhyAnIssueUsesBuiltInSteps(t *testing.T) {
+	const missing = "This repository has no .codeaf/factory.yaml on its main branch, so this job runs the built-in steps."
+	const omitted = ".codeaf/factory.yaml has no pipeline: issue: list, so this job runs the built-in steps."
+	const custom = "pipeline:\n  docs: [write, proof]\n"
+	const issue = "pipeline:\n  issue: [write, proof]\n"
+	for _, tt := range []struct {
+		name, yaml, copy, library, pick, want string
+		kind                                  factory.Kind
+	}{
+		{name: "no file", want: missing},
+		{name: "no issue list", yaml: custom, want: omitted},
+		{name: "repository issue list", yaml: issue},
+		{name: "copy issue list", copy: issue},
+		{name: "copy without issue list", copy: custom, want: omitted},
+		{name: "library issue list", yaml: custom, library: issue},
+		{name: "library with no repository file", library: issue},
+		{name: "pull request", kind: factory.KindPR},
+		{name: "CI", kind: factory.KindCI},
+		{name: "named pipeline", yaml: custom, pick: "docs"},
+		{name: "routed backlog pipeline", yaml: custom},
+		{name: "explicit built-in issue", pick: "issue", want: missing},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			file := pipeline.Defaults()
+			file.Source, file.From = pipeline.SourceDefaults, factory.FromDefault
+			var err error
+			if tt.yaml != "" {
+				file, err = pipeline.Parse(tt.yaml)
+				if err != nil {
+					t.Fatal(err)
+				}
+				file.Source, file.From = pipeline.SourceFile, factory.FromMainBranch
+			}
+			if tt.copy != "" {
+				file, err = pipeline.CopyFile(factory.PipelineCopy{Repo: "acme/api", Text: tt.copy, At: now, By: "sam"})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.library != "" {
+				lib, err := pipeline.ParseLibrary(tt.library)
+				if err != nil {
+					t.Fatal(err)
+				}
+				file = pipeline.WithLibrary(file, lib)
+			}
+			f := newV2Jobs(t)
+			f.cfg.Pipeline = func(context.Context, string, string) (pipeline.File, error) { return file, nil }
+			f.h.Close()
+			f.h = serve.New(f.seam, f.cfg)
+
+			kind := tt.kind
+			if kind == "" {
+				kind = factory.KindIssue
+			}
+			job := factory.Item{Kind: kind, State: factory.StateNew, Assignee: "sam", Stages: file.Recipe().For(kind)}
+			if tt.name == "routed backlog pipeline" {
+				job.Route, job.Stages = "documentation", file.Named("docs")
+			}
+			it := f.create(t, job)
+			if kind == factory.KindPR || kind == factory.KindCI {
+				f.post(t, it, "run", "", 404)
+			} else if tt.pick == "" {
+				f.post(t, it, "run", "", 200)
+			} else {
+				f.post(t, it, "start_now", `{"pipeline":"`+tt.pick+`"}`, 200)
+			}
+			assertNotes := func() {
+				t.Helper()
+				got, err := f.st.Get(it.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var notes []string
+				for _, ev := range got.Activity {
+					if strings.Contains(ev.What, "this job runs the built-in steps") {
+						notes = append(notes, ev.What)
+					}
+				}
+				if tt.want == "" && len(notes) != 0 || tt.want != "" && (len(notes) != 1 || notes[0] != tt.want) {
+					t.Errorf("fallback notes = %q, want %q once when present", notes, tt.want)
+				}
+			}
+			assertNotes()
+			if tt.want != "" {
+				if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+					cur.State, cur.Stream = factory.StateNew, nil
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				f.post(t, it, "run", "", 200)
+				assertNotes()
+			}
+		})
+	}
+}
 
 // decidedFactory is a v2 factory whose pipeline reads are those of a host
 // that keeps copies (Config.JobPipeline over pipeline.JobFile): main's file

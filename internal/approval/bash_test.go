@@ -171,13 +171,13 @@ func TestCriticalHit(t *testing.T) {
 		command string
 		want    bool
 	}{
-		{"root delete", "rm -rf /", true},
-		{"root delete flags reversed", "rm -fr /", true},
-		{"root delete no preserve", "rm -rf / --no-preserve-root", true},
-		{"root glob", "rm -rf /*", true},
-		{"sudo root delete", "sudo rm -rf /", true},
-		{"extra whitespace", "rm   -rf    /", true},
-		{"inside a compound line", "cd /tmp && rm -rf /", true},
+		{"absolute delete", "rm -rf /var/tmp/victim", true},
+		{"absolute delete flags reversed", "rm -fr /var/tmp/victim", true},
+		{"absolute delete with a trailing flag", "rm -rf /var/tmp/victim --preserve-root", true},
+		{"absolute descendant glob", "rm -rf /var/tmp/*", true},
+		{"sudo absolute delete", "sudo rm -rf /var/tmp/victim", true},
+		{"extra whitespace", "rm   -rf    /var/tmp/victim", true},
+		{"inside a compound line", "cd /tmp && rm -rf /var/tmp/victim", true},
 		{"mkfs", "mkfs.ext4 /dev/sda1", true},
 		{"dd to device", "dd if=/dev/zero of=/dev/sda bs=1M", true},
 		{"redirect to disk spaced", "echo x > /dev/sda", true},
@@ -192,7 +192,7 @@ func TestCriticalHit(t *testing.T) {
 		// #2813: THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING. A model
 		// refused `rm -rf /tmp/victim` ran `rm -r /tmp/victim` one call later and
 		// was never asked. Every spelling of a recursive delete of an absolute or
-		// home path, or of a bare `*`, asks.
+		// home subpath, or of a bare `*`, asks.
 		{"recursive short flag", "rm -r /tmp/victim", true},
 		{"recursive capital flag", "rm -R /tmp/victim", true},
 		{"recursive long flag", "rm --recursive /tmp/victim", true},
@@ -202,7 +202,6 @@ func TestCriticalHit(t *testing.T) {
 		{"recursive clustered capital", "rm -fR /tmp/victim", true},
 		{"force recursive star", "rm -rf *", true},
 		{"recursive star", "rm -r *", true},
-		{"recursive home", "rm -rf ~", true},
 		{"recursive home subpath", "rm -rf ~/projects", true},
 		{"recursive home variable", "rm -rf $HOME/x", true},
 		{"recursive braced home variable", "rm -rf ${HOME}/x", true},
@@ -268,12 +267,12 @@ func TestEveryCriticalCommandTheManualNamesIsAskedAbout(t *testing.T) {
 		line := strings.TrimSuffix(command[1], "*")
 		if strings.HasPrefix(command[1], "mkfs") {
 			line = "mkfs.ext4 /dev/sda1"
-		} else if command[1] == "rm -rf *" || command[1] == "rm -rf /*" {
+		} else if command[1] == "rm -rf *" {
 			line = command[1]
 		}
-		segments, _ := splitSegments(line)
-		if hit, ok := criticalHit(line, segments); !ok {
-			t.Errorf("the manual names %q as a critical command, but %q is not asked about (%q)", command[1], line, hit)
+		decision := (Policy{Default: ActionAllow}).CheckBash(line)
+		if decision.Action != ActionPrompt {
+			t.Errorf("the manual names %q as a critical command, but %q gives %s", command[1], line, decision)
 		}
 	}
 }

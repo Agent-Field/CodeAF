@@ -15,6 +15,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
+const desktopHomebrewQuestion = "the agent says gh or brew is command not found in the desktop app, why is Homebrew missing from PATH"
+
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
 //
 // The chat manual is only worth having if a question asked in a person's own
@@ -1745,6 +1747,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is a job's log path", "tasks"},
 		{"stop a job from its page", "tasks"},
 		{"do you ask before running rm", "permissions"},
+		{"can the agent run rm -rf / or delete my home folder with no Approve button", "permissions"},
 		{"why did it say denied by the person when I did not deny", "permissions"},
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
@@ -3577,6 +3580,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{desktopHomebrewQuestion, "running-from-the-terminal"},
 		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
 		{"codeaf cell list --all", "running-from-the-terminal"},
 		{"a chat is running on my other computer how does home show it", "home"},
@@ -3811,6 +3815,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"send Jira tickets to a repository with a routing rule", "factory"},
 		{"route inbox work to a pipeline and start it by itself", "factory"},
 		{"make a new pipeline for docs jobs", "factory"},
+		// Contract P4: These questions must find the factory's pipeline guidance.
+		{"my factory.yaml pipeline is ignored", "factory"},
+		{"jobs run the built-in steps instead of my pipeline", "factory"},
+		{"what is the issues key in factory.yaml", "factory"},
 		{"reuse a pipeline across repos", "factory"},
 		{"where are my pipelines kept", "factory"},
 		{"which pipeline wins, the repo's or the library's", "factory"},
@@ -4044,6 +4052,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does loopback_trust do", "factory"},
 		{"is a request through a reverse proxy on the same machine treated as local", "factory"},
 		{"can a runner on the same machine as my team server attach without a token", "factory"},
+		{"my new repository is not in Add repos, I created it on GitHub just now", "factory"}, // Contract M1.
 		// Joining, living in and hosting an organization, in the words of the
 		// person who joins one and of the person who runs one.
 		{"can my admin read my chats", "organization-hosted-sessions"},
@@ -4104,6 +4113,55 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+// Contract M1: The exact question reaches the recovery steps, and the refresh
+// section explains how a picker request fits with the ordinary cache interval.
+func TestNewRepositoryInAddReposHelp(t *testing.T) {
+	chat := Chat()
+	for _, tc := range []struct {
+		question string
+		heading  string
+		facts    []string
+	}{
+		{
+			"my new repository is not in Add repos, I created it on GitHub just now",
+			"my new repository is not in Add repos",
+			[]string{"restarted", "repository not found"},
+		},
+		{
+			"when does the factory repository list refresh available_read_at",
+			"factory repository list refresh",
+			[]string{"five minutes", "30 seconds", "factory.repos_refresh"},
+		},
+	} {
+		found := false
+		for _, section := range chat.Search(tc.question, DefaultResults) {
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, tc.heading) {
+				continue
+			}
+			found = true
+			for _, fact := range tc.facts {
+				if !strings.Contains(section.Body, fact) {
+					t.Errorf("%q omits %q", section.Title, fact)
+				}
+			}
+			break
+		}
+		if !found {
+			t.Errorf("%q did not reach %q", tc.question, tc.heading)
+		}
+	}
+}
+
+// Contract M1: The Homebrew question reaches the section that explains the login PATH probe.
+func TestTheDesktopAppHomebrewQuestionReachesLoginPathGuidance(t *testing.T) {
+	for _, section := range Chat().Search(desktopHomebrewQuestion, DefaultResults) {
+		if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, "$SHELL -l -c") {
+			return
+		}
+	}
+	t.Errorf("%q did not reach the desktop login PATH guidance", desktopHomebrewQuestion)
+}
+
 // #1351: a worker given a repository deleted its `.git` and the folder guard let
 // it, because `.git` is inside the folder it was given. The guard now refuses
 // replacing the folder's own git metadata, and the questions a person asks
@@ -4151,6 +4209,25 @@ func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
 			t.Errorf("%q does not reach %s · %q; it reached %v", ask.question, ask.page, ask.title, where)
 		}
 	}
+}
+
+// Contract C7: The question about wiping a protected folder reaches the
+// section that explains the hard refusal and the approval of other removals.
+func TestProtectedDeletionQuestionReachesItsPermissionsSection(t *testing.T) {
+	question := "can the agent run rm -rf / or delete my home folder with no Approve button"
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "permissions" || !strings.HasPrefix(section.Title, "Can the agent run rm -rf / or delete my home folder") {
+			continue
+		}
+		for _, phrase := range []string{"every approval mode", "`--yolo`", "`!` commands", "There is no Approve option.",
+			"`rm --no-preserve-root`", "`find ... -delete`", "`rm -rf /var/tmp/x`", "`rm -rf build`"} {
+			if !strings.Contains(section.Body, phrase) {
+				t.Errorf("the protected-deletion section omits %q", phrase)
+			}
+		}
+		return
+	}
+	t.Fatalf("%q did not reach the protected-deletion section", question)
 }
 
 func TestMemoryTabNameAndMemoriesQuestions(t *testing.T) {
@@ -5104,6 +5181,38 @@ func TestFactoryNoSizeQuestionsReachTheHowBigIsAJobSection(t *testing.T) {
 		}
 		if first := sections[0]; first.Page != "factory" || !strings.HasPrefix(first.Title, heading) {
 			t.Errorf("%q reaches %q but %s · %q ranks above it", asked, heading, first.Page, first.Title)
+		}
+	}
+}
+
+// Contract P4: The questions reach the section that explains the fallback
+// and quotes the job record lines.
+func TestFactoryIssuePipelineQuestionsReachTheFallbackSection(t *testing.T) {
+	for _, asked := range []string{
+		"my factory.yaml pipeline is ignored",
+		"jobs run the built-in steps instead of my pipeline",
+		"what is the issues key in factory.yaml",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, "my factory.yaml pipeline is ignored") {
+				continue
+			}
+			found = true
+			for _, want := range []string{
+				"pipeline:\n  issue: [plan, write]",
+				"`issues:`", "`size.issue`", "`model`", "`label`", "library",
+				"This repository has no .codeaf/factory.yaml on its main branch, so this job runs the built-in steps.",
+				".codeaf/factory.yaml has no pipeline: issue: list, so this job runs the built-in steps.",
+			} {
+				if !strings.Contains(section.Body, want) {
+					t.Errorf("section reached by %q is missing %q", asked, want)
+				}
+			}
+			break
+		}
+		if !found {
+			t.Errorf("%q does not reach the issue pipeline fallback section", asked)
 		}
 	}
 }

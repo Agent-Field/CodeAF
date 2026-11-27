@@ -727,9 +727,10 @@ outside them with `No task "…" among the pieces you handed out.` Its brief is 
 whole world; the project's history is not its to read. The tasks page of this manual has the whole of it,
 under *When a task splits its own work*.
 
-Approval inside a task is allow-everything, with the critical floor still under it (things
-like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that
-floor there is nobody to ask, so the task reads the refusal
+Approval inside a task is allow-everything for ordinary calls. Recursive deletes of
+`/`, the home folder or a top-level system folder are refused outright. A critical command
+such as `rm -rf /var/tmp/x`, `mkfs`, redirecting onto a raw disk or shutdown would
+still ask in chat. Inside a task there is nobody to ask, so the task reads the refusal
 `refused in a task: <rule> — nobody to ask` and keeps working. `use_service` cannot
 connect a new account inside a task.
 

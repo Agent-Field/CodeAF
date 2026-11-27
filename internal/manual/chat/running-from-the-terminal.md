@@ -348,6 +348,23 @@ closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf w
 kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
 tick* below).
 
+## The agent says gh or brew is command not found in the desktop app — PATH, Homebrew, zprofile
+
+The desktop app helps agents find Homebrew tools such as `gh` and `brew`
+automatically. When it starts the engine, it reads the `PATH` from your login
+shell with `$SHELL -l -c`. The probe has a 3-second limit and skips interactive
+startup files such as `~/.zshrc`. The engine appends missing folders in the
+order the login shell reported them and keeps its existing `PATH` in place.
+
+The engine then adds the usual Homebrew folders (`/opt/homebrew/bin`,
+`/opt/homebrew/sbin`, `/usr/local/bin` and `/home/linuxbrew/.linuxbrew/bin`) and
+`~/.local/bin` if they exist and are missing from `PATH`. If the probe fails,
+times out or returns no `PATH`, only these usual folders are
+considered. Windows keeps the `PATH` it started with.
+
+If you installed a tool elsewhere, add its folder to your login shell's `PATH`.
+For zsh, put that setting in `~/.zprofile` and restart the desktop app.
+
 ## The desktop app's command became a background process — its work log link
 
 When a command becomes a job, the desktop backend names that process on the
