@@ -31,9 +31,12 @@ func TestStoreConformance(t *testing.T) {
 	})
 }
 
+// Both live relays keep their directory in a consensus store: the Go relay since the Raft rewrite, and the Worker
+// through the same Go reactor. A consensus store refuses a force that names no expected holder while the lease is live,
+// so the suite that holds a live relay to the directory is the consensus one, which asks that case the right way round.
 func TestDirectoryConformance(t *testing.T) {
 	base := baseURL(t)
-	directorytest.RunRigs(t, func(t *testing.T) directorytest.Rig {
+	directorytest.RunConsensusRigs(t, func(t *testing.T) directorytest.Rig {
 		t.Parallel()
 		acct := newAccount(t)
 		return directorytest.Rig{
