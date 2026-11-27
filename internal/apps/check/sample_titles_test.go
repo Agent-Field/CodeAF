@@ -13,6 +13,9 @@ func TestCheckRejectsNumberedPlaceholderTitles(t *testing.T) {
 			schema.SampleFile: []byte(`{"records":{"task":[{"id":"00000000000000000000000001","subject":"` + title + `"}]}}`),
 		}}
 		findings := sampleTitleFindings(def)
+		if _, err := Sample(def); err == nil {
+			t.Fatalf("preview accepted numbered filler %q", title)
+		}
 		if len(findings) != 1 || findings[0].Path != "/records/task/0/subject" || findings[0].Code != "placeholder_title" {
 			t.Fatalf("title %q produced %v", title, findings)
 		}

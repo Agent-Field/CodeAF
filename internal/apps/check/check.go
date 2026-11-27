@@ -166,6 +166,17 @@ func problem(file, code, message string) schema.Problem {
 // Sample reads only the fictional examples supplied with the definition.
 // Preview can seed an empty store while the author is still adding examples.
 func Sample(def schema.Definition) (map[string][]map[string]any, error) {
+	rows, err := readSample(def)
+	if err != nil {
+		return nil, err
+	}
+	if findings := sampleTitleFindingsFor(def, rows); len(findings) != 0 {
+		return nil, errors.New(findings[0].Message)
+	}
+	return rows, nil
+}
+
+func readSample(def schema.Definition) (map[string][]map[string]any, error) {
 	raw := def.Files[schema.SampleFile]
 	if len(raw) == 0 {
 		return nil, nil

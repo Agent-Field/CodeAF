@@ -16,10 +16,14 @@ var fillerTitle = regexp.MustCompile(`(?i)(?:^|[^[:alnum:]])(?:example|sample|te
 func PlaceholderTitle(title string) bool { return fillerTitle.MatchString(strings.TrimSpace(title)) }
 
 func sampleTitleFindings(def schema.Definition) []schema.Problem {
-	rows, err := Sample(def)
+	rows, err := readSample(def)
 	if err != nil {
 		return nil
 	}
+	return sampleTitleFindingsFor(def, rows)
+}
+
+func sampleTitleFindingsFor(def schema.Definition, rows map[string][]map[string]any) []schema.Problem {
 	app, err := schema.ParseApp(def.Files[schema.AppFile])
 	if err != nil {
 		return nil
