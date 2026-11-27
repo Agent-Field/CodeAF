@@ -187,6 +187,11 @@ func TestChatOnceTakesAMidRunNoteAndStreamsItsRecord(t *testing.T) {
 	if !strings.Contains(reply.String(), "no amount is negative") {
 		t.Fatalf("the note did not change the answer:\nreply: %s\nstderr: %s", reply.String(), stderr.String())
 	}
+	// THE STEERED ANSWER IS SAID ONCE. The steer's own stream is a view of the
+	// turn the run is already printing, and printing both doubled the reply.
+	if got := strings.Count(reply.String(), "order 1182 was charged twice"); got != 1 {
+		t.Fatalf("the answer was printed %d times, want once:\nreply: %s", got, reply.String())
+	}
 	if !strings.Contains(stderr.String(), "steered: "+note) {
 		t.Fatalf("the note was not put into the turn: %s", stderr.String())
 	}
