@@ -891,11 +891,5 @@ func (j *job) applyReuseChoice(request string) {
 }
 
 func screens(files map[string]string) []string {
-	result := []string{}
-	for _, path := range slices.Sorted(maps.Keys(files)) {
-		if strings.HasPrefix(path, "screens/") && json.Valid([]byte(files[path])) {
-			result = append(result, schema.FileID(path))
-		}
-	}
-	return result
+	return definition(files).ScreenIDs()
 }

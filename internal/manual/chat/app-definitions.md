@@ -78,6 +78,7 @@ display name when available.
 
 Try the screens with made-up records before choosing **Apply**. If the plan
 offers to use an existing type, ask to use it to share those records.
+Both the preview and the kept app open to the first available screen in the plan.
 The model that makes the app sees type names, fields and counts. It has
 no access to your records.
 
