@@ -320,12 +320,29 @@ func hostedGuestRefusal(class string, verbs acl.VerbSet) string {
 // hostedGuestLabel is the name every other window of a chat reads for a guest's window: "typing from santosh". It is
 // the person as this server knows them and never a word the guest's own computer chose, so a guest cannot appear to be
 // the owner or another member. A bot reads as its creator's bot, because that is whose rights it holds.
+//
+// An owner's window is named the same way. Its wire is a byte-for-byte proxy that reads no frame, so the name is asked
+// of the chats' host in two request headers instead (hostedWindowHeader), and the host puts it in the hello.
 func hostedGuestLabel(v Viewer) string {
 	if v.Agent != nil {
 		return v.Handle + "'s bot"
 	}
 	return v.Handle
 }
+
+// The headers an owner's wire carries to the chats' host to say what the other windows of the chat read for this one.
+// internal/sessionhost spells them the same (windowHeader, windowDeviceHeader) and renames the window's hello itself.
+//
+// THE NAME IS THE PERSON, AND THE DEVICE WORD COMES AFTER IT. A window's own computer picks a word for itself ("phone",
+// its machine's name), and that word was what every other window used to read, so two phones were both "phone" and a
+// guest could not tell whose. Now it is "kai's phone": the name this server knows the person by, the same one a guest
+// gets (hostedGuestLabel), with the word kept only so that two of one person's computers stay apart. A bot has no
+// computer of its own, so it reads "kai's bot" and no device word is asked for.
+const (
+	hostedWindowHeader       = "X-Codeaf-Window"
+	hostedWindowDeviceHeader = "X-Codeaf-Window-Device"
+	hostedWindowDeviceOwn    = "own"
+)
 
 func rewriteHostedGuestHello(frame *remote.Frame, label string) bool {
 	var fields map[string]json.RawMessage

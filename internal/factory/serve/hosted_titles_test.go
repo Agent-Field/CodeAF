@@ -1,12 +1,17 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/coder/websocket"
 )
 
 // titledList is the hosted list as a client reads it, with each row kept as raw fields so a test can tell a title that
@@ -147,5 +152,58 @@ func TestS4_AnOperatorsMetadataRowNeverCarriesTheTitle(t *testing.T) {
 	var title string
 	if json.Unmarshal(one["title"], &title) != nil || title != "Read by the people it was shared with" {
 		t.Errorf("the single-chat read for someone the chat is shared with carries title %q", title)
+	}
+}
+
+// hostedOwnerWire opens a chat's wire as an owner or a bot of the owner, with the hostile header a window might try, and
+// answers the headers the chats' host was sent on that wire.
+func hostedOwnerWire(t *testing.T, rg *hostedRig, secret, chat string) http.Header {
+	t.Helper()
+	srv := httptest.NewServer(rg.h)
+	t.Cleanup(srv.Close)
+	before := rg.host.count()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wireURL(srv, chat), &websocket.DialOptions{HTTPHeader: http.Header{
+		"Authorization":          {"Bearer " + secret},
+		hostedWindowHeader:       {"mallory"},
+		hostedWindowDeviceHeader: {"nothing"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	for _, req := range rg.host.requests()[before:] {
+		if strings.HasSuffix(req.path, chat+"/wire") {
+			return req.header
+		}
+	}
+	t.Fatal("the chats' host was never sent a wire request")
+	return nil
+}
+
+// Contract S5 and S6, as far as this server can show them (internal/sessionhost holds the hello itself, TestS5): the
+// owner's wire is still the byte-for-byte proxy (TestC1_WireProxyCarriesFramesBothWays holds that), so what changes is
+// only the name this server asks the chats' host to give the window: the person, with the window's own device word kept
+// after it, and "<person>'s bot" with no device word for a bot. Nothing a window sends can choose the name.
+func TestS5_AnOwnersWindowIsNamedByThePersonAndNotByWhatItSends(t *testing.T) {
+	rg := newHostedRig(t)
+	chat := rg.create(t, "abir")
+
+	header := hostedOwnerWire(t, rg, rg.tokens["abir"], chat)
+	if got := header.Get("X-Codeaf-Window"); got != "abir" {
+		t.Errorf("the owner's window was named %q to the host, want %q", got, "abir")
+	}
+	if got := header.Get("X-Codeaf-Window-Device"); got != "own" {
+		t.Errorf("the owner's window was sent with device %q, want it kept as its own computer", got)
+	}
+
+	bot := rg.contractBot(t, "abir", "Run bot", "edit")
+	header = hostedOwnerWire(t, rg, bot.Token, chat)
+	if got := header.Get("X-Codeaf-Window"); got != "abir's bot" {
+		t.Errorf("a bot's window was named %q to the host, want %q", got, "abir's bot")
+	}
+	if got := header.Get("X-Codeaf-Window-Device"); got != "" {
+		t.Errorf("a bot's window was sent with device %q, and a bot has no computer", got)
 	}
 }

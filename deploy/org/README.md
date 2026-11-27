@@ -488,7 +488,11 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   status frames a window's wire carries (`internal/sessionhost/title_linux.go`), so the list shows it for a chat that
   is not running and reading the list starts nothing; a title earned while no window is open is listed after the
   next time one opens the chat. A row whose reader may not open the chat (the operator's) never carries it.
-- **A guest's wire.** An owner (by handle, holding `run`) is attached by the same byte-for-byte proxy as in P1.
+- **A guest's wire.** An owner (by handle, holding `run`) is attached by the same byte-for-byte proxy as in P1. The
+  proxy sets two headers on the request to the sessionhost, `X-Codeaf-Window` (the person, or `<person>'s bot` for a
+  bot) and `X-Codeaf-Window-Device: own` (a person's own computer, not a bot), and the sessionhost rewrites the name
+  in the stream's first line, the hello, to `<person>'s <the word that computer sent>` (or the person's name alone
+  when it sent none), as it hands the stream to the chat's engine; every other byte passes unchanged.
   Anyone else who may view the chat gets a wire the organization's server terminates itself: it reads each call the
   guest's window sends, checks its method against a table in `internal/factory/serve/hosted_guest_methods.go` and
   forwards only what the guest's verbs allow, re-encoded so that what is forwarded is exactly what was checked.
