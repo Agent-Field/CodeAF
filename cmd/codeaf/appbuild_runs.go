@@ -227,7 +227,7 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 func sampleRunParams(sample *data.Store, app string, def runs.Definition) (map[string]any, error) {
 	params := map[string]any{}
 	for name, param := range def.Params {
-		if param.Default != nil && param.Type != "refs" {
+		if param.Default != nil && param.Type != "refs" && !schema.RunParam(param).FromTriggerRecord() {
 			continue
 		}
 		switch param.Type {

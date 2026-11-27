@@ -62,15 +62,12 @@ tracked type. For a CRM, use
 configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}}}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
-recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
-compiles a collection. Use as "table" or "list" for ordinary collections.
-Use add-chart with group and aggregate (e.g. "sum:amount") for grouped totals.
-For a composed screen, write markup {"screen":"deals","title":"Deals","markup":"<...>"}
-with kit elements and label, id, prop-name, bind-name and on-event attributes.
-Use extensions only when no built-in fits. Read reference {"schema":"custom-extensions"} and state why.
+Start work screens with recipe {"kind":"add-screen","id":"deals","record":"deal","as":"queue-detail"}.
+Use markup for custom parts of a screen. Use extensions when the Kit has no built-in.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
-Use action-verb ids. Record commands pass a ref parameter by id, with no default.
+Record triggers read $input.record. Manual commands pass typed refs in $params.
+If a run has both entries, give the matching ref default: $input.record.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
 Agent steps return only the requested text at $steps.<id>.output. For loops
 and approvals, use the supplied run example as a syntax reference.
@@ -80,13 +77,10 @@ Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
 Use the supplied screen_controls guide for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
-writes the preview rows. Copy that 26-character id and change only its last
-two digits for each row. Continue the sequence across ALL types. Each id
-must be unique in the whole sample. Use the exact ids in reference fields.
-
-Save three to six synthetic records per type unless the request calls for
-more. A full example needs at least 30 total. Put one row in each run's
-sample trigger or filter. Use existing recipe defaults for styling.
+writes fictional preview records. Give each row a globally unique 26-character
+ID and link related examples by those IDs. Write named examples before the runs.
+Include evidence and rows matching each trigger or filter. The compiler fills
+the opening work collections from these examples.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
@@ -428,6 +422,7 @@ func briefText(text string, limit int) string {
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
 func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, preflight func(map[string]string) schema.Report, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+	author.runShapeRejected = map[string]bool{}
 	in.Definition = maps.Clone(in.Definition)
 	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
 	work := plannedWork(in.Request, plan)

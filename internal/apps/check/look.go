@@ -27,6 +27,10 @@ func LookFindings(def schema.Definition, types schema.TypeSet) []schema.Problem 
 	var findings []schema.Problem
 	var sectionTitles []string
 	hasVisual, navReported := false, false
+	landing := ""
+	if ids := def.ScreenIDs(); len(ids) != 0 {
+		landing = ids[0]
+	}
 	for _, file := range def.ScreenFiles() {
 		screen, err := schema.ParseScreen(def.Files[file])
 		if err != nil || screen.Body == nil {
@@ -35,6 +39,7 @@ func LookFindings(def schema.Definition, types schema.TypeSet) []schema.Problem 
 		sectionTitles = append(sectionTitles, screen.Title)
 		add := func(code, text string) { findings = append(findings, problem(file, code, text)) }
 		var fullTable, detail bool
+		var primary *schema.Node
 		searches := map[string]int{}
 		var walk func(*schema.Node, bool)
 		walk = func(n *schema.Node, narrow bool) {
@@ -43,6 +48,10 @@ func LookFindings(def schema.Definition, types schema.TypeSet) []schema.Problem 
 			}
 			table := n.Part == "Table" || n.Part == "RecordList" && slices.Contains(words(n.Props["views"]), "table")
 			fullTable = fullTable || table && !narrow
+			if primary == nil && n.Bind != nil && n.Bind.Records != "" &&
+				slices.Contains([]string{"RecordList", "List", "Table", "Board"}, n.Part) {
+				primary = n
+			}
 			switch n.Part {
 			case "SectionTabs":
 				var labels []string
@@ -117,6 +126,9 @@ func LookFindings(def schema.Definition, types schema.TypeSet) []schema.Problem 
 		}
 		walk(screen.Nav, false)
 		walk(screen.Body, false)
+		if screen.Screen == landing && primary != nil && !WorkspaceFollows(screen.Body, primary.ID) && !detail {
+			add("look_landing_without_detail", "Open the work queue beside the selected record, with its evidence and actions together.")
+		}
 		if fullTable && !detail {
 			add("look_table_without_detail", "Put a compact queue and the selected record on the same work screen.")
 		}

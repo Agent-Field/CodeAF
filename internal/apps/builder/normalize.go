@@ -14,6 +14,27 @@ import (
 
 const normalizationNote = "draft_normalized"
 
+// completeGeneratedDraft handles the final lowering for a new personal app.
+// While the author is still writing, Check continues to ask for planned runs.
+func completeGeneratedDraft(files map[string]string, types schema.TypeSet) (map[string]string, []schema.Problem, *schema.Problem, error) {
+	next := maps.Clone(files)
+	notes, err := reconcileRunLinks(next)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	next, changes, err := normalizeDraft(next, types)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	notes = append(notes, changes...)
+	changes, err = composeWorkScreens(next, types)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	depth, err := completeLanding(next, types)
+	return next, append(notes, changes...), depth, err
+}
+
 // normalizeDraft applies mechanical fixes to generated draft files. Check
 // still owns validation and consent, including any choice of a shared source.
 func normalizeDraft(files map[string]string, types schema.TypeSet) (map[string]string, []schema.Problem, error) {
@@ -87,6 +108,11 @@ func normalizeDraft(files map[string]string, types schema.TypeSet) (map[string]s
 			}
 		}
 	}
+	inputNotes, err := normalizeRunInputs(next, app)
+	if err != nil {
+		return files, nil, err
+	}
+	notes = append(notes, inputNotes...)
 	landingNotes, err := normalizeLanding(next, app, types)
 	if err != nil {
 		return files, nil, err

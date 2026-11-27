@@ -171,6 +171,33 @@ func hasExt(name string, exts []string) bool {
 // ScreenFiles lists the screen files, sorted, with the id each file name gives.
 func (d Definition) ScreenFiles() []string { return d.under(ScreensDir+"/", ".json") }
 
+// ScreenIDs keeps the app's first planned screen first when a client opens it.
+// Undeclared screens remain reachable after the planned screens.
+func (d Definition) ScreenIDs() []string {
+	files := d.ScreenFiles()
+	ids := make([]string, 0, len(files))
+	remaining := make(map[string]bool, len(files))
+	for _, path := range files {
+		if json.Valid(d.Files[path]) {
+			remaining[FileID(path)] = true
+		}
+	}
+	if plan, err := ParsePlan(d.Files[PlanFile]); err == nil {
+		for _, screen := range plan.Screens {
+			if remaining[screen.ID] {
+				ids = append(ids, screen.ID)
+				delete(remaining, screen.ID)
+			}
+		}
+	}
+	for _, path := range files {
+		if id := FileID(path); remaining[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // RunFiles lists the run files, sorted.
 func (d Definition) RunFiles() []string { return d.under(RunsDir+"/", ".yaml", ".yml") }
 

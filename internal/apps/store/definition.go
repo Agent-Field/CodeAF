@@ -350,7 +350,7 @@ func load(dir string, m Meta, receipt versionReceipt, extra ...string) (Definiti
 	shape := schema.Definition{Files: f}
 	return Definition{
 		Meta: m, App: f[appFile], Plan: f[planFile], AgentMD: string(f[agent]),
-		Screens: idsOf(shape.ScreenFiles()), Runs: idsOf(shape.RunFiles()), files: f, types: receipt.Types,
+		Screens: shape.ScreenIDs(), Runs: idsOf(shape.RunFiles()), files: f, types: receipt.Types,
 	}, nil
 }
 

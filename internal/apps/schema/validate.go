@@ -1153,6 +1153,9 @@ func (c *checker) checkRun(file string, r Run) {
 		_ = json.Unmarshal(j, &raw)
 	}
 	c.checkRunReferences(file, raw, stepIDs, textOutputs)
+	if c.kit.Kit == 2 {
+		c.checkAutomaticInputs(file, r, raw)
+	}
 }
 
 func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType string, loopVars map[string]string) {

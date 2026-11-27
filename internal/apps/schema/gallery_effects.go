@@ -59,7 +59,7 @@ func (c *checker) checkGalleryTrigger(i int, at string) {
 }
 
 func (c *checker) checkGalleryAction(ctx actionCtx, at string, act Action) {
-	c.checkEffect(ctx, at, "action", map[string]any(act), nil, c.kit.Registries.Actions, false)
+	c.checkEffect(ctx, at, "action", map[string]any(act), nil, c.kit.Registries.Actions, false, true)
 }
 
 func (c *checker) checkGalleryRun(file, recordType string) {
@@ -132,12 +132,13 @@ func (c *checker) checkGalleryAI(file string, run Run, steps []Step, at string) 
 	}
 }
 
+var stepModifiers = []string{"id", "title", "if", "on_error", "retry", "workspace", "repo", "branch"}
+
 func (c *checker) wantStep(ctx actionCtx, at string, step map[string]any, inRepo bool) {
-	base := []string{"id", "title", "if", "on_error", "retry", "workspace", "repo", "branch"}
-	c.checkEffect(ctx, at, "step", step, base, c.kit.Registries.Steps, inRepo)
+	c.checkEffect(ctx, at, "step", step, stepModifiers, c.kit.Registries.Steps, inRepo, true)
 }
 
-func (c *checker) checkEffect(ctx actionCtx, at, group string, value map[string]any, base []string, entries map[string]EffectManifest, inRepo bool) {
+func (c *checker) checkEffect(ctx actionCtx, at, group string, value map[string]any, base []string, entries map[string]EffectManifest, inRepo, rules bool) {
 	code := CodeActionVerb
 	if group == "step" {
 		code = CodeStepKind
@@ -172,7 +173,7 @@ func (c *checker) checkEffect(ctx actionCtx, at, group string, value map[string]
 				projected[mod] = v
 			}
 		}
-		if c.validateEntry(ctx.file, at, code, group+"/"+key, projected) {
+		if c.validateEntry(ctx.file, at, code, group+"/"+key, projected) && rules {
 			c.checkRules(ctx, at, entry.Rules, value, inRepo)
 		}
 	}
