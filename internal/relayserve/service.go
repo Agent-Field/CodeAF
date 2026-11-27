@@ -140,10 +140,14 @@ func New(cfg Config) *Service {
 	}
 	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
 	auth := noting(svc.ns.authenticate)
-	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric)}
+	svc.stop = make(chan struct{})
+	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric), stop: svc.stop}
 	svc.fabric = fabric
+	svc.ns.fabric = fabric
 	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory)))
-	mux.Handle("/v1/clients/", logged(cfg.Logf, fabric.handler()))
+	clients := logged(cfg.Logf, fabric.handler())
+	mux.Handle("/v1/clients", clients)
+	mux.Handle("/v1/clients/", clients)
 	mux.Handle("POST /v1/dir/devices/{device}/revoke", logged(cfg.Logf, fabric.serve(revokeClient)))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
@@ -153,7 +157,6 @@ func New(cfg Config) *Service {
 		blobs = blobstore.StorageOff(blobs)
 	}
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobs))
-	svc.stop = make(chan struct{})
 	svc.swept.Add(1)
 	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc

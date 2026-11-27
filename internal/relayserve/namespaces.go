@@ -37,7 +37,8 @@ type namespaces struct {
 
 	after directory.After // the timers presence runs on; nil is the wall clock's
 
-	links directory.Decider // where an approve decides a pending request; set once by New
+	links  directory.Decider // where an approve decides a pending request; set once by New
+	fabric *fabric           // the scoped-client store; set once by New
 
 	activation sync.Mutex
 	groups     map[string]*nativeNamespace

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
@@ -43,6 +45,7 @@ type nativeNamespace struct {
 	feed     *directory.Feed
 	effects  raftdirectory.Effects
 	links    *directory.Links
+	fabric   *fabric
 	now      func() time.Time
 	grace    directory.GraceBounds
 	identity clusterstate.IdentityRec
@@ -188,7 +191,7 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 	if cfg.Grace != nil {
 		grace = directory.GraceBounds{Min: time.Duration(cfg.Grace.Min) * time.Millisecond, Max: time.Duration(cfg.Grace.Max) * time.Millisecond, Default: time.Duration(cfg.Grace.Default) * time.Millisecond}
 	}
-	d = &nativeNamespace{V1Directory: &raftdirectory.V1Directory{Host: host, Cluster: cfg.Cluster, Now: n.now, Grace: grace}, identity: clusterstate.IdentityRec{V: 1, Identity: id, SigningKey: cfg.SigningKey}, host: host, feed: feed, links: n.links.(*directory.Links), now: n.now, grace: grace, root: n.root}
+	d = &nativeNamespace{V1Directory: &raftdirectory.V1Directory{Host: host, Cluster: cfg.Cluster, Now: n.now, Grace: grace}, identity: clusterstate.IdentityRec{V: 1, Identity: id, SigningKey: cfg.SigningKey}, host: host, feed: feed, links: n.links.(*directory.Links), fabric: n.fabric, now: n.now, grace: grace, root: n.root}
 	d.effects = raftdirectory.Effects{Host: host, Cluster: cfg.Cluster, Actor: clusterstate.DeviceIDOfKey(cfg.EffectsKey), Key: ed25519.PrivateKey(provision.Effects)}
 	if err = host.InitializeMembership(ctx, ed25519.PrivateKey(provision.Anchors[0])); err != nil {
 		d.Close()
@@ -511,12 +514,13 @@ func (n *namespaces) authenticateClient(r *http.Request, body []byte, allowClien
 type blobActorKey struct{}
 
 func (d *nativeNamespace) ForRequest(actor string, r *http.Request, raw []byte) directory.Client {
-	return &nativeClient{Client: d.V1Directory.ForRequest(actor, r, raw), owner: d}
+	return &nativeClient{Client: d.V1Directory.ForRequest(actor, r, raw), owner: d, actor: actor}
 }
 
 type nativeClient struct {
 	directory.Client
 	owner *nativeNamespace
+	actor string
 }
 
 // Preserve the signed quiet-release mutation through the presence wrapper.
@@ -532,7 +536,21 @@ func (c *nativeClient) Presence(ctx context.Context) (directory.PresenceView, er
 	}
 	return c.owner.feed.WithPresence(p), nil
 }
+
 func (c *nativeClient) ApproveRequest(ctx context.Context, code string, a directory.Approval) error {
+	if err := c.owner.authority(ctx, c.actor, true); err != nil {
+		return err
+	}
+	req, boundCluster, err := c.owner.links.Lookup(code)
+	if err != nil {
+		return err
+	}
+	if (req.Class == clientproto.ClientLinkClass) != (a.Class == clientproto.ClientLinkClass) || (a.Class != "" && a.Class != clientproto.ClientLinkClass) {
+		return directory.ErrBadRequest
+	}
+	if req.Class == clientproto.ClientLinkClass {
+		return c.approveClientRequest(ctx, code, req, boundCluster, a)
+	}
 	if err := c.owner.effects.Admit(ctx, c.owner.now().UnixMilli(), c.owner.links, code); err != nil {
 		return err
 	}
@@ -564,7 +582,60 @@ func (c *nativeClient) ApproveRequest(ctx context.Context, code string, a direct
 	return nil
 }
 
+// approveClientRequest settles a client-class pairing request in the in-memory
+// link store without writing a directory row or committing to Raft (contract R3).
+func (c *nativeClient) approveClientRequest(ctx context.Context, code string, req directory.Request, boundCluster string, a directory.Approval) error {
+	rawGrant, err := base64.RawURLEncoding.DecodeString(a.Grant)
+	if err != nil || len(rawGrant) == 0 || len(rawGrant) > clusterstate.MaxJoinGrant || base64.RawURLEncoding.EncodeToString(rawGrant) != a.Grant {
+		return directory.ErrBadRequest
+	}
+	if boundCluster != "" && boundCluster != c.owner.Cluster {
+		return directory.ErrAlreadyDecided
+	}
+	sum := sha256.Sum256([]byte(a.Grant))
+	deliveryID := "client:" + hex.EncodeToString(sum[:])
+	dec := directory.Decision{State: directory.RequestApproved, Device: req.Device, Grant: a.Grant}
+	if req.State != directory.RequestPending {
+		if boundCluster == c.owner.Cluster && req.State == directory.RequestApproved && req.Grant != nil && *req.Grant == a.Grant {
+			return nil
+		}
+		return directory.ErrAlreadyDecided
+	}
+	listing, err := c.owner.fabricListing(ctx)
+	if err != nil {
+		return err
+	}
+	dev, ok := listing.Devices[req.Device]
+	if !ok || dev.Kind != "client" || dev.Revoked || c.owner.fabric == nil {
+		return directory.ErrNotEnrolled
+	}
+	enrollments, err := c.owner.fabric.loadEnrollments(c.owner.identity.Identity)
+	if err != nil {
+		return err
+	}
+	if _, ok := enrollments[req.Device]; !ok {
+		return directory.ErrNotEnrolled
+	}
+	if _, err := c.owner.links.Bind(code, c.owner.Cluster); err != nil {
+		return err
+	}
+	return c.owner.links.Deliver(code, c.owner.Cluster, deliveryID, dec)
+}
+
 func (c *nativeClient) DenyRequest(ctx context.Context, code string) error {
+	if err := c.owner.authority(ctx, c.actor, true); err != nil {
+		return err
+	}
+	req, _, err := c.owner.links.Lookup(code)
+	if err != nil {
+		return err
+	}
+	if req.Class == clientproto.ClientLinkClass {
+		if _, err := c.owner.links.Bind(code, c.owner.Cluster); err != nil {
+			return err
+		}
+		return c.owner.links.Deliver(code, c.owner.Cluster, "client:deny", directory.Decision{State: directory.RequestDenied, Device: req.Device})
+	}
 	if err := c.owner.effects.Admit(ctx, c.owner.now().UnixMilli(), c.owner.links, code); err != nil {
 		return err
 	}
