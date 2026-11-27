@@ -49,13 +49,22 @@ func normalizeCommandControls(files map[string]string, app schema.App) ([]schema
 				// type through its row menu. This list needs no new verb.
 				control = &schema.Node{ID: part, Part: "RecordList",
 					Label: displayName(app.Records[typ].Label, typ),
-					Bind:  &schema.Bind{Records: typ}}
+					Bind:  &schema.Bind{Records: typ, View: part}}
 			} else {
 				control = &schema.Node{ID: part, Part: "Button", Label: command.Label,
 					On: map[string][]schema.Action{"click": {{"runs.start": command.Run}}}}
 			}
 			if strings.TrimSpace(command.Label) == "" || nodeHasID(screen.Body, part) {
 				continue
+			}
+			if typ != "" {
+				if screen.Views == nil {
+					screen.Views = map[string]schema.QueryIR{}
+				}
+				if _, used := screen.Views[part]; used {
+					continue
+				}
+				screen.Views[part] = schema.QueryIR{Type: typ}
 			}
 			screen.Body = &schema.Node{ID: part + "-layout", Part: "Stack", Children: []*schema.Node{screen.Body, control}}
 			if err := saveJSON(files, path, screen); err != nil {
