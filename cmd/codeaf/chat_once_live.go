@@ -111,7 +111,9 @@ func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writ
 				continue
 			}
 			events, err := agent.Steer(note)
-			if err != nil {
+			if err == nil {
+				events = steerOwnTurn(events)
+			} else {
 				// No turn in flight: the note becomes the next message.
 				events, err = agent.Submit(context.Background(), note)
 			}
@@ -158,6 +160,33 @@ func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writ
 		}
 	}
 	return stopped, last
+}
+
+// steerOwnTurn is the part of a steer's stream that is not already being
+// printed. [session.Agent.Steer] hands back a LIVE VIEW OF THE TURN IT STEERS,
+// and that turn is drained into the reply by runChatV3Once (the first turn, or
+// a woken one), so printing the view too wrote every word of the answer twice:
+// a watched run that was steered once returned "the answer.the answer." as its
+// answer. Nothing is passed on until the steer falls through; from
+// [session.EventSteerFellThrough] on, the same channel carries the turn the
+// note starts by itself, which nothing else reads, so all of that is passed on.
+// A note sent with no turn in flight goes through Submit, whose stream is
+// already its own turn, and never comes here.
+func steerOwnTurn(events <-chan session.Event) <-chan session.Event {
+	own := make(chan session.Event)
+	go func() {
+		defer guard.Recover("chat-once/steer-own-turn")
+		defer close(own)
+		fell := false
+		for event := range events {
+			if !fell {
+				fell = event.Kind == session.EventSteerFellThrough
+				continue
+			}
+			own <- event
+		}
+	}()
+	return own
 }
 
 // startOnceLive starts --events' copy and --steer's reader for one run.
