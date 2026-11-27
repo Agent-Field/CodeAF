@@ -118,9 +118,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
 		debugFlagHelp()+" · /debug turns it on mid-session")
+	// The three live flags of a headless turn (chat_once_live.go).
+	onceEvents := flags.String("events", "", "with --once: copy every line of this conversation's record to this file as it is written")
+	onceSteer := flags.String("steer", "", "with --once: read each line appended to this file as a note into the running turn")
+	onceJSON := flags.Bool("json", false, "with --once: print one machine-readable object {ok, stop, answer, model, error} instead of the reply")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	if (*onceEvents != "" || *onceSteer != "" || *onceJSON) && strings.TrimSpace(*once) == "" {
+		return fmt.Errorf("--events, --steer and --json go with --once")
+	}
+	chatOnceLive = onceLive{events: *onceEvents, steer: *onceSteer, json: *onceJSON}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
 	// door, before anything can make a call — because a record written under a
 	// second id, or under none, is a record nothing can be joined to. The id is
@@ -2741,7 +2749,8 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) (onceErr error) {
+	var onceFailure error
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
 	// skip every defer — the whole of #471. Cancelling the turn is all the
@@ -2782,6 +2791,36 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	live := chatOnceLive
+	usageBefore := agent.Usage()
+	var answer *lockedWriter
+	// --json's one object is written last: closing the agent and the usage
+	// ledger settles late calls, and the object counts only this invocation's.
+	defer func() {
+		if answer == nil {
+			return
+		}
+		failure := onceFailure
+		if failure == nil {
+			failure = onceErr
+		}
+		used := agent.Usage()
+		usage := envelopeUsage{SpendUSD: used.CostUSD - usageBefore.CostUSD,
+			Tokens: envelopeTokens{In: used.Input - usageBefore.Input, Out: used.Output - usageBefore.Output}}
+		writeOnceEnvelope(os.Stdout, answer.String(), cfg.Model, usage, failure)
+	}()
+	// --events' LAST COPY WAITS FOR THE RECORD TO BE CLOSED. Closing the
+	// agent and the usage ledger still writes lines — a background helper's
+	// usage row lands a moment after the answer — and a copy that stopped
+	// before them would leave the watcher's conversation one line short of
+	// this one. Defers run last-in-first-out, so this one, registered before
+	// both closes, runs after them.
+	var finishEvents func()
+	defer func() {
+		if finishEvents != nil {
+			finishEvents()
+		}
+	}()
 	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
@@ -2816,11 +2855,24 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}
 	})
 
+	var reply io.Writer = os.Stdout
+	if live.json {
+		answer = &lockedWriter{}
+		reply = answer
+	}
+	var steers sync.WaitGroup
+	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, reply, os.Stderr, &steers)
+	finishEvents = finishCopy
+	defer finishSteer()
+
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
+		onceFailure = err
 		return reported(err)
 	}
-	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
+	failure := drainOnceEvents(events, reply, os.Stderr)
+	defer func() { steers.Wait() }()
+	onceFailure = failure
 	if wakes == nil {
 		return reported(failure)
 	}
@@ -2849,7 +2901,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 				return reported(failure)
 			}
 			settled = false
-			if streamFailure := drainOnceEvents(stream, os.Stdout, os.Stderr); streamFailure != nil {
+			if streamFailure := drainOnceEvents(stream, reply, os.Stderr); streamFailure != nil {
 				failure = streamFailure
 			}
 		case <-ctx.Done():
