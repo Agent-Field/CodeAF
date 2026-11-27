@@ -208,7 +208,7 @@ func (f Files) Triggers() ([]Trigger, error) {
 			}
 			triggers = append(triggers, Trigger{
 				App: app.ID, ID: trigger.ID, On: trigger.On, Run: trigger.Run, Cron: trigger.Cron,
-				Type: trigger.Type, When: trigger.When, Since: since,
+				Type: trigger.Type, When: trigger.When, Since: since, At: trigger.At, Lead: trigger.Lead,
 				Connector: trigger.Connector, Event: trigger.Event, Match: trigger.Match,
 			})
 		}

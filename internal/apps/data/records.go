@@ -795,6 +795,10 @@ func (w *writeTx) checkRefs(f *Field, v any) error {
 		return fieldErr(f.Name, "%s points to %s records, and there is no such type", f.Name, f.To)
 	}
 	for _, id := range ids {
+		key, _ := id.(string)
+		if w.seed[key].typ == target {
+			continue
+		}
 		var n int
 		if err := w.tx.QueryRow(`SELECT count(*) FROM records WHERE id = `+identityRefSQL(target, "?")+` AND type_id = ? AND deleted_at IS NULL`, id, target.ID).Scan(&n); err != nil {
 			return err

@@ -94,6 +94,7 @@ Its arguments are the canonical row `id`, `version` from `_source_version` when 
 `set` with the allowed app fields. The broker asks before dispatch and saves an effect receipt in
 `runs.get` under `effects`. A stale version reports a conflict. If a write's outcome is unknown,
 the broker leaves the run incomplete so it can be checked at the source before anyone sends it again.
+Check uses a sample reply for the exact source tool declared by the app. Keep and register the connection before running an actual write.
 
 ## Copy my data in from Postgres
 

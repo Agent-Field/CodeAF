@@ -50,7 +50,12 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 		}
 		return Reply{}, err
 	}
-	return Reply{Output: map[string]any{"batch": result.Batch, "rows": result.Rows}}, nil
+	// A later step sees the same list of objects that a reopened journal decodes.
+	rows := make([]any, len(result.Rows))
+	for i, row := range result.Rows {
+		rows[i] = map[string]any(row)
+	}
+	return Reply{Output: map[string]any{"batch": result.Batch, "rows": rows}}, nil
 }
 
 // ResolveParams resolves declared record references through the run's app

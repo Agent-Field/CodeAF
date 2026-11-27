@@ -81,11 +81,12 @@ type proposalIntent struct {
 // Catalog carries shape and counts only. The model adapter projects the
 // fields again so validation metadata such as expressions and defaults stay local.
 type Catalog struct {
-	Types      schema.TypeSet
-	Counts     map[string]int
-	TypeLabels map[string]string
-	AppNames   map[string]string
-	Origins    map[string]string
+	SourceOperations map[string][]string
+	Types            schema.TypeSet
+	Counts           map[string]int
+	TypeLabels       map[string]string
+	AppNames         map[string]string
+	Origins          map[string]string
 }
 
 type Jobs struct {

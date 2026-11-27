@@ -476,3 +476,70 @@ func TestAppOutputInteractiveAgentRequiresRenderGrant(t *testing.T) {
 		t.Fatalf("interactive output receipt: %+v, %v", file, err)
 	}
 }
+
+func TestAppSourceWriteCheckUsesFakeConnector(t *testing.T) {
+	t.Setenv("CODEAF_HOME", resolvedTempDir(t))
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	const draft = "source-check"
+	app := []byte(`{"id":"source-check","name":"Source check","records":{"deal":{"fields":{"name":{"type":"text"}}}},"capabilities":{"records":{"deal":"r"},"tools":["connections.crm.stage"]}}`)
+	if err := b.seedBuildSample(draft, app, map[string][]map[string]any{
+		"deal": {{"name": "Example deal"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	def := schema.Definition{Files: map[string][]byte{
+		schema.AppFile: app,
+		"runs/review.yaml": []byte(`run: review
+steps:
+  - id: stage
+    tool: connections.crm.stage
+    as: me
+    gate: {approval: proof}
+    args: {id: "00000000000000000000000001", set: {stage: Qualified}}
+`),
+	}}
+	if err := b.CheckDraftRun(t.Context(), draft, "review", def); err != nil {
+		t.Fatalf("Check could not exercise the declared source write: %v", err)
+	}
+}
+
+func TestAppBeforeRecordCheckReplaysSampleDate(t *testing.T) {
+	t.Setenv("CODEAF_HOME", resolvedTempDir(t))
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	const draft = "before-record-check"
+	app := []byte(`{"id":"before-record-check","name":"Before record check","kit":2,"records":{"meeting":{"fields":{"name":{"type":"text"},"starts_at":{"type":"datetime"},"external":{"type":"bool"},"prepared":{"type":"bool"}}}},"capabilities":{"records":{"meeting":"rw"}},"triggers":[{"id":"prep","run":"prep","on":"record.before","type":"meeting","at":"starts_at","lead":"30m","when":"external == true"}]}`)
+	if err := b.seedBuildSample(draft, app, map[string][]map[string]any{
+		"meeting": {
+			{"name": "Internal check", "starts_at": "2026-11-27T09:00:00-05:00", "external": false},
+			{"name": "Founder evaluation", "starts_at": "2026-11-27T10:00:00-05:00", "external": true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	def := schema.Definition{Files: map[string][]byte{
+		schema.AppFile: app,
+		"runs/prep.yaml": []byte(`run: prep
+steps:
+  - id: prepare
+    records.update: {type: meeting, id: $record.id, set: {prepared: true}}
+`),
+	}}
+	if err := b.CheckDraftRun(t.Context(), draft, "prep", def); err != nil {
+		t.Fatal(err)
+	}
+	db, err := b.dataStore(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := db.Query(data.Scope{App: draft}, "meeting", "", "", 10)
+	if err != nil || len(batch.Rows) != 2 {
+		t.Fatalf("sample rows = %v, err %v", batch, err)
+	}
+	for _, row := range batch.Rows {
+		if (row["prepared"] == true) != (row["external"] == true) {
+			t.Fatalf("unexpected prepared value on sample row %v", row)
+		}
+	}
+}

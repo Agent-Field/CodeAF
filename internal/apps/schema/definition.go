@@ -304,11 +304,13 @@ type Connector struct {
 	Channels []string `json:"channels,omitempty"`
 }
 
-// Trigger starts a run on a schedule or when a record changes.
+// Trigger starts a run based on a schedule, record, or source event.
 type Trigger struct {
 	ID        string         `json:"id"`
 	On        string         `json:"on"`
 	Cron      string         `json:"cron,omitempty"`
+	At        string         `json:"at,omitempty"`
+	Lead      string         `json:"lead,omitempty"`
 	Type      string         `json:"type,omitempty"`
 	When      string         `json:"when,omitempty"`
 	Connector string         `json:"connector,omitempty"`
@@ -454,6 +456,20 @@ type RunParam struct {
 	Type    string `json:"type"`
 	To      string `json:"to,omitempty"`
 	Default any    `json:"default,omitempty"`
+}
+
+// TriggerRefsField recognizes a list parameter supplied by the scoped
+// record that started its run. Other strings remain literal queries.
+func TriggerRefsField(param RunParam) string {
+	if param.Type != "refs" {
+		return ""
+	}
+	text, _ := param.Default.(string)
+	field, _ := strings.CutPrefix(text, "$input.record.")
+	if !fileIDPattern.MatchString(field) {
+		return ""
+	}
+	return field
 }
 
 // Step is one step of a run. Its kind is whichever of Agent, Tool, RecordsUpdate,

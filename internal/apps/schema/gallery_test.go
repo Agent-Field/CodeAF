@@ -14,8 +14,8 @@ func TestGalleryKitCatalog(t *testing.T) {
 	if err := json.Unmarshal(KitJSON(), &kit); err != nil {
 		t.Fatal(err)
 	}
-	if kit.Kit != 2 || len(kit.Parts) != 64 {
-		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 64 parts", kit.Kit, len(kit.Parts))
+	if kit.Kit != 2 || len(kit.Parts) != 63 {
+		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 63 parts", kit.Kit, len(kit.Parts))
 	}
 }
 
@@ -153,5 +153,96 @@ func TestGeneratedDeskRegistryMatchesEngine(t *testing.T) {
 	}
 	if !bytes.Equal(engine, desk) {
 		t.Fatal("desk catalog is stale: run go generate ./internal/apps/schema")
+	}
+}
+
+func TestGallerySourceWriteNeedsExactGrantAndApproval(t *testing.T) {
+	def := load(t, "testdata/recruiting")
+	doc := object(def.Files[AppFile])
+	source := "connections.crm.update"
+	capabilities := doc["capabilities"].(map[string]any)
+	capabilities["tools"] = []string{source}
+	plan := object(def.Files[PlanFile])
+	moves, _ := plan["automation"].([]any)
+	plan["automation"] = append(moves, map[string]any{"id": "update-crm", "line": "Update the deal after approval."})
+	save := func(name string, obj map[string]any) {
+		t.Helper()
+		raw, err := json.Marshal(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		def.Files[name] = raw
+	}
+	save(PlanFile, plan)
+	run := func(gate string) {
+		def.Files["runs/update-crm.yaml"] = []byte("run: update-crm\nsteps:\n  - id: update\n    tool: " + source + "\n    as: me\n    args: {id: abc, set: {stage: Qualified}}\n" + gate)
+	}
+	run("    gate: {approval: send}\n")
+	save(AppFile, doc)
+	if report := Validate(def, nil); !report.OK() {
+		t.Fatal(report.String())
+	}
+	run("")
+	if report := Validate(def, nil); !contains(report.Codes(), CodeSendGateMissing) {
+		t.Fatalf("source write ran without approval: %s", report)
+	}
+	run("    gate: {approval: send}\n")
+	capabilities["tools"] = []string{"connections.crm"}
+	save(AppFile, doc)
+	if report := Validate(def, nil); !contains(report.Codes(), CodeToolNotAllowed) {
+		t.Fatalf("source write ran without its exact grant: %s", report)
+	}
+}
+
+func TestGalleryBeforeRecordRequiresReadableDatetimeAndPositiveLead(t *testing.T) {
+	def := load(t, "testdata/recruiting")
+	doc := object(def.Files[AppFile])
+	doc["triggers"] = []any{map[string]any{
+		"id": "prep", "on": "record.before", "type": "meeting",
+		"at": "starts_at", "lead": "30m", "run": "prep",
+	}}
+	plan := object(def.Files[PlanFile])
+	for group, id := range map[string]string{"data": "meeting", "automation": "prep"} {
+		entries, _ := plan[group].([]any)
+		plan[group] = append(entries, map[string]any{"id": id, "line": "Prepare for meeting."})
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files[PlanFile] = encoded
+	records := doc["records"].(map[string]any)
+	records["meeting"] = map[string]any{"fields": map[string]any{
+		"title":     map[string]any{"type": "text"},
+		"starts_at": map[string]any{"type": "datetime"},
+	}}
+	doc["capabilities"].(map[string]any)["records"].(map[string]any)["meeting"] = "r"
+	def.Files["runs/prep.yaml"] = []byte("run: prep\nsteps:\n  - id: review\n    gate: {approval: proof}\n")
+	save := func() {
+		t.Helper()
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		def.Files[AppFile] = raw
+	}
+	save()
+	if result := Validate(def, nil); !result.OK() {
+		t.Fatal(result.String())
+	}
+	trigger := doc["triggers"].([]any)[0].(map[string]any)
+	trigger["at"], trigger["lead"] = "title", "0m"
+	save()
+	report := Validate(def, nil)
+	for _, path := range []string{"/triggers/0/at", "/triggers/0/lead"} {
+		found := false
+		for _, problem := range report.Problems {
+			if problem.Path == path && problem.Code == CodeTriggerShape {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Check did not flag %s: %s", path, report)
+		}
 	}
 }

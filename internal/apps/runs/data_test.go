@@ -352,3 +352,97 @@ steps:
 		}
 	}
 }
+
+func TestRunCanUpdateARowCreatedEarlierInTheSameTick(t *testing.T) {
+	db, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.RegisterApp([]byte(`{"id":"crm","records":{"deal":{"fields":{"name":{"type":"text"}}}},"capabilities":{"records":{"deal":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	adapter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
+	engine, err := runs.Open(runs.Config{Root: t.TempDir(), Records: adapter.Write, Load: func(_, _ string) (runs.Definition, error) {
+		return runs.Parse([]byte(`run: create
+steps:
+  - id: save
+    records.create: {type: deal, set: {name: Northwind}}
+  - id: rename
+    records.update: {type: deal, ids: $steps.save.output.rows.id, set: {name: Southwind}}
+`))
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	run, err := engine.Start("crm", "create", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, engine)
+	got, err := engine.Get(run.ID)
+	if err != nil || got.State != runs.Done {
+		t.Fatalf("run did not reach Done: %+v (%v)", got, err)
+	}
+	page, err := db.Query(data.Scope{App: "crm"}, "deal", "", "", 10)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0]["name"] != "Southwind" {
+		t.Fatalf("later step did not update the created record: %+v (%v)", page, err)
+	}
+}
+
+func TestTriggerCanFillARefsParameterFromItsRecord(t *testing.T) {
+	db, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.RegisterApp([]byte(`{"id":"crm","records":{
+		"deal":{"fields":{"contacts":{"type":"refs","to":"contact"}}},
+		"contact":{"fields":{"name":{"type":"text"}}}
+	},"capabilities":{"records":{"deal":"rw","contact":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	made, err := db.Create(data.Scope{}, "contact", []map[string]any{{"name": "Northwind"}, {"name": "Other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := made.Rows[0].ID()
+	adapter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
+	e, err := runs.Open(runs.Config{
+		Root: t.TempDir(), Records: adapter.Write, RecordInput: adapter.RecordInput, ResolveParams: adapter.ResolveParams,
+		Load: func(_, _ string) (runs.Definition, error) {
+			return runs.Parse([]byte(`run: rename
+params:
+  contacts: {type: refs, to: contact, default: $input.record.contacts}
+steps:
+  - id: write
+    records.update: {type: contact, ids: $params.contacts.id, set: {name: Southwind}}
+`))
+		},
+		Triggers: func() ([]runs.Trigger, error) {
+			return []runs.Trigger{{App: "crm", ID: "incoming", On: "record.changed", Run: "rename", Type: "deal", When: "changed('contacts')"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if err := e.RecordChanged(runs.Change{Type: "deal", ID: "deal", After: map[string]any{"contacts": []any{id}}}); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	run, err := e.List("crm", "rename")
+	if err != nil || len(run) != 1 || run[0].State != runs.Done {
+		t.Fatalf("trigger should update its linked contacts: %+v (%v)", run, err)
+	}
+	page, err := db.Query(data.Scope{App: "crm"}, "contact", "", "", 10)
+	if err != nil || len(page.Rows) != 2 {
+		t.Fatalf("contacts: %+v (%v)", page, err)
+	}
+	for _, row := range page.Rows {
+		if (row.ID() == id && row["name"] != "Southwind") || (row.ID() != id && row["name"] != "Other") {
+			t.Fatalf("wrong contact changed: %+v", row)
+		}
+	}
+}

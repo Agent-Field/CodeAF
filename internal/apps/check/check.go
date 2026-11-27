@@ -78,6 +78,8 @@ func (p Pipeline) run(ctx context.Context, draft string, def schema.Definition, 
 		}
 		return report
 	}
+	depth := ExampleDepth(def, types, rows)
+	report.Depth = &depth
 	if requireSamples && len(rows) == 0 {
 		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", "Add example records for the app's lists and required fields."))
 		return report

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -70,8 +71,6 @@ Use extensions only when no built-in fits. Read reference {"schema":"custom-exte
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
-For scheduled loops, a refs parameter takes a query string as its default,
-for example {type: refs, to: post, default: "status:Open"}. Read ids with $params.post.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
 Agent steps return only the requested text at $steps.<id>.output. For loops
 and approvals, use the supplied run example as a syntax reference.
@@ -85,13 +84,14 @@ writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
 must be unique in the whole sample. Use the exact ids in reference fields.
 
-Save three to six synthetic records per type and put one row in each
-run's sample trigger or filter. Use existing recipe defaults for styling.
+Save three to six synthetic records per type unless the request calls for
+more. A full example needs at least 30 total. Put one row in each run's
+sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
 Find common keys with codeaf app common-types. Copy only needed fields without
-role labels. Point refs at local type names and omit unused or circular relations.
+role labels. Point refs at local type names and seed both ends of any linked examples.
 For existing records, copy the common key from context.common_bindings.
 If it lists no key for that type, omit common and keep its exact name.
 Reuse uses {"uses":true,"fields":{}}. Apply still confirms headless proposals.
@@ -103,6 +103,12 @@ In sample rows, use only the existing type's fields returned by context.
 Fill visible sample fields. Claim marked nodes and preserve existing ids.
 Your data already imports CSV into editable record types. For CSV import,
 match field ids to the headers and use the built-in import, with no run.`
+
+const automationGuide = `Use the listed connector operations and trigger kinds. If a source is missing,
+say so and use a supported input or labeled local draft if allowed. Run prompts cannot fetch
+URLs. Pass the document text from a source, previous step or intake attachment.
+A refs parameter can default to a query such as "status:Open" or take the
+trigger's matching link via default: $input.record.links. Read IDs with $params.post.id.`
 
 const extensionReference = `Use a built-in part whenever it can meet the request. If none can, say why,
 check kit-parts for a reusable part, and only then use set-custom-part with
@@ -172,6 +178,7 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
+	SourceOperations   map[string][]string
 	Headless           bool
 	Editing            bool
 	Marks              []Mark
@@ -346,20 +353,36 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 			commonBindings[typ.Name] = typ.Common
 		}
 	}
+	triggers, tools := schema.AutomationCatalog()
+	triggers = slices.DeleteFunc(triggers, func(kind string) bool { return kind == "timer" })
+	for connector, names := range tools {
+		executable := slices.DeleteFunc(names, func(name string) bool {
+			return !runs.NativeConnectorTool(connector + "." + name)
+		})
+		if len(executable) == 0 {
+			delete(tools, connector)
+		} else {
+			tools[connector] = executable
+		}
+	}
+	maps.Copy(tools, in.SourceOperations)
 	raw, err := json.Marshal(struct {
-		RecordPolicy   string            `json:"record_policy"`
-		ScreenControls string            `json:"screen_controls"`
-		Stage          string            `json:"stage"`
-		Manifest       json.RawMessage   `json:"manifest,omitempty"`
-		Plan           json.RawMessage   `json:"plan,omitempty"`
-		Files          []string          `json:"files,omitempty"`
-		Unchanged      []string          `json:"unchanged,omitempty"`
-		Types          []string          `json:"existing_types,omitempty"`
-		CommonBindings map[string]string `json:"common_bindings,omitempty"`
-		Using          []string          `json:"using,omitempty"`
-		Report         *modelReport      `json:"report,omitempty"`
+		Automation     string              `json:"automation_guide"`
+		Triggers       []string            `json:"trigger_kinds"`
+		Connectors     map[string][]string `json:"connector_operations"`
+		RecordPolicy   string              `json:"record_policy"`
+		ScreenControls string              `json:"screen_controls"`
+		Stage          string              `json:"stage"`
+		Manifest       json.RawMessage     `json:"manifest,omitempty"`
+		Plan           json.RawMessage     `json:"plan,omitempty"`
+		Files          []string            `json:"files,omitempty"`
+		Unchanged      []string            `json:"unchanged,omitempty"`
+		Types          []string            `json:"existing_types,omitempty"`
+		CommonBindings map[string]string   `json:"common_bindings,omitempty"`
+		Using          []string            `json:"using,omitempty"`
+		Report         *modelReport        `json:"report,omitempty"`
 	}{
-		recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		automationGuide, triggers, tools, recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
 		unchanged, typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err

@@ -458,6 +458,9 @@ type writeTx struct {
 	schema *schema
 	now    time.Time
 	change *Change
+	// Seeds preserve per-type batches while committing them together.
+	completedChanges []*Change
+	seed             map[string]seedRow
 	// next is the schema a registration made, swapped in after the commit.
 	next *schema
 	// cursor is the last outbox row this write made.
@@ -537,9 +540,11 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 		w.afterCommit()
 	}
 	s.visibility.Unlock()
-	if w.change != nil && (len(w.change.Records) > 0 || len(w.change.Items) > 0 || w.change.invalidation != nil || w.change.resume != nil) {
-		w.change.Draft = s.draft
-		s.notify <- w.change
+	for _, change := range append(w.completedChanges, w.change) {
+		if change != nil && (len(change.Records) > 0 || len(change.Items) > 0 || change.invalidation != nil || change.resume != nil) {
+			change.Draft = s.draft
+			s.notify <- change
+		}
 	}
 	return nil
 }

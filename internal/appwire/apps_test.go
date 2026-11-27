@@ -87,8 +87,8 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 	if got := call("apps.revert", fmt.Sprintf(`{"app":%q,"n":1}`, meta.ID))["meta"].(map[string]any); got["version"] != float64(2) {
 		t.Fatalf("revert = %v", got)
 	}
-	if got := call("apps.kit", "{}"); got["kit"] != float64(2) || len(got["parts"].([]any)) != 64 {
-		t.Fatalf("kit = %v", got)
+	if got := call("apps.kit", "{}"); got["kit"] != float64(2) || len(got["parts"].([]any)) != 63 {
+		t.Fatalf("kit version = %v, parts = %d, want kit 2 with 63 parts", got["kit"], len(got["parts"].([]any)))
 	}
 	if got := call("apps.kit", `{"kit":0}`); got["kit"] != float64(0) || len(got["parts"].([]any)) != 20 {
 		t.Fatalf("legacy kit = %v", got)

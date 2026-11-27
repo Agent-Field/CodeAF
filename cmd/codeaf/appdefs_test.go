@@ -42,7 +42,7 @@ func TestPersonalAppDefinitionsUseEngineHomeOverWire(t *testing.T) {
 		Parts []json.RawMessage `json:"parts"`
 	}
 	wire.must("apps.kit", map[string]string{}, &kit)
-	if kit.Kit == nil || *kit.Kit != 2 || len(kit.Parts) != 64 {
-		t.Fatalf("embedded kit response: %+v", kit)
+	if kit.Kit == nil || *kit.Kit != 2 || len(kit.Parts) != 63 {
+		t.Fatalf("embedded kit version = %v, parts = %d, want kit 2 with 63 parts", kit.Kit, len(kit.Parts))
 	}
 }

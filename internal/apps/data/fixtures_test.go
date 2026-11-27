@@ -64,3 +64,68 @@ func TestLaneAFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDraftExamplesLinkBothWays(t *testing.T) {
+	const company = "00000000000000000000000001"
+	const contact = "00000000000000000000000002"
+	app := []byte(`{"id":"crm","name":"CRM","version":1,"kit":0,"records":{
+		"company":{"title":"name","fields":{"name":{"type":"text"},"lead":{"type":"ref","to":"contact","required":true}}},
+		"contact":{"title":"name","fields":{"name":{"type":"text"},"company":{"type":"ref","to":"company","required":true}}}
+	},"capabilities":{"records":{"company":"rw","contact":"rw"}}}`)
+	p := NewPlace(t.TempDir(), Options{NoRefresh: true})
+	defer p.Close()
+	examples := map[string][]map[string]any{
+		"company": {{"id": company, "name": "Northwind", "lead": "Alex"}},
+		"contact": {{"id": contact, "name": "Alex", "company": company}},
+	}
+	if err := p.SeedSample("crm-draft", app, examples); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := p.Store("crm-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct{ typ, id, field, ref string }{
+		{"company", company, "lead", contact},
+		{"contact", contact, "company", company},
+	} {
+		row, err := draft.Get(Scope{App: "crm"}, want.typ, want.id, false)
+		if err != nil || row[want.field] != want.ref {
+			t.Fatalf("%s: got %v, want %s (%v)", want.typ, row, want.ref, err)
+		}
+	}
+}
+
+func TestMeetingRevisionExamplesSeedSharedCyclicReferences(t *testing.T) {
+	p := NewPlace(t.TempDir(), Options{NoRefresh: true})
+	defer p.Close()
+	main, err := p.Main()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const fixturePath = "meeting-revision/"
+	if err := main.RegisterApp(fixture(t, fixturePath+"owner.json")); err != nil {
+		t.Fatal(err)
+	}
+	var sample appschema.Sample
+	if err := json.Unmarshal(fixture(t, fixturePath+"sample.json"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	app := fixture(t, fixturePath+"app.json")
+	if err := p.SeedSample("meeting-draft", app, sample.Records); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := p.Store("meeting-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := appschema.ParseApp(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := Scope{App: def.ID}
+	transcript, err := draft.Get(scope, "transcript", "00000000000000000000000019", false)
+	if err != nil || transcript["meeting"] != "00000000000000000000000013" {
+		t.Fatalf("transcript did not retain its shared meeting: %v (%v)", transcript, err)
+	}
+}

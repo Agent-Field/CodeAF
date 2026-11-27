@@ -1,0 +1,254 @@
+{
+  "agent": {
+    "name": "Meeting copilot",
+    "file": "agent.md"
+  },
+  "budget": {
+    "per_run": 0.10
+  },
+  "capabilities": {
+    "connectors": {
+      "calendar": {
+        "can": [
+          "event.starts"
+        ]
+      }
+    },
+    "records": {
+      "company": "r",
+      "decision": "rw",
+      "followup": "rw",
+      "meeting": "rw",
+      "message": "r",
+      "person": "r",
+      "task": "rw",
+      "transcript": "r"
+    }
+  },
+  "commands": [
+    {
+      "id": "follow-up",
+      "label": "Draft follow-up",
+      "for": "meeting",
+      "run": "follow-up",
+      "params": {
+        "meeting": "$record.id"
+      }
+    },
+    {
+      "id": "prep-meeting",
+      "label": "Prep meeting",
+      "for": "meeting",
+      "run": "prep-meeting",
+      "params": {
+        "meeting": "$record.id"
+      }
+    }
+  ],
+  "id": "01M8CC2E33SZGV3NRWTJ1GDJXR",
+  "kit": 2,
+  "name": "Meeting copilot",
+  "records": {
+    "company": {
+      "common": "organization",
+      "fields": {},
+      "uses": true
+    },
+    "decision": {
+      "fields": {
+        "statement": {
+          "type": "text",
+          "required": true
+        },
+        "meeting": {
+          "type": "ref",
+          "to": "meeting"
+        },
+        "transcript": {
+          "type": "ref",
+          "to": "transcript"
+        },
+        "decided": {
+          "type": "date"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "Proposed",
+            "Decided",
+            "Reversed"
+          ],
+          "required": true,
+          "default": "Decided"
+        },
+        "notes": {
+          "type": "longtext"
+        }
+      },
+      "title": "statement"
+    },
+    "followup": {
+      "fields": {
+        "subject": {
+          "type": "text",
+          "required": true
+        },
+        "meeting": {
+          "type": "ref",
+          "to": "meeting"
+        },
+        "to": {
+          "type": "ref",
+          "to": "person"
+        },
+        "body": {
+          "type": "longtext"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "Draft",
+            "Ready",
+            "Sent",
+            "Dropped"
+          ],
+          "required": true,
+          "default": "Draft"
+        }
+      },
+      "title": "subject"
+    },
+    "meeting": {
+      "title": "title",
+      "uses": true,
+      "fields": {
+        "brief": {
+          "type": "longtext",
+          "label": "Prep brief"
+        },
+        "capture_decisions": {
+          "type": "longtext"
+        },
+        "capture_status": {
+          "type": "text"
+        },
+        "capture_summary": {
+          "type": "longtext"
+        },
+        "capture_tasks": {
+          "type": "refs",
+          "to": "task"
+        },
+        "draft_body": {
+          "type": "longtext"
+        },
+        "draft_subject": {
+          "type": "text"
+        },
+        "source": {
+          "type": "enum",
+          "default": "Local desktop",
+          "values": [
+            "Local desktop",
+            "Google Meet",
+            "Google Calendar"
+          ]
+        },
+        "state": {
+          "type": "enum",
+          "default": "Scheduled",
+          "values": [
+            "Scheduled",
+            "In progress",
+            "Ended"
+          ]
+        },
+        "transcript": {
+          "type": "ref",
+          "to": "transcript"
+        }
+      }
+    },
+    "message": {
+      "uses": true,
+      "fields": {}
+    },
+    "person": {
+      "common": "person",
+      "fields": {},
+      "uses": true
+    },
+    "task": {
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "meeting": {
+          "type": "ref",
+          "to": "meeting"
+        },
+        "transcript": {
+          "type": "ref",
+          "to": "transcript"
+        },
+        "owner": {
+          "type": "ref",
+          "to": "person"
+        },
+        "due": {
+          "type": "date"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "Open",
+            "In progress",
+            "Done",
+            "Dropped"
+          ],
+          "required": true,
+          "default": "Open"
+        },
+        "notes": {
+          "type": "longtext"
+        }
+      },
+      "title": "title"
+    },
+    "transcript": {
+      "title": "title",
+      "uses": true,
+      "fields": {}
+    }
+  },
+  "triggers": [
+    {
+      "id": "capture-completed",
+      "on": "record.changed",
+      "type": "transcript",
+      "when": "changed('body')",
+      "run": "capture-completed"
+    },
+    {
+      "id": "capture-ended",
+      "on": "record.changed",
+      "type": "meeting",
+      "when": "changed('capture_status') \u0026\u0026 capture_status == 'ended'",
+      "run": "native-completion"
+    },
+    {
+      "id": "calendar-prep",
+      "on": "connector",
+      "connector": "calendar",
+      "event": "event.starts",
+      "match": {
+        "connection": "calendar",
+        "read": "meetings",
+        "minutes": 30
+      },
+      "run": "prep-calendar"
+    }
+  ],
+  "version": 1
+}

@@ -3065,54 +3065,6 @@
       ]
     },
     {
-      "name": "CommandButton",
-      "version": 1,
-      "tier": "data",
-      "summary": "Runs a command with typed parameters and optional confirmation.",
-      "example": {
-        "command": "review"
-      },
-      "props": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "command": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
-          },
-          "params": {
-            "type": "object"
-          },
-          "confirm": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "command"
-        ]
-      },
-      "children": "none",
-      "interactive": true,
-      "bindings": [
-        "record",
-        "selection",
-        "params"
-      ],
-      "events": [
-        "click"
-      ],
-      "renderers": {
-        "desktop": "data.CommandButton"
-      },
-      "rules": [
-        {
-          "check": "command",
-          "path": "command"
-        }
-      ]
-    },
-    {
       "name": "TriageQueue",
       "version": 1,
       "tier": "data",
@@ -6266,6 +6218,68 @@
           }
         ]
       },
+      "record.before": {
+        "id": "record.before",
+        "version": 1,
+        "doc": "Starts once per record and datetime during a lead window before that datetime.",
+        "example": {
+          "id": "prep",
+          "run": "brief",
+          "on": "record.before",
+          "type": "meeting",
+          "at": "starts_at",
+          "lead": "30m",
+          "when": "external == true"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "on": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "at": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "lead": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "on",
+            "run",
+            "type",
+            "at",
+            "lead"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "type"
+          }
+        ]
+      },
       "connector": {
         "id": "connector",
         "version": 1,
@@ -6808,6 +6822,28 @@
         },
         "auth": "configured-account",
         "operations": {
+          "read": {
+            "id": "read",
+            "version": 1,
+            "doc": "Read one message by its ID.",
+            "example": {
+              "id": "message-1"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ]
+            },
+            "outbound": "read",
+            "fake": "gmail.read"
+          },
           "search": {
             "id": "search",
             "version": 1,
@@ -6946,6 +6982,67 @@
         },
         "auth": "configured-account",
         "operations": {
+          "create": {
+            "id": "create",
+            "version": 1,
+            "doc": "Create a calendar event after approval.",
+            "example": {
+              "title": "Planning",
+              "start": "2026-11-25T12:00:00Z",
+              "end": "2026-11-25T12:30:00Z"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "start",
+                "end"
+              ]
+            },
+            "outbound": "send",
+            "fake": "calendar.create"
+          },
+          "list": {
+            "id": "list",
+            "version": 1,
+            "doc": "List events in the requested time range.",
+            "example": {},
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              }
+            },
+            "outbound": "read",
+            "fake": "calendar.list"
+          },
           "free_busy": {
             "id": "free_busy",
             "version": 1,

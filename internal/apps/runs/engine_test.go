@@ -3,10 +3,12 @@ package runs_test
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/apps/connections"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 )
 
@@ -561,6 +563,83 @@ func TestManifestOutboundOperationUsesProofApproval(t *testing.T) {
 	if len(fake.Calls()) != 1 || state(t, e, r.ID).State != runs.Done {
 		t.Fatal("proof approval did not release the step exactly once")
 	}
+}
+
+func TestBeforeMeetingTriggerUsesCalendarStartAndDeduplicates(t *testing.T) {
+	// Calendar events carry an offset on start.dateTime.
+	calendar := map[string]any{"summary": "Asterloom evaluation", "start": map[string]any{"dateTime": "2026-11-27T10:00:00-05:00"}}
+	start := calendar["start"].(map[string]any)["dateTime"]
+	row := map[string]any{"id": "01JD8Z0000000000000000000A", "title": calendar["summary"], "starts_at": start, "external": true}
+	now := time.Date(2026, 11, 27, 14, 29, 59, 0, time.UTC)
+	root := t.TempDir()
+	const manifest = `{
+		"id":"desk","name":"Account desk","kit":2,
+		"records":{"meeting":{"fields":{
+			"title":{"type":"text"},"starts_at":{"type":"datetime"},"external":{"type":"bool"}
+		}}},
+		"capabilities":{"records":{"meeting":"r"}},
+		"triggers":[{"id":"prep","on":"record.before","run":"brief","type":"meeting","at":"starts_at","lead":"30m","when":"external == true"}]
+	}`
+	const run = `run: brief
+steps:
+  - id: review
+    gate: {approval: proof}
+`
+	current := filepath.Join(root, "apps", "desk", "current")
+	if err := os.MkdirAll(filepath.Join(current, "runs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{
+		filepath.Join(current, "../meta.json"):       `{"version":1}`,
+		filepath.Join(current, "app.json"):           manifest,
+		filepath.Join(current, "runs", "brief.yaml"): run,
+	} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := runs.Files(filepath.Join(root, "apps"))
+	cfg := runs.Config{
+		Root: filepath.Join(root, "runs"),
+		Now:  func() time.Time { return now },
+		ReadRecords: func(app, typ string) ([]any, error) {
+			if app != "desk" || typ != "meeting" {
+				t.Fatalf("read the wrong records %q %q", app, typ)
+			}
+			return []any{row}, nil
+		},
+		Triggers: files.Triggers,
+		Load:     files.Load,
+	}
+	check := func(e *runs.Engine, want int) {
+		t.Helper()
+		if err := e.Tick(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		got, err := e.List("desk", "brief")
+		if err != nil || len(got) != want {
+			t.Fatalf("at %s: got %d runs, want %d, err %v", now, len(got), want, err)
+		}
+		if want == 1 && got[0].Approval == nil {
+			t.Fatal("the due run did not reach its review gate")
+		}
+	}
+	e, err := runs.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(e, 0)
+	now = now.Add(time.Second)
+	check(e, 1)
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	e, err = runs.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	check(e, 1)
 }
 
 func TestGoogleTriggerCommitsItsClaimWithTheRun(t *testing.T) {

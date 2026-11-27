@@ -248,6 +248,11 @@ func (w *writeTx) resolveTitles(t *Type, set map[string]any) error {
 				found = append(found, id)
 			}
 			rows.Close()
+			for id, record := range w.seed {
+				if record.typ == target && strings.EqualFold(record.title, p) {
+					found = append(found, id)
+				}
+			}
 			switch len(found) {
 			case 0:
 				return fieldErr(name, "there is no %s named %q", f.To, p)
