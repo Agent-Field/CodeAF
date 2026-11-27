@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
@@ -59,18 +60,35 @@ func normalizeTriggerExamples(files map[string]string, app schema.App, types sch
 		if !ok {
 			continue
 		}
-		if total >= draftSampleLimit {
+		replace := total >= draftSampleLimit
+		for name, field := range fields {
+			if field.Unique && row[name] != nil {
+				replace = true
+			}
+		}
+		if replace {
 			if len(rows) == 0 {
 				continue
 			}
 			// Keep the original ID and references when the sample is full.
-			patched := maps.Clone(rows[0])
+			target := slices.IndexFunc(rows, func(original map[string]any) bool {
+				for name, field := range fields {
+					if field.Unique && row[name] != nil && fmt.Sprint(original[name]) != fmt.Sprint(row[name]) {
+						return false
+					}
+				}
+				return true
+			})
+			if target < 0 {
+				continue
+			}
+			patched := maps.Clone(rows[target])
 			delete(row, "id")
 			maps.Copy(patched, row)
 			if matches, _ := runs.MatchesSampleArrival(trigger.When, trigger.Type, patched, now); !matches {
 				continue
 			}
-			rows[0] = patched
+			rows[target] = patched
 		} else {
 			sample.Records[trigger.Type] = append([]map[string]any{row}, rows...)
 			total++
@@ -86,7 +104,31 @@ func normalizeTriggerExamples(files map[string]string, app schema.App, types sch
 
 func exampleArrival(trigger schema.Trigger, record schema.RecordType, fields map[string]schema.Field, rows map[string][]map[string]any, examples map[string]json.RawMessage, now time.Time) (map[string]any, bool) {
 	digest := sha256.Sum256([]byte(trigger.Type + "\x00" + trigger.ID))
-	row := map[string]any{"id": "00" + strings.ToUpper(hex.EncodeToString(digest[:12]))}
+	// An arrival can only be derived from a named fictional record already
+	// supplied for this type. If none fits, Check asks for that one record.
+	title := record.Title
+	if title == "" {
+		for _, key := range []string{"title", "name", "subject"} {
+			if fields[key].Type == "text" || fields[key].Type == "longtext" {
+				title = key
+				break
+			}
+		}
+	}
+	var row map[string]any
+	for _, source := range rows[trigger.Type] {
+		name, _ := source[title].(string)
+		if strings.TrimSpace(name) != "" && !check.PlaceholderTitle(name) {
+			row = maps.Clone(source)
+			break
+		}
+	}
+	if row == nil {
+		return nil, false
+	}
+	// Keep the original title for a replacement row and derive the next
+	// dated instance when adding a row would duplicate a unique title.
+	row["id"] = "00" + strings.ToUpper(hex.EncodeToString(digest[:12]))
 	values := map[string]any{}
 	for _, match := range arrivalEquality.FindAllStringSubmatch(trigger.When, -1) {
 		var value any
@@ -94,7 +136,7 @@ func exampleArrival(trigger schema.Trigger, record schema.RecordType, fields map
 			values[match[1]] = value
 		}
 	}
-	required := map[string]bool{record.Title: true}
+	required := map[string]bool{}
 	for _, match := range changedArgument.FindAllStringSubmatch(trigger.When, -1) {
 		required[match[1]] = true
 	}
@@ -106,8 +148,8 @@ func exampleArrival(trigger schema.Trigger, record schema.RecordType, fields map
 		}
 		if value, ok := values[name]; ok && validArrivalLiteral(field, value) && !field.Unique {
 			row[name] = value
-		} else if required[name] || field.Required {
-			if value := arrivalValue(name, field, trigger.ID, rows, examples, now); value != nil {
+		} else if row[name] == nil && (required[name] || field.Required) {
+			if value := arrivalValue(field, rows, examples, now); value != nil {
 				row[name] = value
 			}
 		}
@@ -128,10 +170,10 @@ func validArrivalLiteral(field schema.Field, value any) bool {
 	return false
 }
 
-func arrivalValue(name string, field schema.Field, trigger string, rows map[string][]map[string]any, examples map[string]json.RawMessage, now time.Time) any {
+func arrivalValue(field schema.Field, rows map[string][]map[string]any, examples map[string]json.RawMessage, now time.Time) any {
 	switch field.Type {
 	case "text", "longtext":
-		return "Example " + displayName(name, "record") + " for " + displayName(trigger, "automation")
+		return nil
 	case "enum":
 		if field.Default != nil {
 			return field.Default

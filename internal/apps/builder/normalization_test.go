@@ -79,6 +79,9 @@ func TestNormalizeSavedV9UnplacedCommands(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			mention := app.Records["mention"]
+			mention.Fields["handled"] = schema.Field{Type: "bool"}
+			app.Records["mention"] = mention
 			app.Commands = []schema.Command{{ID: "mark-slack-mention-handled", Label: "Mark Slack mention handled", For: "mention", Do: []schema.Action{
 				{"records.update": map[string]any{"type": "mention", "id": "$record.id", "set": map[string]any{"handled": true}}},
 			}}}
@@ -130,8 +133,12 @@ func TestNormalizeSavedV9TriggerExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			rows := sample.Records[tc.record]
-			if len(rows) != 2 || rows[0]["attachment"] == nil || schema.ValidateFileValue("file", rows[0]["attachment"]) != nil ||
-				rows[0]["status"] != record.Fields["status"].Default || rows[1][tc.title] != "Original" ||
+			wantRows := 2
+			if record.Fields[tc.title].Unique {
+				wantRows = 1
+			}
+			if len(rows) != wantRows || rows[0]["attachment"] == nil || schema.ValidateFileValue("file", rows[0]["attachment"]) != nil ||
+				rows[0]["status"] != record.Fields["status"].Default || rows[0][tc.title] != "Original" ||
 				!slices.ContainsFunc(notes, func(p schema.Problem) bool { return p.File == schema.SampleFile }) {
 				t.Fatalf("a positive synthetic fixture should be inserted once: %v, %v", rows, notes)
 			}

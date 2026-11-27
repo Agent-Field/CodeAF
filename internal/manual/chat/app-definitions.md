@@ -493,3 +493,7 @@ beside the record actions.
 ## What the app builder fixes before Check
 
 The builder fixes mechanical issues in generated drafts before Check. It uses the record store’s built-in fields, keeps shared fields with their owner, and puts unattached commands and synthetic trigger examples where the app can use them. Build activity records these corrections. It asks you to settle choices that could change what the app does or which shared records it can access.
+
+## What makes an app draft ready to try
+
+Check rejects numbered filler titles such as “Title example 2” in the fictional records. The builder uses the sample story for believable records and reuses those examples when an automation needs a matching record. A start-of-day brief shows the work queue and overview. It includes an agenda when the app has scheduled records.

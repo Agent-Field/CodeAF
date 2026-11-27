@@ -87,6 +87,11 @@ func normalizeDraft(files map[string]string, types schema.TypeSet) (map[string]s
 			}
 		}
 	}
+	landingNotes, err := normalizeLanding(next, app, types)
+	if err != nil {
+		return files, nil, err
+	}
+	notes = append(notes, landingNotes...)
 	controlNotes, err := normalizeCommandControls(next, app)
 	if err != nil {
 		return files, nil, err

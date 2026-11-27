@@ -47,6 +47,7 @@ func Definition(def schema.Definition, types schema.TypeSet) schema.Report {
 	if report.OK() {
 		report.Problems = append(report.Problems, missingControls(def, types)...)
 		report.Problems = append(report.Problems, missingActions(def)...)
+		report.Problems = append(report.Problems, sampleTitleFindings(def)...)
 		report.Warnings = LookFindings(def, types)
 	}
 	return report
