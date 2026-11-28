@@ -145,6 +145,12 @@ func where(workspace string) (string, error) {
 	if workspace == "" {
 		return "", errors.New("engine host: no workspace to hold")
 	}
+	// A WORKSPACE IS NAMED BY ITS RESOLVED PATH, so a folder reached through a
+	// symlink holds the same engine as the folder itself. A path that does not
+	// resolve (it is not there yet) keeps its cleaned spelling.
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
 	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
 	return home.Join("v3", "hosts", hex.EncodeToString(sum[:8])), nil
 }

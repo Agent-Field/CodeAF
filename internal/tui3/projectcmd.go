@@ -17,6 +17,7 @@ package tui3
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -77,6 +78,11 @@ func (a *app) runProjectCommand(rest string) tea.Cmd {
 		return nil
 	}
 	a.noticeEvent(eventProjectSet)
+	// A PIN NAMES THE RESOLVED FOLDER, so a link pinned here and the folder it
+	// points at are one project when the next launch resolves its own path.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
 	// A PIN IS A STRING ON THIS WINDOW AND NEVER A ROUND TRIP (folderact.go's
 	// [app.targetFolderConfirm] says why that matters): the keys row under the
 	// box says the new folder on the very next frame.

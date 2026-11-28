@@ -1670,6 +1670,11 @@ func engineWorkspace(path string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("open %s: not a directory", expanded)
 	}
+	// The workspace is named by its resolved path, the same name the engine host
+	// and the project store key it by, so a symlinked spelling finds the engine.
+	if resolved, err := filepath.EvalSymlinks(expanded); err == nil {
+		expanded = resolved
+	}
 	return expanded, nil
 }
 
