@@ -28,9 +28,9 @@ Background chat publication waits silently while storage is off. It does not add
 
 ## Does storage off stop my phone — what a phone still sends the service
 
-No. With storage off the service refuses chat uploads and keeps the device list, and a paired phone keeps working. That is also what `--storage off` does on a server you run yourself. A phone starts a chat on a computer, sends to it, stops it, answers it and reads its replies. Those travel as sealed slots and queued requests between the phone and one computer, which the service passes along without being able to read them. They are not chat storage and need no approval.
+No. With storage off the service refuses chat uploads and keeps the device list, and a paired phone keeps working. That is also what `--storage off` does on a server you run yourself. A phone starts a chat on a computer, sends to it, stops it, answers it and reads its replies. Those travel as sealed slots and queued requests between the phone and one computer. The service keeps only the newest slot of each kind, sealed to your phone so it cannot read it, until the computer replaces it or you remove the phone; it is not chat storage and needs no approval.
 
-A chat a phone starts while storage is off leaves one directory record: the chat's id, the computer that holds it, its lease and its wrapped key. It has no title, no folder name and no head, so it names nothing the service cannot hold, and nothing of the conversation is uploaded. The chat stays on that computer and moves to another only by blind pass-through, as in *Blind pass-through*. The *Your phone* page says the same from the phone's side.
+A chat a phone starts while storage is off leaves one directory record: the chat's id, the computer that holds it, its lease and its wrapped key. It has no title, no folder name and no head, so it names nothing the service cannot hold, and no copy of the conversation is uploaded for another computer to restore. The chat stays on that computer and moves to another only by blind pass-through, as in *Blind pass-through*. The *Your phone* page says the same from the phone's side.
 
 ## Does the relay keep my chat when I move it without relay storage — what blind pass-through leaves behind
 
