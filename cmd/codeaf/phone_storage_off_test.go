@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -48,10 +49,31 @@ func TestAPhoneStartsAChatWhileRelayStorageIsOff(t *testing.T) {
 			t.Setenv("CODEAF_PROFILE_DIR", "")
 
 			relay := relayserve.New(relayserve.Config{Store: t.TempDir(), StorageOff: true})
-			var storeRequests atomic.Int32
+			// THE PROMISE IS ABOUT UPLOADS. A computer that knows storage is off
+			// must never try to hand the store chat content; a read of the store's
+			// own answer (its stats) by the desktop backend in the background is
+			// not an upload, and whether one lands inside this test is a race. So
+			// every store request is recorded and only the uploads are counted.
+			var storeMu sync.Mutex
+			var storeSeen []string
+			storeWrites := func() (writes int, seen []string) {
+				storeMu.Lock()
+				defer storeMu.Unlock()
+				for _, r := range storeSeen {
+					// An upload is a frame posted to the store (blobstore's
+					// pathFrames); the other POSTs there (has, locate, objects)
+					// are reads.
+					if r == http.MethodPost+" /v1/store/frames" {
+						writes++
+					}
+				}
+				return writes, slices.Clone(storeSeen)
+			}
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(r.URL.Path, "/v1/store/") {
-					storeRequests.Add(1)
+					storeMu.Lock()
+					storeSeen = append(storeSeen, r.Method+" "+r.URL.Path)
+					storeMu.Unlock()
 				}
 				relay.Handler.ServeHTTP(w, r)
 			}))
@@ -138,8 +160,8 @@ func TestAPhoneStartsAChatWhileRelayStorageIsOff(t *testing.T) {
 			if err := b.leaseClientChat(ctx, appwire.Agent{ID: chat}); err != nil {
 				t.Fatalf("leasing the same chat a second time with storage off: %v", err)
 			}
-			if tc.learned && storeRequests.Load() != 0 {
-				t.Fatalf("a computer that knows storage is off asked the store %d times", storeRequests.Load())
+			if writes, seen := storeWrites(); tc.learned && writes != 0 {
+				t.Fatalf("a computer that knows storage is off tried to upload to the store %d times (store requests: %v)", writes, seen)
 			}
 
 			// The chat is the engine's and the phone's start is written in it.
