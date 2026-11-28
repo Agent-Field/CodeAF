@@ -352,7 +352,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 - `taking an open chat from another computer waits for a relay update; all else works, so close it there and move it here` means the chat is open on another computer and the relay is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `move here` again.
 - Under `codeaf chat --host`, `move here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `move here`: enter says why.
 
-## taking a chat back, and two computers continuing the same chat — which one opens
+## taking a chat back from my other computer, and two computers continuing the same chat — which one opens
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 

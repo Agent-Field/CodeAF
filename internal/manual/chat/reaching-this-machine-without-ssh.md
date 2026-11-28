@@ -233,9 +233,10 @@ with the same host name are two entries.
 connection to the relay. What that means for the conversation on the far machine is the
 same as for any other connection; nothing about `--at` changes it.
 
-**A phone or a tablet cannot do this yet.** There is no browser client and no phone app;
-`--at` is a terminal command, so a phone reaches a machine only if you have a terminal on
-it that can run codeaf.
+**`--at` is for a terminal; a phone uses the phone app instead.** There is no browser client for
+`--at`; `--at` is a terminal command, so to start chats and answer questions from your phone
+without a terminal, pair the codeaf phone app through `/devices` (`a add a phone`) and `/pair`
+(see *Your phone*), or run `codeaf` in a mobile terminal on the phone.
 
 ## What a paired device is allowed to do
 

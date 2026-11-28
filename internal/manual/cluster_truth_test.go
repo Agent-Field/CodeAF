@@ -22,7 +22,7 @@ func TestR30ClusterQuestionsReachCompleteAnswers(t *testing.T) {
 		facts    []string
 	}{
 		// The design law removes unusable manual leadership for this release, per #2559.
-		{"can my phone lead", []string{"no codeaf phone app yet", "cannot lead yet", "persistent storage", "the coordinating computer cannot be chosen by hand", "`codeaf cluster status` shows which computer coordinates", "Tracked in issue #2559"}},
+		{"can my phone lead", []string{"cannot lead yet", "persistent storage", "the coordinating computer cannot be chosen by hand", "`codeaf cluster status` shows which computer coordinates", "Tracked in issue #2559"}},
 		// The design law replaces the transfer promise with the release limit, per #2559.
 		{"what is cluster lead", []string{"the coordinating computer cannot be chosen by hand", "`codeaf cluster status` shows which computer coordinates", "Tracked in issue #2559", "there is no `codeaf cluster lead`."}},
 		{"what happens if my leader goes away", []string{"restore the third anchor", "does not automatically regain leadership", "saved chats", cs.LeadershipUnavailable}},

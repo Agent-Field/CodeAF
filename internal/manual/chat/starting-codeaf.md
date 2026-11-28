@@ -1,6 +1,6 @@
 # What codeaf is, and how you start it
 
-## What codeaf is
+## What codeaf is — how to start codeaf
 
 codeaf is a working colleague in a terminal. You talk to it in ordinary language,
 and it works in the directory you started it in — reading, writing, running

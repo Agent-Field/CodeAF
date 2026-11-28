@@ -7,9 +7,9 @@ A relay directory upgrade can briefly pause pairing and chat moves. Retry after 
 
 ## Can my phone lead, be the leader or coordinate my computers?
 
-There is no codeaf phone app yet, so a phone cannot lead yet. A phone browser's pairing page only helps approve a computer; it does not join the phone to the cluster. In this release, the coordinating computer cannot be chosen by hand, even on a joined laptop or desktop with persistent storage. `codeaf cluster status` shows which computer coordinates. Tracked in issue #2559.
+The codeaf phone app connects as a scoped phone client (`starts chats, answers`), not a coordinating computer peer, so a phone cannot lead yet. In this release, the coordinating computer cannot be chosen by hand, even on a joined laptop or desktop with persistent storage. `codeaf cluster status` shows which computer coordinates. Tracked in issue #2559.
 
-A phone would need a supported client, persistent storage, enrollment and a live connection before it could take this role. Those requirements are not a working phone capability today. Leadership coordinates metadata; it does not move a chat or run its tools.
+A coordinating computer needs full peer enrollment, persistent storage and a live connection before it could take this role. A phone never holds that persistent storage or full peer authority (see *Your phone*). Leadership coordinates metadata; it does not move a chat or run its tools.
 
 ## Cluster status did not answer in time — slow storage or relay
 
@@ -93,7 +93,7 @@ The sync connection carries presence hints and committed lease acknowledgments. 
 
 ## Does syncing keep sending requests when nothing is happening?
 
-A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the hosted relay and the native relay, an open idle home uses its learner’s applied vault pointer to notice shared memory and preference changes. Local edits are detected locally and pushed on the next state round when relay storage is on. A relay that reports storage off gets one stats request at startup and every ten minutes; unknown hosted addresses use that same closed default. An unanswered custom address gets one startup request. An answer without storage keeps storage on and stops probing; known storage on makes no permission requests. On a relay with a learner door, over ten idle minutes, caught-up open homes with storage on make zero HTTP requests, zero peer or forwarding frames and zero client attempts, including while one home leads and after it sleeps and the anchors resume. A caught-up idle home sends no recurring state polls or peer keepalives.
+A home that has never paired sends no sync traffic, except what serving a phone you approved needs (see *Your phone*); a phone alone never starts the sharing between computers. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the hosted relay and the native relay, an open idle home uses its learner’s applied vault pointer to notice shared memory and preference changes. Local edits are detected locally and pushed on the next state round when relay storage is on. A relay that reports storage off gets one stats request at startup and every ten minutes; unknown hosted addresses use that same closed default. An unanswered custom address gets one startup request. An answer without storage keeps storage on and stops probing; known storage on makes no permission requests. On a relay with a learner door, over ten idle minutes, caught-up open homes with storage on make zero HTTP requests, zero peer or forwarding frames and zero client attempts, including while one home leads and after it sleeps and the anchors resume. A caught-up idle home sends no recurring state polls or peer keepalives.
 
 ## How does an idle home notice offline computers and wake coordination?
 
