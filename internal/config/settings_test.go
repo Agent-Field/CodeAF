@@ -715,7 +715,7 @@ func TestSearchRowsMapToOptionsAndProvidersHaveOneOrder(t *testing.T) {
 	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
 		t.Setenv(env, "")
 	}
-	if got, want := strings.Join(SearchProviders, ","), "auto,firecrawl,duckduckgo,exa,jina-search"; got != want {
+	if got, want := strings.Join(SearchProviders, ","), "auto,firecrawl,duckduckgo,exa,jina-search,keenable"; got != want {
 		t.Fatalf("SearchProviders = %q, want %q", got, want)
 	}
 

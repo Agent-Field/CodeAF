@@ -1024,7 +1024,7 @@ const SearchProviderAuto = "auto"
 // new plug needs a line here to be pinnable — which is the right cost, because
 // a plug nobody can name in the sheet is still reachable through auto.
 // jina-search is named here too so every registered search plug is pinnable.
-var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "exa", "jina-search"}
+var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "exa", "jina-search", "keenable"}
 
 // ModelPoolChoices are the answers the pool row accepts, and the same words
 // the pool's resolver reads from its environment pin.

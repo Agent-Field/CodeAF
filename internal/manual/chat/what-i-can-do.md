@@ -1103,7 +1103,8 @@ Which back end answers is decided top-down: a pin in the `search.provider`
 setting wins; otherwise the first keyed service you have a key for (`exa` needs
 an Exa key, `jina-search` needs a Jina key); otherwise the zero-key default,
 which is Firecrawl: keyless, with a free monthly allowance and no key needed.
-DuckDuckGo remains available as an explicit pin. So keys change *which* engine
+DuckDuckGo remains available as an explicit pin, and so does Keenable
+(`keenable`), which answers keyless through its public endpoint. So keys change *which* engine
 answers or raise its ceiling, never *whether* the web is reachable.
 
 This matters more generally: codeaf leaves a tool **off the list entirely** when
