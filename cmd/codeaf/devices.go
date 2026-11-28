@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"runtime"
@@ -34,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -483,14 +485,24 @@ func (c chatsKind) phoneUnpairer() tui3.PhoneUnpairer {
 // off, or no identity yet. Both are the emptiness law, not an error, so the
 // heading is simply absent.
 func openChatsKind() (chatsKind, bool) {
-	if syncsetup.Quiet(home.Dir()) {
+	quiet := syncsetup.Quiet(home.Dir())
+	if quiet && !syncsetup.PhonesApproved(home.Dir()) {
 		return chatsKind{}, false
 	}
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		return chatsKind{}, false
 	}
-	c := chatsKindOf(s.Dir, s.Identity.CellKey(), s.Device.ID(), s.Relay)
+	dir := s.Dir
+	if quiet {
+		// A solo computer with an approved phone is quiet toward every other
+		// computer, so its ordinary client refuses everything. The person asked to see
+		// and remove the phone, which is their own explicit act, so this one read of
+		// its own device list goes out directly (contract P13).
+		sign := reqsign.SignFor(homeSigner{s.Identity, s.Device}, time.Now)
+		dir = directory.NewHTTP(s.Relay, sign, &http.Client{Timeout: linkTimeout})
+	}
+	c := chatsKindOf(dir, s.Identity.CellKey(), s.Device.ID(), s.Relay)
 	c.identity = s.Identity.ID()
 	return c, true
 }
@@ -644,6 +656,10 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if u := c.phoneUnpairer(); u != nil {
 		_ = u.Unpair(ctx, row.id)
 	}
+	// FORGET THE PHONE AFTER THE RUNNER HAS UNPAIRED IT: while it is still recorded the
+	// runner's own client may send the revoke, and once the last one is forgotten a solo
+	// computer goes fully quiet again (contract P13).
+	_ = syncsetup.ForgetPhone(home.Dir(), row.id)
 	livedoor.NotifyRemoved(home.Dir(), row.id)
 	_ = pair.Permits().Forget(row.id)
 	forgetViewed(home.Dir(), row.id)

@@ -189,3 +189,75 @@ func TestP13PhoneApprovalKeepsSoloWhileComputerEndsSoloAndRevokeForgetsPhone(t *
 		t.Fatal("PhonesApproved false after approving phone on non-solo home")
 	}
 }
+
+// TestP13SoloComputerWithAPhoneListsIt verifies the person-visible half of P13: a
+// computer that has never shared its identity is quiet toward every other computer,
+// but once a phone is approved on it the person must be able to see that phone in
+// /devices and in `codeaf devices`, and remove it. With no phone approved the same
+// solo computer shows only itself.
+func TestP13SoloComputerWithAPhoneListsIt(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("DO_NOT_TRACK", "1")
+	ctx := context.Background()
+
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeA)
+	t.Setenv(syncsetup.URLVar, rig.url)
+	makeHomeSolo(t, rig.homeA)
+	door := rig.approvalsAt(rig.homeA)
+
+	// No phone yet: the solo computer shows only itself and has no chats kind.
+	rows, err := door.Devices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || !rows[0].Self {
+		t.Fatalf("solo computer with no phone listed %+v, want only itself", rows)
+	}
+	if _, ok := openChatsKind(); ok {
+		t.Fatal("a solo computer with no phone offered the devices kind")
+	}
+
+	token, _, check, _, phonePub := testPhoneRequest(t, rig, "iPhone")
+	phoneID := clientproto.DeviceIDOf(phonePub)
+	if _, err := rig.approveWith(t, []string{"approve", token, "--check", check}, ""); err != nil {
+		t.Fatalf("phone approve: %v", err)
+	}
+	if !identity.Solo(rig.homeA) {
+		t.Fatal("approving the phone ended solo")
+	}
+
+	rows, err = door.Devices(ctx)
+	if err != nil {
+		t.Fatalf("Devices on a solo computer with a phone: %v", err)
+	}
+	var sawPhone bool
+	for _, row := range rows {
+		if row.ID == phoneID {
+			sawPhone = row.Client && !row.Revoked
+		}
+	}
+	if !sawPhone {
+		t.Fatalf("/devices on a solo computer with an approved phone listed %+v, want the phone", rows)
+	}
+	kind, ok := openChatsKind()
+	if !ok {
+		t.Fatal("`codeaf devices` offered no kind on a solo computer with an approved phone")
+	}
+	listing, err := kind.dir.List(ctx)
+	if err != nil {
+		t.Fatalf("the devices kind could not read its own list: %v", err)
+	}
+	if _, in := listing.Devices[phoneID]; !in {
+		t.Fatalf("the devices kind's list = %+v, want the phone", listing.Devices)
+	}
+
+	// Removing it makes the solo computer show only itself again.
+	if err := door.Revoke(ctx, phoneID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := openChatsKind(); ok {
+		t.Fatal("after removing the last phone a solo computer still offered the devices kind")
+	}
+}

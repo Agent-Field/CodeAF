@@ -284,7 +284,11 @@ func (d *approvalsDoor) home() (directory.Client, identity.Identity, string, err
 }
 
 func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
-	if syncsetup.Quiet(d.dir) {
+	// A COMPUTER THAT HAS ONLY EVER SERVED A PHONE IS STILL QUIET toward every other
+	// computer, but the person must be able to see the phone and remove it, so a
+	// solo computer with an approved phone reads its own device list: that list
+	// holds this computer and its phones and nothing else (contract P13).
+	if syncsetup.Quiet(d.dir) && !syncsetup.PhonesApproved(d.dir) {
 		return []tui3.DeviceRow{d.ownRow()}, nil
 	}
 	client, id, self, err := d.home()
@@ -411,11 +415,13 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	if err := client.Revoke(ctx, id); err != nil {
 		return told(err)
 	}
-	if err := syncsetup.ForgetPhone(d.dir, id); err != nil {
-		return err
-	}
 	if u := d.phoneUnpairer(); u != nil {
 		_ = u.Unpair(ctx, id)
+	}
+	// Forgotten after the runner has unpaired it, so that a solo computer's runner may
+	// still send the revoke while the phone is recorded (contract P13).
+	if err := syncsetup.ForgetPhone(d.dir, id); err != nil {
+		return err
 	}
 	// A REMOVED COMPUTER STOPS BEING ABLE TO WATCH AT ONCE: its open live views
 	// here close, its permit goes, and the last-seen copies kept of its chats go,
