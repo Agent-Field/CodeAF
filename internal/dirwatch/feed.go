@@ -24,9 +24,18 @@ type State struct {
 	// socket opens, so it is empty while the socket is down. Only a socket
 	// dialled with events hears it.
 	Online []string
+	// Watching lists, sorted, the scoped clients that the open event socket
+	// reports as watching now. Like Online, it is empty while the socket is down.
+	Watching []string
 	// Joined holds the newest MaxJoined device-joined events, oldest first.
 	// A surface shows each Seq above the newest it has shown, once.
 	Joined []Joined
+	// Watched holds the newest MaxWatching scoped-client watching transitions,
+	// oldest first, each with a Seq that only rises.
+	Watched []Watching
+	// Revoked holds the newest MaxRevoked device-revoked events, oldest first,
+	// each with a Seq that only rises.
+	Revoked []Revoked
 	// Refused is the final refusal the relay ended the socket with (ErrRevoked
 	// or ErrRotated), nil otherwise. The feed does not dial again once it is
 	// set, so a surface that wants to tell the person has this one place to ask.
@@ -36,7 +45,9 @@ type State struct {
 // equal says whether two states are the same to a surface.
 func (s State) equal(o State) bool {
 	return s.Version == o.Version && s.Up == o.Up && s.Vouching == o.Vouching &&
-		slices.Equal(s.Online, o.Online) && slices.Equal(s.Joined, o.Joined) && s.Refused == o.Refused
+		slices.Equal(s.Online, o.Online) && slices.Equal(s.Watching, o.Watching) &&
+		slices.Equal(s.Joined, o.Joined) && slices.Equal(s.Watched, o.Watched) &&
+		slices.Equal(s.Revoked, o.Revoked) && s.Refused == o.Refused
 }
 
 // Follower is one surface's view of the feed.
@@ -124,7 +135,7 @@ func (f *Feed) snapshot() State {
 	// a blocked write and the first frame after this computer wakes from sleep.
 	now := f.clock.Now()
 	if st.Up && (f.heard.IsZero() || now.Before(f.heard) || now.Sub(f.heard) >= DeadAfter) {
-		st.Up, st.Vouching, st.Online = false, false, nil
+		st.Up, st.Vouching, st.Online, st.Watching = false, false, nil, nil
 	}
 	return st
 }
@@ -247,7 +258,7 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 		st.Up, st.Vouching = false, false
 		f.receipts = nil
 		f.events = f.events.forgotten()
-		st.Online = f.events.online
+		st.Online, st.Watching = f.events.online, f.events.watching
 	})
 	f.mu.Lock()
 	f.heard = time.Time{}

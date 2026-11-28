@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -19,6 +20,13 @@ import (
 // Watcher is a Client that can open the relay's watch socket.
 type Watcher interface {
 	Watch(ctx context.Context) (dirwatch.Stream, error)
+}
+
+// ServingWatcher is a Watcher whose socket also tells the relay that a phone
+// runner is alive on this computer while the socket stays open.
+type ServingWatcher interface {
+	Watcher
+	WatchServing(ctx context.Context) (dirwatch.Stream, error)
 }
 
 // HoldWatcher is a Watcher whose socket can name the leases its holder holds,
@@ -29,8 +37,9 @@ type HoldWatcher interface {
 }
 
 var (
-	_ Watcher     = (*HTTP)(nil)
-	_ HoldWatcher = (*HTTP)(nil)
+	_ Watcher        = (*HTTP)(nil)
+	_ ServingWatcher = (*HTTP)(nil)
+	_ HoldWatcher    = (*HTTP)(nil)
 )
 
 // vouchHeader is how a relay says, in the upgrade answer, that it counts a
@@ -57,18 +66,26 @@ const watchLimit = MaxHolds * (MaxHoldCellBytes*6 + 256)
 // also carries who is online and who joined. The upgrade request is signed like any other directory
 // request, with an empty body.
 func (h *HTTP) Watch(ctx context.Context) (dirwatch.Stream, error) {
-	return h.dial(ctx, nil, true)
+	return h.dial(ctx, nil, true, false)
+}
+
+// WatchServing opens the signed watch socket of a phone runner: it names no
+// holds, asks for events (EventsQuery), and declares serving=1 so the relay
+// reports this computer as serving while the socket stays alive.
+func (h *HTTP) WatchServing(ctx context.Context) (dirwatch.Stream, error) {
+	return h.dial(ctx, nil, true, true)
 }
 
 // WatchHolding opens the watch socket of a process that holds leases, naming
 // them in the query. The query is part of the signed uri, so only this device
 // can name a hold.
 func (h *HTTP) WatchHolding(ctx context.Context, holds []Hold) (dirwatch.Stream, error) {
-	return h.dial(ctx, holds, false)
+	return h.dial(ctx, holds, false, false)
 }
 
-// dial opens the socket naming holds, and asking for events when events is set.
-func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.Stream, error) {
+// dial opens the socket naming holds, asking for events when events is set,
+// and marking the device as serving when serving is set.
+func (h *HTTP) dial(ctx context.Context, holds []Hold, events, serving bool) (dirwatch.Stream, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wireauth.Endpoint(h.base, dirBase+"/watch"), nil)
 	if err != nil {
 		return nil, err
@@ -76,6 +93,9 @@ func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.St
 	req.URL.RawQuery = withBeat(watchQuery(holds, events))
 	if len(holds) != 0 {
 		req.URL.RawQuery += "&receipts=1"
+	}
+	if serving {
+		req.URL.RawQuery += "&" + clientproto.ServingParam + "=1"
 	}
 	h.sign(req, nil)
 	// The library applies the client's Timeout to the dial alone and clears it

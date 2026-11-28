@@ -80,3 +80,32 @@ func TestWhenTheSocketDropsNobodyIsKnownOnlineButJoinsStay(t *testing.T) {
 		t.Fatalf("state after the drop was %+v", got)
 	}
 }
+
+func TestWatchingAndRevokedEventsTrackClientTransitions(t *testing.T) {
+	list := make(chan *fakeStream, 4)
+	r := newRig(t, sockets(list))
+	s := <-list
+	s.send(Frame{Version: 3}, nil)
+	s.send(ev(WatchingEvent("dev_p1", true, 10)), nil)
+	s.send(ev(WatchingEvent("dev_p2", true, 20)), nil)
+	s.send(ev(WatchingEvent("dev_p1", false, 30)), nil)
+	s.send(ev(RevokedEvent("dev_p2", 40)), nil)
+	s.send(Frame{Pong: true}, nil)
+	s.send(Frame{Pong: true}, nil)
+	got := r.sub.State()
+	if len(got.Watching) != 0 {
+		t.Fatalf("watching = %v, want empty after off and revoke", got.Watching)
+	}
+	wantWatched := []Watching{
+		{Seq: 1, Device: "dev_p1", On: true, At: 10},
+		{Seq: 2, Device: "dev_p2", On: true, At: 20},
+		{Seq: 3, Device: "dev_p1", On: false, At: 30},
+	}
+	if !reflect.DeepEqual(got.Watched, wantWatched) {
+		t.Fatalf("watched = %+v, want %+v", got.Watched, wantWatched)
+	}
+	wantRevoked := []Revoked{{Seq: 1, Device: "dev_p2", At: 40}}
+	if !reflect.DeepEqual(got.Revoked, wantRevoked) {
+		t.Fatalf("revoked = %+v, want %+v", got.Revoked, wantRevoked)
+	}
+}

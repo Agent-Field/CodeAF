@@ -20,6 +20,36 @@ func Follow(key string, dial Dialer) Follower {
 	return follow(key, func() *Feed { return newFeed(dial, realClock{}, rand.Float64) })
 }
 
+// Open starts a dedicated feed for dial and returns a Follower whose Close
+// takes the socket down. A phone runner uses this for its serving=1 watch
+// socket so it never shares a non-serving socket opened by a screen.
+func Open(dial Dialer) Follower {
+	return OpenClock(dial, realClock{})
+}
+
+// OpenClock starts a dedicated feed for dial driven by clock.
+func OpenClock(dial Dialer, clock Clock) Follower {
+	if clock == nil {
+		clock = realClock{}
+	}
+	f := newFeed(dial, clock, rand.Float64)
+	s := f.follow("")
+	f.start()
+	return &dedicatedSub{sub: s}
+}
+
+type dedicatedSub struct {
+	*sub
+	once sync.Once
+}
+
+func (d *dedicatedSub) Close() {
+	d.once.Do(func() {
+		d.feed.leave(d.sub)
+		d.feed.stop()
+	})
+}
+
 // follow joins, or makes and starts, the feed for key.
 func follow(key string, build func() *Feed) Follower {
 	feedsMu.Lock()
