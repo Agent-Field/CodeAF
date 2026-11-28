@@ -41,6 +41,13 @@ const (
 	MethodTaskStart   = "tasks.start"
 )
 
+// PhoneReads is every read a phone is enrolled for: the snapshot slots a computer
+// writes for it (design 3.4), one slot per read per computer. A computer writes at
+// most MaxComputerReads of them, and the enrollment names which the owner allowed.
+func PhoneReads() []string {
+	return []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today"}
+}
+
 // PhoneMethods is every method a phone may be enrolled for, in one place so the
 // enrollment, the runner's routing and the phone's own list cannot drift apart.
 func PhoneMethods() []string {

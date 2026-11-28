@@ -126,3 +126,14 @@ func TestCallPlaintextIsStrict(t *testing.T) {
 		t.Fatal("a call with an unknown key must not open")
 	}
 }
+
+// The reads a phone is enrolled for fit in the slots one computer may write, with room for the card and the outcomes.
+func TestPhoneReadsFitTheComputersSlotBudget(t *testing.T) {
+	reads := PhoneReads()
+	if len(reads) > MaxComputerReads || len(reads)+2 > MaxComputerSlots {
+		t.Fatalf("%d reads do not fit %d read slots and %d slots in all", len(reads), MaxComputerReads, MaxComputerSlots)
+	}
+	if len(reads) > MaxEnrollNames {
+		t.Fatalf("an enrollment names at most %d reads, got %d", MaxEnrollNames, len(reads))
+	}
+}

@@ -13,6 +13,9 @@ const (
 	// read snapshots, so twelve per computer; 128 serves ten computers. The first
 	// wire allowed 64, which is five.
 	MaxClientSlots   = 128
+	MaxComputerReads = 10
+	MaxComputerSlots = 12
+	MaxOutcomes      = 32
 	MaxQueueBytes    = 4 << 10
 	MaxClientQueue   = 128
 	MaxFabricBody    = 96 << 10
@@ -41,10 +44,18 @@ const (
 // wait; the directory watch announces it for WatchingEventFor after that same
 // moment, and sends at most one change per phone every WatchingDampen.
 const (
-	WatchingHeader     = "Codeaf-Client-Watching"
-	WatchingHeaderFor  = 30 * time.Second
-	WatchingEventFor   = 45 * time.Second
-	WatchingDampen     = 2 * time.Second
+	WatchingHeader    = "Codeaf-Client-Watching"
+	WatchingHeaderFor = 30 * time.Second
+	// WatchingFloor is the longest a runner waits between slot writes while a
+	// phone is not watching, derived from the relay's 30-second watching header
+	// window (design 7.3, contract L4 and L7).
+	WatchingFloor    = WatchingHeaderFor
+	WatchingEventFor = 45 * time.Second
+	WatchingDampen   = 2 * time.Second
+	// StreamCoalesce bounds streaming chat slot writes while a phone is watching
+	// to at most four per second per slot, with a leading-edge first token
+	// (design 7.1 and 7.3, contract L1).
+	StreamCoalesce     = 250 * time.Millisecond
 	ServingParam       = "serving"
 	WatchingEventType  = "watching"
 	ClientLinkClass    = "client"
