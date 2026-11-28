@@ -334,6 +334,7 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 			d.notice("could not record which turns reached your other devices: " + err.Error())
 		}
 		d.scope.Flushed(f)
+		published()
 		parent := context.Background()
 		if d.idlePrepared.Load() {
 			// Only idle preparation adds a join that closing must cancel.
