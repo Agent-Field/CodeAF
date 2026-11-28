@@ -559,11 +559,15 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 
 func appValidateOrderAnswer(id, option string) error {
 	switch option {
-	case appwire.VerdictGo, appwire.VerdictSkip, appwire.VerdictNotRight:
+	case appwire.VerdictGo, appwire.VerdictAlways, appwire.VerdictSkip, appwire.VerdictNotRight:
 		return nil
 	}
-	return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", id)
+	return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, always, skip or not_right", id)
 }
+
+// TakesOrderAlways says this engine takes the verdict always, "Go, and stop
+// asking" ([appwire.FeatureOrdersAlways]).
+func (b *appBackend) TakesOrderAlways() {}
 
 // appOrderAnswered is the runs this app answered, with the option, so the
 // ask's closing says it was answered here.
@@ -586,6 +590,7 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		Asked:   appOrderRunAskedAt(run),
 		Options: []appwire.AskOption{
 			{ID: appwire.VerdictGo, Label: "Go"},
+			{ID: appwire.VerdictAlways, Label: "Go, and stop asking"},
 			{ID: appwire.VerdictSkip, Label: "Skip this one"},
 			{ID: appwire.VerdictNotRight, Label: "Not right"},
 		},
@@ -685,23 +690,46 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 		receipt := appwire.Entry{}
 		switch {
 		case answeredElsewhere:
-			receipt.Text = appReceipt(appwire.ClosedByElsewhere, closed.Option, &session.Answer{}, now)
+			receipt.Text = appOrderReceipt(appwire.ClosedByElsewhere, closed.Option, &session.Answer{}, now)
 		case closed.By != appwire.ClosedByApp:
 			receipt.Text = "No longer needed · " + now.Format("15:04")
 		case closed.Option == appwire.ResolvedDismissed:
 			receipt.Text = appDismissedReceipt(now)
 		default:
-			receipt.Text = appReceipt(appwire.ClosedByApp, closed.Option, nil, now)
+			receipt.Text = appOrderReceipt(appwire.ClosedByApp, closed.Option, nil, now)
 		}
 		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}
 }
 
+// appOrderReceipt is the Inbox's receipt for a run's answer: the words every
+// other answer leaves, except "Go, and stop asking", whose option is spelled
+// "always" as a permission's is and must not read as "Always allowed".
+func appOrderReceipt(by, option string, answer *session.Answer, at time.Time) string {
+	if option != appwire.VerdictAlways {
+		return appReceipt(by, option, answer, at)
+	}
+	return "Went ahead, and stopped asking · you · " + at.Local().Format("15:04")
+}
+
+// appOrderWentAhead is the answer that sent a run on: Go, or "Go, and stop
+// asking" when the order has been trusted without the go's that earn it. A run
+// is the same in the store either way, so the order says which.
+func appOrderWentAhead(store *automation.Store, run automation.Run) string {
+	if a, err := store.Get(run.AutomationID); err == nil && a.Trusted() && a.Approved < automation.TrustAfter {
+		return appwire.VerdictAlways
+	}
+	return appwire.VerdictGo
+}
+
 // appOrderAnsweredElsewhere reads a run that stopped waiting for the answer
 // the person gave it from another surface: Go queued it (so it is queued,
 // running, or over without being passed over), Skip and Not right passed it
-// over with their own line. A run passed over because its order was stopped,
-// or one gone from the store, was not answered.
+// over with their own line. A run that went ahead on an order trusted without
+// the go's that earn it was answered "Go, and stop asking" (or the person
+// trusted the order, which sends the waiting run on the same way). A run
+// passed over because its order was stopped, or one gone from the store, was
+// not answered.
 func appOrderAnsweredElsewhere(store *automation.Store, id int64) (string, bool) {
 	run, err := store.Run(id)
 	if err != nil {
@@ -709,11 +737,11 @@ func appOrderAnsweredElsewhere(store *automation.Store, id int64) (string, bool)
 	}
 	switch {
 	case run.Phase == automation.PhaseQueued || run.Phase == automation.PhaseRunning:
-		return appwire.VerdictGo, true
+		return appOrderWentAhead(store, run), true
 	case run.Phase != automation.PhaseOver:
 		return "", false
 	case run.Outcome != automation.OutcomeSkipped:
-		return appwire.VerdictGo, true
+		return appOrderWentAhead(store, run), true
 	case run.Line == automation.LineNotRight:
 		return appwire.VerdictNotRight, true
 	case run.Line == automation.LineSkipped:
