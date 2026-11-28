@@ -194,7 +194,7 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 		backend.clientCancel = runCancel
 		backend.clientDone = done
 		backend.clientRunner.Store(r)
-		activePhoneUnpairer = phoneRunnerUnpairer{r: r}
+		setActivePhoneUnpairer(phoneRunnerUnpairer{r: r})
 	}()
 
 	if *names.acceptOlderList {

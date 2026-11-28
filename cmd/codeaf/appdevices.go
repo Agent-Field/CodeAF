@@ -339,7 +339,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		if err := s.Dir.Revoke(ctx, deviceID); err != nil {
 			return appwire.DeviceRemoveResult{}, deviceError(err)
 		}
-		if u := activePhoneUnpairer; u != nil {
+		if u := activePhoneUnpairer(); u != nil {
 			_ = u.Unpair(ctx, deviceID)
 		}
 		_ = syncsetup.ForgetPhone(home.Dir(), deviceID)

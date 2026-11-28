@@ -316,7 +316,7 @@ func (b *appBackend) startOpenedClientRunnerLocked(r *clientrun.Runner) {
 	b.clientCancel = cancel
 	b.clientDone = make(chan struct{})
 	b.clientRunner.Store(r)
-	activePhoneUnpairer = phoneRunnerUnpairer{r: r}
+	setActivePhoneUnpairer(phoneRunnerUnpairer{r: r})
 	guard.Go("app/clients", func() {
 		defer close(b.clientDone)
 		stop := syncsetup.WatchPublishes(r.Changed)
@@ -535,9 +535,7 @@ func (b *appBackend) stopClients() {
 		<-done
 	}
 	if r := b.clientRunner.Swap(nil); r != nil {
-		if activePhoneUnpairer == (phoneRunnerUnpairer{r: r}) {
-			activePhoneUnpairer = nil
-		}
+		clearActivePhoneUnpairer(phoneRunnerUnpairer{r: r})
 		_ = r.Close()
 	}
 }

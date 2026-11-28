@@ -596,7 +596,7 @@ func TestS1AndS2QueuedCreateThroughBackendLeasesChatAndDeduplicates(t *testing.T
 		t.Fatal(err)
 	}
 	b.clientRunner.Store(r)
-	activePhoneUnpairer = phoneRunnerUnpairer{r: r}
+	setActivePhoneUnpairer(phoneRunnerUnpairer{r: r})
 	defer b.stopClients()
 
 	ctx := context.Background()
@@ -965,7 +965,7 @@ func TestV1RevokedPhoneCallNotRunAndInProcessRevokeUnpairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.clientRunner.Store(r)
-	activePhoneUnpairer = phoneRunnerUnpairer{r: r}
+	setActivePhoneUnpairer(phoneRunnerUnpairer{r: r})
 	defer b.stopClients()
 
 	ctx := context.Background()

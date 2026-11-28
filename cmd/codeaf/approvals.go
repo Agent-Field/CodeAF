@@ -28,9 +28,38 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
-// activePhoneUnpairer holds the in-process phone runner when one is running,
-// so removing a phone from /devices or `codeaf devices revoke` notifies it.
-var activePhoneUnpairer tui3.PhoneUnpairer
+// activePhone holds the in-process phone runner when one is running, so
+// removing a phone from /devices or `codeaf devices revoke` notifies it. The
+// runner's start and stop write it while screen goroutines read it, so it is
+// held behind a mutex: a plain package variable read there was a data race.
+var activePhone struct {
+	sync.Mutex
+	u tui3.PhoneUnpairer
+}
+
+// activePhoneUnpairer is the running phone runner, or nil when none is.
+func activePhoneUnpairer() tui3.PhoneUnpairer {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	return activePhone.u
+}
+
+// setActivePhoneUnpairer records the phone runner that has just started.
+func setActivePhoneUnpairer(u tui3.PhoneUnpairer) {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	activePhone.u = u
+}
+
+// clearActivePhoneUnpairer forgets u only while it is still the active one, so
+// a runner that stops late can never clear the runner that replaced it.
+func clearActivePhoneUnpairer(u tui3.PhoneUnpairer) {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	if activePhone.u == u {
+		activePhone.u = nil
+	}
+}
 
 // approvalsDoor is the surface's tui3.Approvals.
 type approvalsDoor struct {
@@ -408,7 +437,7 @@ func (d *approvalsDoor) phoneUnpairer() tui3.PhoneUnpairer {
 	if d.unpair != nil {
 		return d.unpair
 	}
-	return activePhoneUnpairer
+	return activePhoneUnpairer()
 }
 
 func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {

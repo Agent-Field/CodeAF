@@ -478,7 +478,7 @@ func (c chatsKind) phoneUnpairer() tui3.PhoneUnpairer {
 	if c.unpair != nil {
 		return c.unpair
 	}
-	return activePhoneUnpairer
+	return activePhoneUnpairer()
 }
 
 // openChatsKind is the kind for this machine, and false when it has none: sync
