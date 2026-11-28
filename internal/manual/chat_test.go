@@ -3581,6 +3581,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
 		{desktopHomebrewQuestion, "running-from-the-terminal"},
+		{"how do I stop an automation asking before every run", "running-from-the-terminal"},
+		{"what does Go, and stop asking do on a standing order", "running-from-the-terminal"},
+		{"trust my standing order when I agree to it so its first run does not ask", "running-from-the-terminal"},
+		{"my hourly order has a run waiting for my go, will it ask again every hour", "running-from-the-terminal"},
+		{"I trusted an order while a run was waiting for my go, what happens to that run", "running-from-the-terminal"},
 		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
 		{"codeaf cell list --all", "running-from-the-terminal"},
 		{"a chat is running on my other computer how does home show it", "home"},
