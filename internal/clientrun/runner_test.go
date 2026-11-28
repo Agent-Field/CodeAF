@@ -618,35 +618,128 @@ func TestSlotsAndCardUseAuthenticatedBoxAndKeepEmptyChatScope(t *testing.T) {
 	}
 }
 
-// TestSnapshotsOnlyContainLeasedChats verifies that snapshots partition global
-// results to only the chats leased by this computer.
-func TestSnapshotsOnlyContainLeasedChats(t *testing.T) {
+// otherDevice is a second device of the same identity with its own directory
+// client, standing for another of the person's computers.
+func (g *rig) otherDevice(t *testing.T) directory.Client {
+	t.Helper()
+	seed, err := identity.NewSeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, err := seed.Join(identity.IssueCert(g.id, seed.Public(), g.clock.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := directory.NewHTTP(g.url, reqsign.SignFor(signer{g.id, dev}, g.clock.Now), g.srv.Client())
+	if err := d.PutDevice(context.Background(), dev.ID(), directory.Device{V: 1}); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// displace has the other computer take a chat's lease from whoever holds it, by
+// the conditional take a person's choice to continue it elsewhere makes.
+func displace(t *testing.T, d directory.Client, id string) {
+	t.Helper()
+	ctx := context.Background()
+	seen, err := d.Cell(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Acquire(ctx, id, directory.AcquireOpts{
+		RequireConditional: true,
+		Force:              seen.Cell.Lease.Expires > seen.Now,
+		Expect:             &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence},
+	}); err != nil {
+		t.Fatalf("take %s from %s: %v", id, seen.Cell.Lease.Device, err)
+	}
+}
+
+// TestSnapshotsListChatsThisComputerHoldsOrLastReleased pins the contract for what
+// a computer publishes, which replaced "only the chats leased by this computer":
+// a computer's slots carry every chat in its home that it holds, or that it
+// released last with nobody holding it since, because that chat is on this
+// computer and nobody else has it. A chat whose lease names another device, held
+// or released, moved there and is not listed: the copy here is stale. A chat with
+// no cell is not listed either.
+func TestSnapshotsListChatsThisComputerHoldsOrLastReleased(t *testing.T) {
+	const (
+		releasedHere     = "01J0000000000000000000000C"
+		takenAway        = "01J0000000000000000000000D"
+		releasedElsewhre = "01J0000000000000000000000E"
+	)
 	g := newRig(t)
+	ctx := context.Background()
+	other := g.otherDevice(t)
+	init := directory.CellInit{Head: strings.Repeat("1", 64), Class: "chat"}
+	if _, err := g.dir.Create(ctx, releasedHere, init); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.dir.Release(ctx, releasedHere, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.dir.Create(ctx, takenAway, init); err != nil {
+		t.Fatal(err)
+	}
+	displace(t, other, takenAway)
+	if _, err := other.Create(ctx, releasedElsewhre, init); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Release(ctx, releasedElsewhre, 1); err != nil {
+		t.Fatal(err)
+	}
+	g.e.agents = []appwire.Agent{{ID: chat}, {ID: otherChat}, {ID: releasedHere}, {ID: takenAway}, {ID: releasedElsewhre}}
 	g.enroll(t, []string{"agents.list", "asks.list"})
-	if err := g.r.Step(context.Background()); err != nil {
+	if err := g.r.Step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	p := g.readBoxSlot(t, "agents.list", g.s.dev.ID(), 0)
-	var got []struct {
-		Agent  string
-		Result appwire.AgentsResult
+	listed := func() []string {
+		t.Helper()
+		p := g.readBoxSlot(t, "agents.list", g.s.dev.ID(), 0)
+		var got []struct {
+			Agent  string
+			Result appwire.AgentsResult
+		}
+		if err := json.Unmarshal(p.Payload, &got); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, env := range got {
+			if len(env.Result.Agents) != 1 || env.Result.Agents[0].ID != env.Agent {
+				t.Fatalf("envelope for %s carries the wrong rows: %s", env.Agent, p.Payload)
+			}
+			ids = append(ids, env.Agent)
+		}
+		slices.Sort(ids)
+		return ids
 	}
-	if err := json.Unmarshal(p.Payload, &got); err != nil {
+	want := []string{chat, releasedHere}
+	if got := listed(); !slices.Equal(got, want) {
+		t.Fatalf("slot lists %v, want the chat held here and the chat released here: %v", got, want)
+	}
+
+	// Releasing the one still held keeps it listed: stopping does not make a chat vanish.
+	if err := g.dir.Release(ctx, chat, 1); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Agent != chat || len(got[0].Result.Agents) != 1 || got[0].Result.Agents[0].ID != chat {
-		t.Fatalf("unleased chat leaked: %s", p.Payload)
-	}
-	if err := g.dir.Release(context.Background(), chat, 1); err != nil {
-		t.Fatal(err)
-	}
-	reads := g.e.reads
 	g.clock.Advance(clientproto.WatchingFloor)
-	if err := g.r.Step(context.Background()); err != nil {
+	if err := g.r.Step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if g.e.reads != reads {
-		t.Fatal("read a chat after releasing its lease")
+	if got := listed(); !slices.Equal(got, want) {
+		t.Fatalf("after this computer released %s the slot lists %v, want %v", chat, got, want)
+	}
+
+	// Another computer taking a released chat moves it: it leaves this slot.
+	if _, err := other.Acquire(ctx, releasedHere, directory.AcquireOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	g.clock.Advance(clientproto.WatchingFloor)
+	if err := g.r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := listed(); !slices.Equal(got, []string{chat}) {
+		t.Fatalf("after another computer took %s the slot lists %v, want only %s", releasedHere, got, chat)
 	}
 }
 

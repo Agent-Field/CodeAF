@@ -15,7 +15,6 @@ import (
 	"golang.org/x/crypto/nacl/box"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"time"
@@ -465,7 +464,11 @@ func (r *Runner) held(l directory.Listing) []string {
 	var ids []string
 	self := r.cfg.Signer.Cert().DeviceID()
 	for id, c := range l.Cells {
-		if !c.Archived && slices.Contains([]string{"chat", string(cell.HostBound), string(cell.Sandboxed), string(cell.FilesOnly)}, c.Class) && c.Lease.Device == self && c.Lease.Expires > l.Now {
+		// A computer lists every chat it holds and every chat it last released, so
+		// a chat does not vanish from the phone when its computer stops: the chat
+		// is on that computer, nobody else has it, and its copy is the newest. A
+		// chat whose lease names another device moved, and is not listed.
+		if c.Class != "" && standingOf(c, self, l.Now) != chatNotHere {
 			ids = append(ids, id)
 		}
 	}

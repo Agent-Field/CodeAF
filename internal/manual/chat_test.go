@@ -318,6 +318,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can my phone do", "your-phone"},
 		{"how do I add a phone", "your-phone"},
 		{"two phones have the same name how do I remove them all", "your-phone"},
+		{"my phone no longer lists a chat after I restarted my computer", "your-phone"},
+		{"a new chat with nothing typed is missing from my phone", "your-phone"},
 		{"if I add my phone will my chats be shared between my computers", "your-phone"},
 		{"does pairing a phone make my computer start syncing", "your-phone"},
 		{"what is cluster lead", "coordination-and-workers"},

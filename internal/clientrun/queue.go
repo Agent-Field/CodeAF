@@ -333,6 +333,24 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued, listing *direc
 		}
 	}
 
+	// A CHAT THIS COMPUTER RELEASED IS TAKEN BEFORE IT IS ACTED ON, and only if
+	// nobody took it first (internal/clientrun contract: a computer never acts on a
+	// chat another computer holds). Losing the take is the same refusal as a chat
+	// that moved.
+	if call.Method != clientproto.MethodCreate {
+		if err := r.takeReleased(ctx, freshListing, agent); err != nil {
+			if !errors.Is(err, errNotTaken) {
+				return err
+			}
+			now, listErr := r.cfg.Directory.List(ctx)
+			if listErr != nil {
+				return listErr
+			}
+			*listing = now
+			return r.refuseCall(ctx, c, e, now, agent, clientproto.OutcomeRefused, clientproto.ReasonNotHolder)
+		}
+	}
+
 	receipt, outcome, err := r.dispatch(ctx, c, e, call, agent, createClientID, receipt, listing)
 	if err != nil {
 		return err
@@ -691,6 +709,55 @@ func validateCallParams(call clientproto.CallPlain) (agent string, createClientI
 	}
 }
 
+// chatStanding is how a chat's lease stands toward this computer.
+type chatStanding int
+
+const (
+	// chatNotHere is a chat this computer does not publish or act on: it has no
+	// cell, it is archived or not a chat, or its lease names another device,
+	// whether that device holds it now or released it last. It moved, and any copy
+	// in this home is stale.
+	chatNotHere chatStanding = iota
+	// chatHeld is a chat this computer holds the lease of now.
+	chatHeld
+	// chatReleasedHere is a chat in this computer's home that nobody holds now and
+	// whose last holder was this computer: it released it when it stopped, or its
+	// lease lapsed. It is still this computer's chat, and the newest copy of it.
+	chatReleasedHere
+)
+
+// standingOf reads how the chat's cell stands toward device self at directory
+// time now. A lease that names self is held while it runs and released-here
+// once it does not; a lease that names anyone else is not this computer's.
+func standingOf(c directory.Cell, self string, now int64) chatStanding {
+	if c.Archived || self == "" || c.Lease.Device != self {
+		return chatNotHere
+	}
+	if c.Class != "" && !slices.Contains([]string{"chat", string(cell.HostBound), string(cell.Sandboxed), string(cell.FilesOnly)}, c.Class) {
+		return chatNotHere
+	}
+	if c.Lease.Expires > now {
+		return chatHeld
+	}
+	return chatReleasedHere
+}
+
+// leaseStanding is standingOf for agent in a directory listing, with the lease
+// that was read so a take can name it.
+func (r *Runner) leaseStanding(l directory.Listing, agent string) (chatStanding, directory.Lease) {
+	if agent == "" || r.cfg.Signer == nil {
+		return chatNotHere, directory.Lease{}
+	}
+	c, ok := l.Cells[agent]
+	if !ok {
+		return chatNotHere, directory.Lease{}
+	}
+	return standingOf(c, r.cfg.Signer.Cert().DeviceID(), l.Now), c.Lease
+}
+
+// holdsChat says whether a call may be aimed at this chat: this computer holds
+// it, or it is this computer's own chat released since (see chatReleasedHere).
+// A call aimed at a released chat takes the lease first ([Runner.takeReleased]).
 func (r *Runner) holdsChat(l directory.Listing, agent string) bool {
 	if agent == "" {
 		return false
@@ -698,18 +765,41 @@ func (r *Runner) holdsChat(l directory.Listing, agent string) bool {
 	if local, ok := r.localChats(); ok {
 		return slices.Contains(local, agent)
 	}
-	if r.cfg.Signer == nil {
-		return false
+	standing, _ := r.leaseStanding(l, agent)
+	return standing != chatNotHere
+}
+
+// errNotTaken says the conditional take of a released chat lost: another
+// computer took the chat between the listing and the take, or the relay cannot
+// make the take safely. The chat is that computer's now, so the call is refused
+// as it would be for any chat this computer does not hold.
+var errNotTaken = errors.New("clientrun: the released chat was taken by another computer")
+
+// takeReleased makes a chat this computer released its own again before any call
+// acts on it. The take names the lease that was read and succeeds only if that
+// lease is still there, so a computer never acts on a chat another computer now
+// holds. It does nothing for a chat this computer already holds, and for a
+// solo computer, which has no leases.
+func (r *Runner) takeReleased(ctx context.Context, l directory.Listing, agent string) error {
+	if _, local := r.localChats(); local {
+		return nil
 	}
-	self := r.cfg.Signer.Cert().DeviceID()
-	c, ok := l.Cells[agent]
-	if !ok || c.Archived {
-		return false
+	standing, lease := r.leaseStanding(l, agent)
+	if standing != chatReleasedHere {
+		return nil
 	}
-	if c.Class != "" && !slices.Contains([]string{"chat", string(cell.HostBound), string(cell.Sandboxed), string(cell.FilesOnly)}, c.Class) {
-		return false
+	_, err := r.cfg.Directory.Acquire(ctx, agent, directory.AcquireOpts{
+		RequireConditional: true,
+		Expect:             &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence},
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, directory.ErrLeaseHeld), errors.Is(err, directory.ErrFenceStale),
+		errors.Is(err, directory.ErrNotFound), errors.Is(err, directory.ErrConditionalTake):
+		return errNotTaken
 	}
-	return c.Lease.Device == self && c.Lease.Expires > l.Now
+	return err
 }
 
 func (r *Runner) clientActiveLocked(clientID string) bool {

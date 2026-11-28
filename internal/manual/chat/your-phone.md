@@ -27,7 +27,17 @@ Tap `+` in the phone app, pick which of your computers should run the chat, writ
 - **The computer is off or asleep:** the request waits for up to one hour. If the computer comes back inside that hour the chat starts, once. After the hour the phone says the request expired and nothing starts.
 - **The computer cannot do it:** the phone shows that the computer could not start the chat. Check that computer, then try again from the phone.
 
-Other requests from the phone (a message to a chat, an answer, stopping a chat) wait up to a day, and only the computer that holds that chat runs them. A chat that has moved to another computer is refused, not run twice.
+Other requests from the phone (a message to a chat, an answer, stopping a chat) wait up to a day, and only the computer that has that chat runs them. A chat that has moved to another computer is refused, not run twice.
+
+## Which chats does my phone show for a computer, and why is one missing?
+
+For each computer the phone shows the chats on that computer that no other computer has open: the ones it is running now, and the ones it was running when it was stopped. Closing codeaf on a computer, or restarting `codeaf phone serve`, does not make its chats disappear from the phone; they stay listed under that computer until another computer takes one.
+
+A chat you continue on another computer moves there. It is listed under the computer that has it now and no longer under the first one, because the copy left behind is out of date.
+
+A new chat with nothing typed in it does not stay in the list. The list never shows a chat nobody has said anything in, so the chat appears once its first message is sent.
+
+If you send a message, an answer or a stop to a chat that its computer had stopped, that computer takes the chat back first and then does what you asked. If another computer took the chat in the meantime, the computer that was asked refuses, and nothing runs twice.
 
 ## What can my phone do?
 

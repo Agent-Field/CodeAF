@@ -2886,8 +2886,11 @@ func TestD6RevokeWhileDispatchInFlightDoesNotRecreateClientState(t *testing.T) {
 }
 
 // TestD6MidRoundLeaseDisplacedRevokedAndPausedBetweenListAndClaim verifies D6:
-//  1. When the chat lease is displaced between the initial directory list and
-//     the claim round trip, the call is refused / not_holder and never run.
+//  1. When ANOTHER computer takes the chat's lease between the initial directory
+//     list and the claim round trip, the call is refused / not_holder and never
+//     run. (This computer releasing it is not displacement any more: a released
+//     chat is this computer's own and is taken back first, which
+//     TestASendToAChatThisComputerReleasedTakesItFirstAndRuns pins.)
 //  2. When the phone is revoked between the initial directory list and the
 //     claim round trip, the call is never run, never acknowledged as done, and
 //     produces no outcome.
@@ -2903,12 +2906,11 @@ func TestD6MidRoundLeaseDisplacedRevokedAndPausedBetweenListAndClaim(t *testing.
 		}
 
 		displaced := false
+		other := g.otherDevice(t)
 		g.reopen(t, transport(func(req *http.Request) (*http.Response, error) {
 			if !displaced && req.Method == "POST" && strings.HasSuffix(req.URL.Path, "/claim") {
 				displaced = true
-				if err := g.dir.Release(context.Background(), chat, 1); err != nil {
-					t.Errorf("Release lease during claim: %v", err)
-				}
+				displace(t, other, chat)
 			}
 			return http.DefaultTransport.RoundTrip(req)
 		}), noopLog)
@@ -3497,5 +3499,129 @@ func TestP13RecoverStartedAfterCrashInSoloModeSkipsLeaseCreated(t *testing.T) {
 	}
 	if !slices.Equal(outcomes, wantOutcomes) {
 		t.Fatalf("outcomes after solo recoverStarted = %+v, want %+v", outcomes, wantOutcomes)
+	}
+}
+
+// acquireHook runs before this computer's take of a chat's lease reaches the
+// directory, so a test can have another computer win the race.
+type acquireHook struct {
+	directory.Client
+	before func(id string)
+}
+
+func (h acquireHook) Acquire(ctx context.Context, id string, o directory.AcquireOpts) (directory.CellView, error) {
+	if h.before != nil {
+		h.before(id)
+	}
+	return h.Client.Acquire(ctx, id, o)
+}
+
+// TestASendToAChatThisComputerReleasedTakesItFirstAndRuns pins what a phone's
+// call to a chat in this computer's home that nobody holds does: the chat was
+// released by this computer, so it is listed, and a message to it takes the
+// lease with the conditional take and then runs. The lease is held by this
+// computer afterwards, and the take went through the expected holder and fence.
+func TestASendToAChatThisComputerReleasedTakesItFirstAndRuns(t *testing.T) {
+	g := newRig(t)
+	g.enroll(t, []string{"agents.list"}, clientproto.MethodSend)
+	ctx := context.Background()
+	if err := g.dir.Release(ctx, chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se := g.useScriptedEngine(t)
+	if err := g.r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := g.dir.Cell(ctx, chat); err != nil || v.Cell.Lease.Expires != 0 || v.Cell.Lease.Device != g.s.dev.ID() {
+		t.Fatalf("setup: the chat's lease is %+v (%v), want released with this computer as the last holder", v.Cell.Lease, err)
+	}
+
+	var takes []directory.AcquireOpts
+	g.r.cfg.Directory = acquireRecorder{Client: g.dir, got: &takes}
+	g.queueCall(t, 1, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": chat, "text": "hello after a restart", "client_id": "c-released",
+	}, false, 0)
+	if err := g.r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(se.sends) != 1 || se.sends[0].Text != "hello after a restart" {
+		t.Fatalf("sends = %+v, want the one message to run", se.sends)
+	}
+	v, err := g.dir.Cell(ctx, chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Cell.Lease.Device != g.s.dev.ID() || v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Fence != 2 {
+		t.Fatalf("the lease after the send is %+v (now %d), want held by this computer with the fence up by one", v.Cell.Lease, v.Now)
+	}
+	if len(takes) != 1 || takes[0].Expect == nil || takes[0].Expect.Device != g.s.dev.ID() || takes[0].Expect.Fence != 1 || !takes[0].RequireConditional {
+		t.Fatalf("takes = %+v, want one conditional take naming this computer and fence 1", takes)
+	}
+	want := []clientproto.Outcome{{Number: 1, Status: clientproto.OutcomeDone, Agent: chat}}
+	if got := g.readOutcomesSlot(t, g.s.dev.ID()); !slices.Equal(got, want) {
+		t.Fatalf("outcomes = %+v, want %+v", got, want)
+	}
+}
+
+// acquireRecorder records every take this computer makes.
+type acquireRecorder struct {
+	directory.Client
+	got *[]directory.AcquireOpts
+}
+
+func (h acquireRecorder) Acquire(ctx context.Context, id string, o directory.AcquireOpts) (directory.CellView, error) {
+	*h.got = append(*h.got, o)
+	return h.Client.Acquire(ctx, id, o)
+}
+
+// TestASendToAChatAnotherComputerTookInBetweenIsRefusedNotHolder pins the race the
+// conditional take exists for: the chat was released by this computer when the
+// call was read, and another computer took it before this computer's take
+// arrived. The take loses, the message runs nowhere, and the phone is told
+// not_holder, exactly as for a chat that had moved before the call was read.
+func TestASendToAChatAnotherComputerTookInBetweenIsRefusedNotHolder(t *testing.T) {
+	g := newRig(t)
+	g.enroll(t, []string{"agents.list"}, clientproto.MethodSend)
+	ctx := context.Background()
+	other := g.otherDevice(t)
+	if err := g.dir.Release(ctx, chat, 1); err != nil {
+		t.Fatal(err)
+	}
+	se := g.useScriptedEngine(t)
+	if err := g.r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	raced := false
+	g.r.cfg.Directory = acquireHook{Client: g.dir, before: func(id string) {
+		if raced {
+			return
+		}
+		raced = true
+		if _, err := other.Acquire(ctx, id, directory.AcquireOpts{}); err != nil {
+			t.Errorf("the other computer's take: %v", err)
+		}
+	}}
+	g.queueCall(t, 1, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": chat, "text": "must not run", "client_id": "c-raced",
+	}, false, 0)
+	if err := g.r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !raced {
+		t.Fatal("this computer never tried to take the released chat")
+	}
+	if len(se.sends) != 0 {
+		t.Fatalf("a message ran on a chat another computer took: %+v", se.sends)
+	}
+	if v, err := g.dir.Cell(ctx, chat); err != nil || v.Cell.Lease.Device == g.s.dev.ID() {
+		t.Fatalf("the lease after the lost race is %+v (%v), want the other computer's", v.Cell.Lease, err)
+	}
+	if g.queueLen(t, g.client.dev.ID()) != 0 {
+		t.Fatal("the refused call was not acknowledged")
+	}
+	want := []clientproto.Outcome{{Number: 1, Status: clientproto.OutcomeRefused, Reason: clientproto.ReasonNotHolder}}
+	if got := g.readOutcomesSlot(t, g.s.dev.ID()); !slices.Equal(got, want) {
+		t.Fatalf("outcomes = %+v, want %+v", got, want)
 	}
 }
