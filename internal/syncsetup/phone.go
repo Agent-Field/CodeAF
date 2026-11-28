@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
@@ -90,14 +91,21 @@ func writePhonesLocked(home string, ids []string) error {
 		_ = tmp.Close()
 		return err
 	}
+	// THE LIST SURVIVES A CRASH. Approving or removing a phone is a promise to
+	// the person, so the bytes reach the disk before the rename and the rename
+	// reaches the disk before this returns.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := fsreplace.Rename(tmpName, path); err != nil {
 		return err
 	}
 	cleanup = false
-	return nil
+	return fsreplace.SyncDir(dir)
 }
 
 // NotePhoneApproved records that device is an approved, unrevoked phone for
