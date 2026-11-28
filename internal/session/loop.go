@@ -3659,20 +3659,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	}
 	for index, call := range calls {
 		rendered[index] = argsText(call)
-		service, serviceName := a.serviceOf(call.Function.Name), ""
-		if service != "" {
-			serviceName = a.serviceName(service)
-		}
-		hub.send(a.clientToolEvent(Event{
-			Kind:        EventToolBegin,
-			Tool:        call.Function.Name,
-			Hint:        a.gloss(call),
-			Args:        rendered[index],
-			CallID:      call.ID,
-			Batch:       batch,
-			Service:     service,
-			ServiceName: serviceName,
-		}))
+		hub.send(a.toolBeginEvent(call, rendered[index], batch))
 	}
 
 	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
@@ -3779,49 +3766,73 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// tool more than once, because neither its name nor completion order identifies
 	// the row.
 	for index, call := range calls {
-		if results[index].isError {
-			a.sendBeltStep(ctx, hub, Event{
-				Kind:   EventToolFailed,
-				Err:    results[index].err,
-				Tool:   call.Function.Name,
-				Hint:   clip(firstLine(results[index].text), hintLimit),
-				Args:   rendered[index],
-				Output: capOutput(results[index].text),
-				CallID: call.ID,
-				Exit:   resultExit(results[index].text),
-				// WHOSE FAILURE THIS WAS travels with it. Everything counting
-				// steps out of band — the runner's no-progress ledger above all —
-				// reads events and not results, so a fact kept only on the result
-				// is a fact no counter can act on (withdrawn.go).
-				HarnessMade: results[index].harness,
-				// AN ATTEMPTED ACTION A DOOR REFUSED is the one harness-made
-				// answer with a veto's author on it ([episode.preAction]); a
-				// correction about the reply's form has none.
-				Refused: results[index].harness && results[index].refusedBy != "",
-				// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
-				// typed fact from the handler's own validation return.
-				RejectedBeforeRun: results[index].rejected,
-				ToolInvoked:       results[index].invoked,
-				MediaAttempt:      results[index].attempt,
-			})
-			continue
-		}
-		// A successful tool's hint is empty: the result belongs to the model,
-		// and the person already read what the call was going to do. Output is
-		// there for a person who asks to see it anyway.
-		a.sendBeltStep(ctx, hub, Event{
-			Kind:         EventToolEnd,
-			ToolInvoked:  results[index].invoked,
-			MediaAttempt: results[index].attempt,
-			ToolProcess:  results[index].process,
-			Tool:         call.Function.Name,
-			Args:         rendered[index],
-			Output:       capOutput(results[index].text),
-			CallID:       call.ID,
-			Exit:         resultExit(results[index].text),
-		})
+		a.sendBeltStep(ctx, hub, toolEndEvent(call, rendered[index], results[index]))
 	}
 	return results
+}
+
+// toolBeginEvent is one call's begin, the same for a call the model made and
+// one a script made (tool_script.go), so the two rows carry the same facts.
+func (a *Agent) toolBeginEvent(call ai.ToolCall, rendered, batch string) Event {
+	service, serviceName := a.serviceOf(call.Function.Name), ""
+	if service != "" {
+		serviceName = a.serviceName(service)
+	}
+	return a.clientToolEvent(Event{
+		Kind:        EventToolBegin,
+		Tool:        call.Function.Name,
+		Hint:        a.gloss(call),
+		Args:        rendered,
+		CallID:      call.ID,
+		Batch:       batch,
+		Service:     service,
+		ServiceName: serviceName,
+	})
+}
+
+// toolEndEvent is one call's end, built from its result — one builder for the
+// batch and for a script's calls, so a field added here reaches both.
+func toolEndEvent(call ai.ToolCall, rendered string, result toolResult) Event {
+	if result.isError {
+		return Event{
+			Kind:   EventToolFailed,
+			Err:    result.err,
+			Tool:   call.Function.Name,
+			Hint:   clip(firstLine(result.text), hintLimit),
+			Args:   rendered,
+			Output: capOutput(result.text),
+			CallID: call.ID,
+			Exit:   resultExit(result.text),
+			// WHOSE FAILURE THIS WAS travels with it. Everything counting
+			// steps out of band — the runner's no-progress ledger above all —
+			// reads events and not results, so a fact kept only on the result
+			// is a fact no counter can act on (withdrawn.go).
+			HarnessMade: result.harness,
+			// AN ATTEMPTED ACTION A DOOR REFUSED is the one harness-made
+			// answer with a veto's author on it ([episode.preAction]); a
+			// correction about the reply's form has none.
+			Refused: result.harness && result.refusedBy != "",
+			// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
+			// typed fact from the handler's own validation return.
+			RejectedBeforeRun: result.rejected,
+			ToolInvoked:       result.invoked,
+			MediaAttempt:      result.attempt,
+		}
+	}
+	// A successful tool's hint is empty: the result belongs to the model,
+	// and the person already read what the call was going to do. Output is
+	// there for a person who asks to see it anyway.
+	return Event{
+		Kind:         EventToolEnd,
+		ToolInvoked:  result.invoked,
+		MediaAttempt: result.attempt,
+		ToolProcess:  result.process,
+		Tool:         call.Function.Name,
+		Args:         rendered,
+		Output:       capOutput(result.text),
+		CallID:       call.ID,
+		Exit:         resultExit(result.text),
+	}
 }
 
 // resultExitRe is the status line a shell call's result ends with when its
@@ -3881,6 +3892,17 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.toolsInFlight.Add(1)
 	defer a.toolsInFlight.Add(-1)
 	a.wakeBudgetForWork()
+	// THE TURN RIDES ON THE CONTEXT FROM HERE, whichever road called: a tool
+	// that makes calls of its own (tool_script.go) reaches the gate through
+	// these two. A saved program's tool() passes them only as parameters
+	// (subharness_env.go), and a script it called once ran its nested calls
+	// with no approval rules at all.
+	if episodeFrom(ctx) != ep {
+		ctx = withEpisode(ctx, ep)
+	}
+	if eventHubFrom(ctx) != hub {
+		ctx = withEventHub(ctx, hub)
+	}
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
@@ -3943,22 +3965,22 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	if err := a.jobBudgetBlock(); err != nil {
-		return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
+		return a.finishToolResult(ctx, ep, call, toolResult{text: err.Error(), isError: true, harness: true})
 	}
 	// A reading cannot ask, including through consent or an off-belt call.
 	// Refuse before pre-action can open a question or capture a file.
 	if refusal := a.readingToolRefusal(call.Function.Name); refusal != "" {
-		return a.finishToolResult(ep, call, toolResult{text: refusal, isError: true, harness: true})
+		return a.finishToolResult(ctx, ep, call, toolResult{text: refusal, isError: true, harness: true})
 	}
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
-			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
+			return a.finishToolResult(ctx, ep, call, toolResult{text: invalid, isError: true, rejected: true})
 		}
 		if err := a.waitWorkspaceReady(ctx, call.Function.Name); err != nil {
-			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
+			return a.finishToolResult(ctx, ep, call, toolResult{text: err.Error(), isError: true, harness: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
@@ -3977,8 +3999,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		args := json.RawMessage(running.Function.Arguments)
 		// A read for bytes this conversation already has is answered from above,
 		// not from the disk (heldreads.go) — the gate above already judged it.
-		if pointer, held := a.heldClaim(call.Function.Name, args); held {
-			return a.finishToolResult(ep, call, toolResult{text: pointer})
+		// A script's read is answered from the disk: it cannot see the
+		// transcript a pointer points at (tool_script.go's withScriptParent).
+		nested := inScript(ctx)
+		if pointer, held := a.heldClaim(call.Function.Name, args); held && !nested {
+			return a.finishToolResult(ctx, ep, call, toolResult{text: pointer})
 		}
 		started := time.Now()
 		// THE CALL'S OWN ID TRAVELS WITH IT. It is what lets a tool still
@@ -3989,7 +4014,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// start carries it exactly as the batch does.
 		callCtx := withCallID(ctx, call.ID)
 		if hub != nil && (a.config.LiveToolOutput || a.liveOutputWanted.Load() > 0) {
-			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
+			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, parent: scriptParentFrom(ctx), tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
 		}
 		// THE CALL-LOCAL MARK a handler's argument refusal sets (toolrejection.go):
 		// planted here so it lives and dies with this one call.
@@ -4030,13 +4055,14 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 				Tool:   call.Function.Name,
 				Args:   rendered,
 				CallID: call.ID,
+				Parent: scriptParentFrom(ctx),
 				Took:   took,
 			})
 		}
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, the same shape a thrown error takes on the wire.
-			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load(), attempt: attempt.Load()})
+			return a.finishToolResult(ctx, ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load(), attempt: attempt.Load()})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -4054,10 +4080,13 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if process != nil && !isError && ctx.Err() == nil {
 			became = process.Load()
 		}
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became, interruption: interruption})
+		result := a.finishToolResult(ctx, ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became, interruption: interruption})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
-		a.heldNote(call.Function.Name, args, result.text, isError)
+		// A script's read never reaches the transcript, so it holds nothing.
+		if !nested {
+			a.heldNote(call.Function.Name, args, result.text, isError)
+		}
 		return result
 	}
 	// ── TAKEN, OR NEVER HELD ──
@@ -4119,8 +4148,14 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 // a test — cannot return a credential without passing this line. A worker that
 // ran `gh auth token` put a live OAuth token in two task journals in plain text
 // before it existed.
-func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+func (a *Agent) finishToolResult(ctx context.Context, ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
+	// A SCRIPT'S CALL IS REDACTED AND NOTHING MORE. The fix-recall line and the
+	// job footer are written for the model; in a script's data they corrupt
+	// what it parses, and the footer would be spent before the model read it.
+	if inScript(ctx) {
+		return result
+	}
 	body := result.text
 	rejected, invoked, attempt := result.rejected, result.invoked, result.attempt
 	result = a.withJobState(ep, ep.noteToolOutcome(call, result))

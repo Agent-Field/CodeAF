@@ -17,7 +17,6 @@ package tui3
 // it rather than a zero.
 
 import (
-	"encoding/json"
 	"hash/fnv"
 	"sort"
 	"strings"
@@ -113,8 +112,7 @@ func planRailNode(row session.PlanTaskRow) *taskNode {
 	node.title = taskTitleOf(node.label, "", node.id)
 	if row.Live.Step > 0 {
 		if command := strings.TrimSpace(planDisplayCommand(row.Live.Command, row.LiveParts)); command != "" {
-			args, _ := json.Marshal(map[string]string{"command": command})
-			node.tool, node.toolBegan = taskCallWord("bash", string(args), ""), row.Live.Since
+			node.tool, node.toolBegan = taskCallWord("bash", bashArgs(command), ""), row.Live.Since
 		}
 	}
 	return node

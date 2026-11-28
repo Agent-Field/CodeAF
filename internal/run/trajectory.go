@@ -83,6 +83,11 @@ type Step struct {
 	// off the store after the command rather than parsed out of its output.
 	Children []string `json:"children,omitempty"`
 
+	// Calls are the tool calls a script step made, in the order they ended
+	// (internal/session's tool_script.go). They are not steps: they spend
+	// nothing of the step cap, and a page hangs them under the script's row.
+	Calls []StepCall `json:"calls,omitempty"`
+
 	// NotRun is established by the engine when the ended tool event is an
 	// answer the harness wrote rather than a call the belt ran. The requested
 	// command and the answer remain in the record; a surface reads this fact and
@@ -287,4 +292,18 @@ var taskTrajectoryOrdering atomic.Bool
 func RecordTaskTrajectoryOrder() func() {
 	previous := taskTrajectoryOrdering.Swap(true)
 	return func() { taskTrajectoryOrdering.Store(previous) }
+}
+
+// StepCall is one call a script made, recorded on the script's step.
+type StepCall struct {
+	Tool        string `json:"tool"`
+	Command     string `json:"command"`
+	Observation string `json:"observation,omitempty"`
+	// ExitCode is a bash call's exit status, recorded as a step's is; nil for
+	// every other tool and for a call nothing ran.
+	ExitCode *int `json:"exit_code,omitempty"`
+	// Failed says the call ended in an error; NotRun that the harness answered
+	// it and nothing ran.
+	Failed bool `json:"failed,omitempty"`
+	NotRun bool `json:"not_run,omitempty"`
 }

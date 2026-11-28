@@ -74,6 +74,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	}
 	config.InTask = true
 	config.bashBelt = true
+	config.script = scriptAsked()
 	// AND IT ACTS AS ITS OWN WORKER, never as the conversation: the run named
 	// it ([Config.WorkerDID]), and its commands carry that name.
 	if config.WorkerDID != "" {

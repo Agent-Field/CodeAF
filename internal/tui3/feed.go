@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -678,6 +679,42 @@ func (f *feed) announceTool(ev session.Event) {
 	f.touch()
 }
 
+// nestedAt is where a call a script made goes: straight after its script's
+// row and the calls already drawn under it, so a batch's other rows never sit
+// between a script and its calls, and the live view draws what a reopened
+// conversation draws (session's shapeInto). A call with no parent, or whose
+// script has no row here, goes at the end.
+func (f *feed) nestedAt(parent string) int {
+	if parent == "" {
+		return len(f.entries)
+	}
+	for at := len(f.entries) - 1; at >= 0; at-- {
+		if f.entries[at].kind != entryTool || f.entries[at].callID != parent {
+			continue
+		}
+		at++
+		for at < len(f.entries) && f.entries[at].kind == entryTool && f.entries[at].nested {
+			at++
+		}
+		return at
+	}
+	return len(f.entries)
+}
+
+// insertEntry puts one entry at a position, moving the live and thinking
+// pointers that sit at or after it so they still name their own entries.
+func (f *feed) insertEntry(at int, e entry) {
+	f.entries = slices.Insert(f.entries, at, e)
+	if at < len(f.entries)-1 {
+		if f.live >= at {
+			f.live++
+		}
+		if f.think >= at {
+			f.think++
+		}
+	}
+}
+
 // beginTool is EXECUTION STARTED. It adopts the row the announcement drew —
 // the same call, one line, which is the whole point of announcing it — and
 // starts that row's clock. A begin nobody announced draws its own row, which is
@@ -710,10 +747,13 @@ func (f *feed) beginTool(ev session.Event) {
 		return
 	}
 	f.closeLive()
-	f.entries = append(f.entries, entry{
+	f.insertEntry(f.nestedAt(ev.Parent), entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
 		open:   session.IsUserBashCall(ev.CallID),
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
+		// A SCRIPT'S CALL IS NEVER ANNOUNCED, so this is the one door its row
+		// comes through, and it hangs under the script (toolview.go).
+		nested: ev.FromScript(),
 		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
 		// row records it and this one did not, which left the rows drawn for a
 		// provider that does not stream its calls — and for a surface that
@@ -871,7 +911,7 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 		}
 		f.entries = append(f.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: why, turn: f.turn, status: toolFailed,
-			open:   !refused,
+			open: !refused, nested: ev.FromScript(),
 			detail: toolDetail{Args: ev.Args, Output: sentence},
 		})
 		f.follow()

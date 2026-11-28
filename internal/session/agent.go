@@ -59,6 +59,10 @@ func New(config Config) (*Agent, error) {
 	// which service this conversation was using.
 	launchModel := config.Model
 	config.Model, _ = roles.SplitEffort(config.Model)
+	// THE CHAT'S SCRIPT SWITCH IS READ HERE AND NOWHERE ELSE, so only a
+	// session built through this door can carry it: a child built inside a
+	// session goes through [Agent.newChildAgent] and never reads it.
+	config.chatScript = chatScriptAsked()
 	// AND THE REQUEST ROAD IS THE CALLER'S WHEN IT SAID ONE. A caller that has
 	// already resolved its provider — the bash-belt worker seat, handed this
 	// conversation's account-aware completer — hands it in rather than have one
@@ -5362,7 +5366,9 @@ func (h *eventHub) send(event Event) (landed bool) {
 		return false
 	}
 	event.ReplayCursor = h.replayCursor
-	if event.Kind == EventToolEnd || event.Kind == EventToolFailed {
+	// A SCRIPT'S OWN CALL IS NOT ONE OF THE TURN'S CALLS: the step frame reads
+	// this count, and the step is the script (tool_script.go).
+	if (event.Kind == EventToolEnd || event.Kind == EventToolFailed) && !event.FromScript() {
 		h.finishedCalls++
 	}
 	// The backlog is written BEFORE the fan-out and under the same lock, so what
@@ -6132,6 +6138,22 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 				ToolProcess: result.process,
 				At:          journal.written(msg),
 			})
+			// AND THE CALLS A SCRIPT MADE FOLLOW IT, as the live window drew
+			// them: the journal's nested lines are the only record of them.
+			for _, nested := range journal.nested(call.ID) {
+				entries = append(entries, DisplayEntry{
+					Role:       "tool",
+					RunID:      run,
+					Tool:       nested.Tool,
+					CallID:     nested.CallID,
+					Args:       nested.Args,
+					Output:     nested.Output,
+					Answered:   true,
+					ToolResult: ToolResultNested,
+					Took:       journal.took(nested.CallID),
+					At:         journal.written(msg),
+				})
+			}
 		}
 	}
 	return entries

@@ -130,6 +130,15 @@ func (l *taskLive) record(event Event) {
 	// disagree about when it happened.
 	at := time.Now()
 	l.recordStep(event, at)
+	// A SCRIPT'S OWN CALL IS NARRATED AND NOT COUNTED. The step count is the
+	// node's threshold unit and the script is the step, and the call in flight
+	// stays the script until the script ends (tool_script.go).
+	if event.FromScript() {
+		if event.Kind == EventToolBegin {
+			l.push("    " + taskLiveCall(event))
+		}
+		return
+	}
 	switch event.Kind {
 	case EventTextDelta:
 		l.write(event.Text)

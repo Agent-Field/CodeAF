@@ -100,6 +100,10 @@ type AppTaskStep struct {
 	// Call is the provider's id for the call, and "" where the record never had
 	// one. A live end pairs on it.
 	Call string
+	// Parent is the call id of the script that made this call, and "" for a
+	// call the model made itself ([Event.Parent]). A surface hangs a step with
+	// a parent under that script rather than drawing it as a step of its own.
+	Parent string
 	// Tool is the engine's REGISTERED tool name ("bash", "read", "edit"), and ""
 	// where the record does not name one. A surface reads the kind off this
 	// through the engine's own family and never off the words of a gloss.
@@ -247,6 +251,7 @@ func (l *taskLive) openStep(event Event, at time.Time) {
 	step := AppTaskStep{
 		ID:          appLiveStepID(event, len(l.calls)),
 		Call:        event.CallID,
+		Parent:      event.Parent,
 		Tool:        strings.TrimSpace(event.Tool),
 		Category:    toolEventCategory(event),
 		Target:      appStepText(event.Hint),

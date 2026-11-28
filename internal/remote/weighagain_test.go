@@ -27,8 +27,18 @@ func TestTheWeightIsStatedAgainWhenTheNextRequestSpeaks(t *testing.T) {
 		{session.EventTurnDone, false},
 		{session.EventTextDelta, false},
 	} {
-		if got := sess.weighsAgainLocked(step.kind); got != step.want {
+		if got := sess.weighsAgainLocked(session.Event{Kind: step.kind}); got != step.want {
 			t.Fatalf("step %d (%v): weighs again = %v, want %v", i, step.kind, got, step.want)
 		}
+	}
+}
+
+// A SCRIPT'S OWN CALLS END INSIDE ONE STEP. Their results never join the
+// conversation, so their end owes no new weighing; only the script's does.
+func TestAScriptsNestedEndOwesNoWeighing(t *testing.T) {
+	sess := &Session{}
+	sess.weighsAgainLocked(session.Event{Kind: session.EventToolEnd, Parent: "s"})
+	if sess.weighsAgainLocked(session.Event{Kind: session.EventReasoning}) {
+		t.Fatal("a script's nested call end owed the next request a weighing")
 	}
 }

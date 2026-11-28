@@ -1459,6 +1459,16 @@ var OperatorEnvPins = []string{
 	// whoever set it had forgotten, and an escape hatch must be as easy to
 	// stop using as it was to start. It disappears when the older belt does.
 	"CODEAF_TASK_BELT",
+	// CODEAF_TASK_SCRIPT arms the script tool on a bash-belt worker
+	// (internal/session's tool_script.go) while it is measured against the
+	// belt without it. It is plumbing for CODEAF_TASK_BELT's reason: an
+	// experiment's switch must be as easy to stop using as it was to start,
+	// and a saved row would keep a machine on one arm long after whoever set it
+	// forgot. It flips or disappears once the measurement decides.
+	"CODEAF_TASK_SCRIPT",
+	// CODEAF_CHAT_SCRIPT arms the same tool on a conversation's own belt, as a
+	// separate arm of the same measurement, on CODEAF_TASK_SCRIPT's terms.
+	"CODEAF_CHAT_SCRIPT",
 	// CODEAF_PLANDB_BIN names the binary a bash-belt worker's `plandb` shim
 	// execs (internal/session's plandb_plan.go) when the running program is
 	// not the codeaf binary — a bench driving the task door in-process is the

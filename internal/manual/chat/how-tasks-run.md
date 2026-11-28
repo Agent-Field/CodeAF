@@ -3631,6 +3631,73 @@ A child reads the overall ask for requirements it owns. Delegation instructions
 for the parent remain the parent's coordination work; a child repeats them only
 when its own work order assigns coordination.
 
+## Can a task run several tools in one step — the script tool, CODEAF_TASK_SCRIPT
+
+A task worker on the bash belt can carry a `script` tool. The worker writes a
+short JavaScript program that calls its other tools, and only what the program
+prints or returns goes back to the model. One step can make several calls and
+keep only the lines that matter from a large result.
+
+The tool is off by default while it is measured. Start codeaf with
+`CODEAF_TASK_SCRIPT=on` to give task workers the tool; any other value, or
+none, leaves it off. This switch does not put the tool on the conversation's
+own tools (`CODEAF_CHAT_SCRIPT` does, below), and a task on the older node
+belt (`CODEAF_TASK_BELT=node`) never carries it.
+
+A script is one step of the task: it counts once against the task's step
+limit and in the step count the worker and the task's room show, and the
+task's page and its live view list the calls it made under it, indented. A
+script that reads counts as progress, as a `bash` command that reads does, so
+a worker exploring through scripts is not stopped for making no progress.
+
+## Script tool rules and limits — what a script can call, bash in a script
+
+These rules hold for a task's script and a conversation's alike.
+
+- Each call goes through the same approval rules as a call the worker makes
+  directly. A refused call fails inside the script with the refusal's text.
+- A script can call only `bash`, `read`, `ls`, `grep`, `find`,
+  `read_document`, `manual`, `recall`, `web_search` and `web_fetch`, where
+  the belt has them. Every other tool, `script` included, fails inside the
+  script: editing, asking you and starting work stay the model's own steps.
+- Inside a script, `bash` answers the command's output, its exit code and
+  whether the output was cut. A script sees up to 1 MiB of one command's
+  output, and a non-zero exit does not fail the script. A command that timed
+  out or was stopped fails inside the script with bash's own words. A command
+  moved to the background answers no exit code, and its output names the job.
+- Every other tool answers its text, as the worker would read it; a script
+  that knows a tool answers JSON parses it itself.
+- A script is not Node.js: there is no `require`, `fs`, `process`, network
+  or timer such as `setTimeout`. It reaches files and commands only through tools, mostly
+  `await tools.bash({command: "..."})`.
+- A script stops after 200 tool calls, 10 minutes or 16 MiB of output, and
+  says which limit it reached. A call turned away for its own arguments never
+  ran and does not count toward the 200.
+- What the script returns is cut to the usual result limit, with the whole
+  output saved to a file the result names.
+- Up to 4 calls run at the same time; more wait their turn. When a script
+  ends, calls still running are cancelled, and the result says how many
+  calls it did not wait for.
+- A script's memory is not limited, and the 10-minute limit cannot stop one
+  regular expression match partway, so a very large value can use up
+  codeaf's memory first.
+- A quick task's worker never carries `script`.
+
+## The script tool in a conversation — CODEAF_CHAT_SCRIPT
+
+Start codeaf with `CODEAF_CHAT_SCRIPT=on` to put the same `script` tool on the
+conversation's own tools, as a separate experiment from `CODEAF_TASK_SCRIPT`.
+Any other value, or none, leaves it off. It changes nothing for tasks: each
+switch arms one side only.
+
+The chat's script follows the same rules as a task's (see "Script tool rules
+and limits"). Each call it makes goes through the approval rules, so a call that
+needs your approval stops the script until you answer, up to the script's 10
+minutes. Its `bash` calls see up to 1 MiB of output, although the
+conversation's own `bash` keeps only the last part that fits. The calls are
+drawn indented under the script in the conversation, and still are after the
+conversation is reopened.
+
 ## Where does my task work
 
 An ordinary code task works in its own copy of the repository the work is about,

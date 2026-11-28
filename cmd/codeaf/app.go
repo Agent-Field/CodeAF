@@ -3141,6 +3141,13 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	}
 	titles := map[string]string{}
 	for event := range events {
+		// A SCRIPT IS ONE CALL ON THE WIRE. The calls it makes are its own
+		// business: their rows and the live line stay the script's, as they do
+		// in the chat (internal/tui3's feed). A question one of them raises is
+		// not a tool event and still goes out.
+		if event.FromScript() {
+			continue
+		}
 		switch event.Kind {
 		case session.EventModelIdentity:
 			if event.ModelIdentity != nil {

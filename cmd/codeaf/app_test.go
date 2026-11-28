@@ -2071,3 +2071,45 @@ func TestAppReopenKeepsTheSavedModel(t *testing.T) {
 		t.Fatalf("reopened=%+v, err=%v", reopened, err)
 	}
 }
+
+// A SCRIPT IS ONE CALL ON THE WIRE. The calls it makes carry their script as
+// their parent; the app draws the script's own row, and its nested calls are
+// neither rows of their own nor the agent's live line.
+func TestAppDrawsAScriptAsOneCall(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{
+		{Kind: session.EventToolBegin, CallID: "s", Tool: "script", Hint: "script"},
+		{Kind: session.EventToolBegin, CallID: "s-script-1", Parent: "s", Tool: "bash", Hint: "bash ls"},
+		{Kind: session.EventToolEnd, CallID: "s-script-1", Parent: "s", Tool: "bash", Hint: "3 lines"},
+		{Kind: session.EventToolBegin, CallID: "s-script-2", Parent: "s", Tool: "read", Hint: "read go.mod"},
+		{Kind: session.EventToolFailed, CallID: "s-script-2", Parent: "s", Tool: "read", Hint: "no such file"},
+		{Kind: session.EventToolEnd, CallID: "s", Tool: "script", Hint: "script finished"},
+		{Kind: session.EventTurnDone},
+	}}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Send(agent.ID, "look", ""); err != nil {
+		t.Fatal(err)
+	}
+	rec.waitFor(t, 5*time.Second, appTurnDone)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	tools := 0
+	for i, event := range rec.events {
+		if event == appwire.EventTurnTool {
+			tools++
+		}
+		if c, ok := rec.data[i].(appwire.AgentChanged); ok && strings.Contains(c.Agent.Line, "go.mod") {
+			t.Errorf("a script's nested call became the agent's live line: %q", c.Agent.Line)
+		}
+	}
+	if tools != 2 {
+		t.Errorf("the app drew %d tool events for one script; want its begin and end only", tools)
+	}
+}

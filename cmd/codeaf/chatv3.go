@@ -3181,6 +3181,15 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 // session more often than the wall itself is read.
 const unattendedRunSettleTick = time.Second
 
+// headlessNesting indents a line about a call a script made, so a headless log
+// reads as the script's step with its calls under it.
+func headlessNesting(event session.Event) string {
+	if event.FromScript() {
+		return "  "
+	}
+	return ""
+}
+
 // drainOnceEvents is the one rendering of a headless chat turn, shared by the
 // first turn, every turn the session wakes, and the connected one-message door.
 // Reply text alone goes to stdout; every line the door itself says goes to
@@ -3207,7 +3216,7 @@ func drainOnceEvents(events <-chan session.Event, stdout, stderr io.Writer) erro
 
 		case session.EventToolBegin:
 			newline()
-			fmt.Fprintln(stderr, "tool: "+tui3.ToolGloss(event.Tool, event.Hint))
+			fmt.Fprintln(stderr, "tool: "+headlessNesting(event)+tui3.ToolGloss(event.Tool, event.Hint))
 
 		case session.EventToolFailed:
 			newline()
@@ -3215,7 +3224,7 @@ func drainOnceEvents(events <-chan session.Event, stdout, stderr io.Writer) erro
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
 			}
-			fmt.Fprintln(stderr, "tool: "+event.Tool+" failed: "+reason)
+			fmt.Fprintln(stderr, "tool: "+headlessNesting(event)+event.Tool+" failed: "+reason)
 
 		case session.EventCompacted:
 			newline()

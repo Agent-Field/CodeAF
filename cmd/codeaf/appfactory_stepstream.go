@@ -113,7 +113,8 @@ func appStepFollowsItsLine(kind session.EventKind) bool {
 
 // stageEvent notes one step event, when the app holds its conversation.
 func (b *appBackend) stageEvent(file string, event session.Event) {
-	if !appStepToldKind(event.Kind) {
+	// A script's own call is not a boundary between the step's words.
+	if !appStepToldKind(event.Kind) || event.FromScript() {
 		return
 	}
 	stream := b.stepStreamOf(appAgentID(file))

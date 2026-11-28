@@ -166,6 +166,26 @@ const (
 // the line it hangs under: one lifts the cap, the other closes the call.
 func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	e := &d.entries[i]
+	// A SCRIPT'S CALL IS LAID OUT NARROWER AND SHIFTED RIGHT, so it sits under
+	// the script row it follows and still adds up to the frame's width. The
+	// shift is spaces, not a mark, so no glyph bypasses the repertoire.
+	if e.nested {
+		return a.toolRowsAt(d, i, last, width-nestedIndentCols, nestedIndent)
+	}
+	return a.toolRowsAt(d, i, last, width, "")
+}
+
+// nestedIndent is how far a script's call sits right of its script's row.
+const (
+	nestedIndent     = "  "
+	nestedIndentCols = len(nestedIndent)
+)
+
+// toolRowsAt is [app.toolRows] at a given width, every row led by indent. The
+// indent rides the stem the block already prefixes, so a nested row costs no
+// second string per row per frame.
+func (a *app) toolRowsAt(d deck, i int, last bool, width int, indent string) []row {
+	e := &d.entries[i]
 	hit := hitTool
 	if replayInert(e) {
 		hit = hitNone
@@ -193,8 +213,15 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// spinner, the count-up, the pointer's own brightness — so it is built fresh
 	// here; what hangs under it is evidence about a payload that arrived once.
 	line, keep := a.toolLineLayout(e, i, last, width)
+	if indent != "" {
+		line = indent + line
+		if keep != (hudSpan{}) {
+			keep.from += len(indent)
+			keep.to += len(indent)
+		}
+	}
 	out := []row{{text: line, entry: i, hit: hit, keep: keep}}
-	stem := a.pal.railCont()
+	stem := indent + a.pal.railCont()
 	// THE INDENT LAW COSTS THE BLOCK ITS TWO CELLS TOO, and it is subtracted here
 	// for the reason [app.toolLine] subtracts it: render.go's pass shoves every
 	// work row two columns right AFTER layout, so a block laid out to the frame's

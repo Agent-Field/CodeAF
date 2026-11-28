@@ -204,7 +204,7 @@ func (a *Agent) belt() []bare.Tool {
 	for index, tool := range tools {
 		switch tool.Name {
 		case "bash":
-			tools[index] = a.backgroundBash(a.publishingBash(tool))
+			tools[index] = a.backgroundBash(a.publishingBash(a.scriptWideBash(tool)))
 		case "read":
 			tools[index] = a.pdfRead(tool)
 		case "edit":
@@ -254,6 +254,11 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	tools = append(tools, a.askTool())
+	// script, on a conversation that asked for it (tool_script.go): the same
+	// tool a task worker carries, measured on the chat's own belt.
+	if a.config.mayChatScript() {
+		tools = append(tools, a.scriptTool())
+	}
 	// request_secret, only where a person can answer: headless, a credential
 	// question has nobody to type into it, and a verb that can only ever come
 	// back "nobody to ask" is a verb this belt does not carry.
