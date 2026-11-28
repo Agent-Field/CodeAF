@@ -4,7 +4,7 @@
 
 Hosted relay storage is off by default while its privacy terms are being finished. Pairing does not turn it on. Saved keys stay on this computer, and no chat or file content is uploaded; the relay refuses even encrypted uploads. A chat can still move by blind pass-through between your paired computers while both are running codeaf: see *Blind pass-through*. Existing stored frames stay readable and nothing is deleted.
 
-Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
+Pairing, seeing your devices, `--at` and your phone still work (*Does storage off stop my phone*); the other computer must be on for `--at`. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
 
 After pairing, open **Settings → Devices → relay storage** in the terminal and press **enter** (`enter request access`) while it says **off**. In the desktop app, Devices and Advanced → Devices show **Relay storage** and **Request access…**. This opens a pre-filled GitHub issue. GitHub may ask you to sign in before showing the request. The terminal shows a request-code panel only when the browser cannot open; its **Open request on GitHub** link keeps the complete destination behind a short label. The desktop offers **Copy request link** if opening fails, and **Copy request code** while storage is off.
 
@@ -25,6 +25,12 @@ Repeated `/status` requests for the same home, identity and relay share a 30-sec
 Pairing asks for the storage answer alongside its other finishing work, with up to three attempts inside a best-effort budget of about 1.5 seconds. A timely answer is saved for other open windows before pairing finishes, including a successful answer without the storage field. A timeout or failed reading leaves the saved answer untouched and adds no sentence. A revoked or gone identity is not retried.
 
 Background chat publication waits silently while storage is off. It does not add a contradictory “could not be shared yet; will try again” notice or discard the chat's pending copy. Publication resumes after approval.
+
+## Does storage off stop my phone — what a phone still sends the service
+
+No. With storage off the service refuses chat uploads and keeps the device list, and a paired phone keeps working. That is also what `--storage off` does on a server you run yourself. A phone starts a chat on a computer, sends to it, stops it, answers it and reads its replies. Those travel as sealed slots and queued requests between the phone and one computer, which the service passes along without being able to read them. They are not chat storage and need no approval.
+
+A chat a phone starts while storage is off leaves one directory record: the chat's id, the computer that holds it, its lease and its wrapped key. It has no title, no folder name and no head, so it names nothing the service cannot hold, and nothing of the conversation is uploaded. The chat stays on that computer and moves to another only by blind pass-through, as in *Blind pass-through*. The *Your phone* page says the same from the phone's side.
 
 ## Does the relay keep my chat when I move it without relay storage — what blind pass-through leaves behind
 

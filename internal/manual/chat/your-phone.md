@@ -17,7 +17,7 @@ When it is approved codeaf says `<name> is now paired as a phone. It can start c
 
 If the link was copied without its key, codeaf says `that link has no key; copy the whole link from the phone`. If the request does not match its link it says `that request does not match its link. Nothing was approved.`
 
-A computer that has never been paired with anything keeps quiet and makes no requests to the relay. Approving a phone lets it make only the requests that serving that phone needs, so one computer and a phone are enough. Removing the last phone makes that computer quiet again.
+A computer that has never been paired with anything keeps quiet and makes no requests to the sync address. Approving a phone lets it make only the requests that serving that phone needs, so one computer and a phone are enough. Removing the last phone makes that computer quiet again.
 
 ## Start a chat on a computer from my phone
 
@@ -28,6 +28,18 @@ Tap `+` in the phone app, pick which of your computers should run the chat, writ
 - **The computer cannot do it:** the phone shows that the computer could not start the chat. Check that computer, then try again from the phone.
 
 Other requests from the phone (a message to a chat, an answer, stopping a chat) wait up to a day, and only the computer that has that chat runs them. A chat that has moved to another computer is refused, not run twice.
+
+## Does my phone work while relay storage is off — can I still start a chat and see its reply?
+
+Yes. With storage off (Settings → Devices shows `relay storage` as off; see *Request access to relay storage*) the service keeps no chat or file content, and a phone is not stopped by that. Starting a chat, sending to it, stopping it, answering its questions and reading its replies all work as usual, because they travel between the phone and the computer sealed in the phone's own slots and queue, and those are not chat storage. A chat the phone starts is recorded in the directory as held by that computer, with no title and no folder name, and none of its content is uploaded.
+
+What storage off still means for that chat is what it means for a chat you start at the keyboard:
+
+- It lives on the computer you picked. If that computer is lost, nothing stored for you can bring the chat back.
+- It moves to another of your computers only the way any chat does while storage is off: by blind pass-through while both computers are running codeaf, and not at all with `CODEAF_PASSTHROUGH=off`. *Blind pass-through* has the steps.
+- A request waiting for a computer that is off still waits up to the hour or day above, sealed so only that computer can read it, and is removed when the computer takes it or it expires.
+
+The phone never needs storage approved to work.
 
 ## Which chats does my phone show for a computer, and why is one missing?
 
@@ -92,6 +104,6 @@ That is deliberate: a computer that cannot recognise a phone's link cannot mista
 
 ## The phone and your keys
 
-The phone makes its own keys and keeps them. When you approve it, this computer gives it only a certificate for those keys, your identity's public key and this computer's signed card, sealed so that only the phone can read it. Your identity's secret, your sync keys and your provider keys are never sent to the phone, and the relay cannot read what passes between the phone and your computers.
+The phone makes its own keys and keeps them. When you approve it, this computer gives it only a certificate for those keys, your identity's public key and this computer's signed card, sealed so that only the phone can read it. Your identity's secret, your sync keys and your provider keys are never sent to the phone, and nothing in between can read what passes between the phone and your computers.
 
-If phone serving pauses with a message that the device list on this sync address is older than one this computer saw, the relay was probably reset. Chats and sync are untouched; only the phone is paused. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. It says `accepted the older device list. Phones paired before the reset must pair again.` and keeps serving.
+If phone serving pauses with a message that the device list on this sync address is older than one this computer saw, the service behind that address was probably reset. Chats and sync are untouched; only the phone is paused. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. It says `accepted the older device list. Phones paired before the reset must pair again.` and keeps serving.

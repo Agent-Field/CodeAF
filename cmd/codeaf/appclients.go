@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // appClientOperationTimeout bounds individual pause/unpair or directory lookups
@@ -543,6 +544,15 @@ func (b *appBackend) stopClients() {
 // leaseClientChat seals and uploads the initial chat before queued creation
 // releases its first turn. The ordinary drive then renews this real head's
 // lease; no placeholder head can strand a phone-created conversation.
+//
+// A RELAY THAT KEEPS NO CHATS STILL TAKES A RECORD AND A LEASE. With relay
+// storage off there is nothing to upload and no head to name, but the phone
+// finds a computer's chats through the lease this computer holds in the
+// directory, which is coordination and not storage. So that road records the
+// chat and takes its lease ([syncsetup.Sync.HoldNewChat]) and the first turn
+// goes ahead; the chat's own drive publishes its real head later, exactly as for
+// a chat a person started here. Refusing the create for want of storage would
+// leave a chat on this disk that no phone could ever reach.
 func (b *appBackend) leaseClientChat(ctx context.Context, agent appwire.Agent) error {
 	s, err := syncOf()
 	if err != nil {
@@ -569,11 +579,19 @@ func (b *appBackend) leaseClientChat(ctx context.Context, agent appwire.Agent) e
 		_, err = s.Dir.Acquire(ctx, agent.ID, directory.AcquireOpts{})
 		return err
 	}
+	if !s.StorageAllowed() {
+		return s.HoldNewChat(ctx, c)
+	}
 	eng := cellstore.Engine{Workspace: agent.Workspace}
 	if _, err = eng.Seal(ctx, c, cellstore.TurnInfo{}); err != nil {
 		return err
 	}
 	if err = s.PublishCopy(ctx, eng, c, "", agent.Title); err != nil {
+		// A relay whose storage state this computer had not yet learned says so on
+		// the first upload; that is the same answer as the check above.
+		if errors.Is(err, wireauth.ErrStorageOff) {
+			return s.HoldNewChat(ctx, c)
+		}
 		return err
 	}
 	_, err = s.Dir.Acquire(ctx, agent.ID, directory.AcquireOpts{})

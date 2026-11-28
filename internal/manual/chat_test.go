@@ -322,6 +322,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a new chat with nothing typed is missing from my phone", "your-phone"},
 		{"if I add my phone will my chats be shared between my computers", "your-phone"},
 		{"does pairing a phone make my computer start syncing", "your-phone"},
+		{"can I still start a chat from my phone when relay storage is off", "your-phone"},
+		{"my phone cannot start a chat because relay storage is off", "your-phone"},
 		{"what is cluster lead", "coordination-and-workers"},
 		{"what does codeaf cluster lead do", "coordination-and-workers"},
 		{"make this computer the leader", "coordination-and-workers"},
