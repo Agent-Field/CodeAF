@@ -211,7 +211,7 @@ func buildCallVectors(t *testing.T) map[string]any {
 			"cases":                 calls,
 		},
 		"outcomes": map[string]any{
-			"about":                "the outcome slot (design 3.6): a computer publishes one outcome for EVERY queued call it acknowledges, the last 32 in the slot outcomes.<writer>, oldest first. Statuses: done, refused, expired. Reasons: not_holder, needs_face_id, expired, method_denied, bad_target, bad_call (a call that did not open, did not match its outer body or carried params the method does not take). A transient failure publishes nothing: the call stays queued and is tried again.",
+			"about":                "the outcome slot (design 3.6): a computer publishes one outcome for EVERY queued call it acknowledges, the last 32 in the slot outcomes.<writer>, oldest first. Statuses: done, refused, expired. Reasons: not_holder, needs_face_id, expired, method_denied, bad_target, bad_call (a call that did not open, did not match its outer body or carried params the method does not take), failed (the dispatched call returned an error; it may have taken effect, so it is never retried). A transient failure publishes nothing: the call stays queued and is tried again.",
 			"payload_json":         string(payload),
 			"plaintext_json":       string(slotJSON),
 			"nonce_hex":            hx(onone[:]),

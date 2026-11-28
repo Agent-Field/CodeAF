@@ -820,7 +820,7 @@
     "slot_waiters_per_relay_go": 1024
   },
   "outcomes": {
-    "about": "the outcome slot (design 3.6): a computer publishes one outcome for EVERY queued call it acknowledges, the last 32 in the slot outcomes.\u003cwriter\u003e, oldest first. Statuses: done, refused, expired. Reasons: not_holder, needs_face_id, expired, method_denied, bad_target, bad_call (a call that did not open, did not match its outer body or carried params the method does not take). A transient failure publishes nothing: the call stays queued and is tried again.",
+    "about": "the outcome slot (design 3.6): a computer publishes one outcome for EVERY queued call it acknowledges, the last 32 in the slot outcomes.\u003cwriter\u003e, oldest first. Statuses: done, refused, expired. Reasons: not_holder, needs_face_id, expired, method_denied, bad_target, bad_call (a call that did not open, did not match its outer body or carried params the method does not take), failed (the dispatched call returned an error; it may have taken effect, so it is never retried). A transient failure publishes nothing: the call stays queued and is tried again.",
     "executor_box_pub_hex": "7b4e909bbe7ffe44c465a220037d608ee35897d31ef972f07f74892cb0f73f13",
     "nonce_hex": "525252525252525252525252525252525252525252525252",
     "opens_with": "the slot box of design 3.4: executor_box_pub_hex below, phone_box_priv_hex 0x12 x 32",

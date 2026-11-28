@@ -27,6 +27,9 @@ const (
 	ReasonMethodDenied = "method_denied"
 	ReasonBadTarget    = "bad_target"
 	ReasonBadCall      = "bad_call"
+	// ReasonFailed says the dispatched call itself returned an error. It may have
+	// taken effect, so it is never retried: the call is acknowledged and refused.
+	ReasonFailed = "failed"
 )
 
 // ErrOutcome says an outcome list is malformed.

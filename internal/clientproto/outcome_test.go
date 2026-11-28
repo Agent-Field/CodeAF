@@ -15,6 +15,7 @@ func TestOutcomeValidity(t *testing.T) {
 		{Number: 3, Status: OutcomeRefused, Reason: ReasonNotHolder, Agent: "chat-1"},
 		{Number: 4, Status: OutcomeRefused, Reason: ReasonBadCall},
 		{Number: 5, Status: OutcomeExpired, Reason: ReasonExpired},
+		{Number: 6, Status: OutcomeRefused, Reason: ReasonFailed, Agent: "chat-1"},
 	}
 	for _, o := range good {
 		if !o.Valid() {
