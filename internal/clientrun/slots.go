@@ -422,7 +422,19 @@ func (r *Runner) putSlot(ctx context.Context, clientID, slotName string, sealed 
 	return nil
 }
 
+func (r *Runner) localChats() ([]string, bool) {
+	if r.cfg.LocalChats == nil {
+		return nil, false
+	}
+	return r.cfg.LocalChats()
+}
+
 func (r *Runner) held(l directory.Listing) []string {
+	if local, ok := r.localChats(); ok {
+		ids := slices.Clone(local)
+		sort.Strings(ids)
+		return ids
+	}
 	var ids []string
 	self := r.cfg.Signer.Cert().DeviceID()
 	for id, c := range l.Cells {

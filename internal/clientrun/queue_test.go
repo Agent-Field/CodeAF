@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -3027,4 +3028,431 @@ func TestD6MidRoundLeaseDisplacedRevokedAndPausedBetweenListAndClaim(t *testing.
 			t.Fatalf("call did not run after unpause: %+v", se.sends)
 		}
 	})
+}
+
+func newSoloRig(t *testing.T, localChats func() ([]string, bool), leaseCreated func(context.Context, appwire.Agent) error) *rig {
+	t.Helper()
+	clock := directorytest.NewFakeClock()
+	relayStore := t.TempDir()
+	g := &rig{
+		clock:      clock,
+		relayStore: relayStore,
+		e:          &engine{entryBytes: 10},
+		state:      t.TempDir(),
+		reqCh:      make(chan string, 256),
+	}
+	g.startRelay(t)
+
+	home := t.TempDir()
+	id, err := identity.Ensure(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, err := identity.Device(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := signer{id, dev}
+	dir := directory.NewHTTP(g.url, reqsign.SignFor(s, clock.Now), g.srv.Client())
+	// A solo computer registers only its own device row when approving a phone
+	// and never publishes any cell records to the directory (contract P13).
+	if err := dir.PutDevice(context.Background(), dev.ID(), directory.Device{V: 1}); err != nil {
+		t.Fatal(err)
+	}
+	seed, err := identity.NewSeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := seed.Join(identity.IssueCert(id, seed.Public(), clock.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, priv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.id = id
+	g.s = s
+	g.client = signer{id, c}
+	g.pub = pub
+	g.priv = priv
+	g.dir = dir
+
+	r, err := Open(Config{
+		Home:         g.state,
+		Relay:        g.url,
+		Name:         "desk",
+		Identity:     id.PublicKey(),
+		Signer:       s,
+		Directory:    dir,
+		Engine:       g.e,
+		LocalChats:   localChats,
+		LeaseCreated: leaseCreated,
+		Log:          noopLog,
+		Logf:         g.logf,
+		Now:          clock.Now,
+		HTTP:         g.srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	g.r = r
+	return g
+}
+
+// TestP13SoloRunnerWithEmptyDirectoryPublishesEntriesAndRunsHeldChat verifies
+// that a solo-mode runner (LocalChats returning (["chat-a"], true)) with an
+// empty directory listing of cells publishes agents.entries for chat-a, runs
+// agents.send to chat-a and finishes done, and refuses agents.send to chat-z
+// (not local) with not_holder without calling the engine (contract P13).
+func TestP13SoloRunnerWithEmptyDirectoryPublishesEntriesAndRunsHeldChat(t *testing.T) {
+	g := newSoloRig(t, func() ([]string, bool) {
+		return []string{"chat-a"}, true
+	}, func(context.Context, appwire.Agent) error {
+		t.Fatal("LeaseCreated must not be called in solo mode")
+		return nil
+	})
+	se := g.useScriptedEngine(t)
+	g.enroll(t, []string{"agents.entries"}, clientproto.MethodSend)
+
+	listing, err := g.dir.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listing.Cells) != 0 {
+		t.Fatalf("directory cells = %+v, want empty in solo mode", listing.Cells)
+	}
+
+	g.queueCall(t, 1, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "chat-a", "text": "hello solo chat-a", "client_id": "c-solo-1",
+	}, false, 0)
+	g.queueCall(t, 2, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "chat-z", "text": "must not run on non-local chat-z", "client_id": "c-solo-2",
+	}, false, 0)
+
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify agents.entries was published for chat-a despite the empty cell listing.
+	var entriesSlot []struct {
+		Agent  string                `json:"agent"`
+		Result appwire.EntriesResult `json:"result"`
+	}
+	if err := json.Unmarshal(g.slot(t, "agents.entries"), &entriesSlot); err != nil {
+		t.Fatal(err)
+	}
+	if len(entriesSlot) != 1 || entriesSlot[0].Agent != "chat-a" || len(entriesSlot[0].Result.Entries) == 0 {
+		t.Fatalf("agents.entries slot = %+v, want 1 non-empty envelope for chat-a", entriesSlot)
+	}
+
+	// Verify the engine ran chat-a once and was never called for chat-z.
+	wantSends := []sentMsg{{ID: "chat-a", Text: "hello solo chat-a", ClientID: "c-solo-1"}}
+	if !slices.Equal(se.sends, wantSends) {
+		t.Fatalf("engine sends = %+v, want %+v", se.sends, wantSends)
+	}
+
+	// Verify outcomes: #1 done for chat-a, #2 refused / not_holder (empty Agent for non-held chat).
+	outcomes := g.readOutcomesSlot(t, g.s.dev.ID())
+	wantOutcomes := []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: "chat-a"},
+		{Number: 2, Status: clientproto.OutcomeRefused, Reason: clientproto.ReasonNotHolder},
+	}
+	if !slices.Equal(outcomes, wantOutcomes) {
+		t.Fatalf("outcomes = %+v, want %+v", outcomes, wantOutcomes)
+	}
+}
+
+// TestP13SoloCreateSkipsLeaseCreatedWhileNonSoloCallsItOnce verifies that
+// creating a chat in solo mode creates the chat, finishes done, and never calls
+// LeaseCreated, whereas with LocalChats returning (nil, false) the same create
+// calls LeaseCreated once (contract P13).
+func TestP13SoloCreateSkipsLeaseCreatedWhileNonSoloCallsItOnce(t *testing.T) {
+	solo := true
+	var leased []string
+	var g *rig
+	g = newSoloRig(t, func() ([]string, bool) {
+		if solo {
+			return []string{"chat-a"}, true
+		}
+		return nil, false
+	}, func(ctx context.Context, a appwire.Agent) error {
+		leased = append(leased, a.ID)
+		_, err := g.dir.Create(ctx, a.ID, directory.CellInit{Head: strings.Repeat("1", 64), Class: "chat"})
+		return err
+	})
+	se := g.useScriptedEngine(t)
+	g.enroll(t, []string{"agents.list"}, clientproto.MethodCreate)
+
+	// Solo create: makes the chat, finishes done, LeaseCreated is never called.
+	g.queueCall(t, 1, clientproto.MethodCreate, g.s.dev.ID(), map[string]string{
+		"client_id": "cid-solo-create",
+	}, false, clientproto.CreateLifetime)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(se.createdIDs) != 1 {
+		t.Fatalf("solo creates = %d, want 1", len(se.createdIDs))
+	}
+	soloChatID := se.createdIDs[0]
+	if len(leased) != 0 {
+		t.Fatalf("LeaseCreated called in solo mode: %v, want none", leased)
+	}
+	outcomes := g.readOutcomesSlot(t, g.s.dev.ID())
+	wantOutcomes := []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: soloChatID},
+	}
+	if !slices.Equal(outcomes, wantOutcomes) {
+		t.Fatalf("outcomes after solo create = %+v, want %+v", outcomes, wantOutcomes)
+	}
+
+	// Non-solo create (LocalChats returns (nil, false)): calls LeaseCreated once.
+	solo = false
+	g.queueCall(t, 2, clientproto.MethodCreate, g.s.dev.ID(), map[string]string{
+		"client_id": "cid-dir-create",
+	}, false, clientproto.CreateLifetime)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(se.createdIDs) != 2 {
+		t.Fatalf("total creates = %d, want 2", len(se.createdIDs))
+	}
+	dirChatID := se.createdIDs[1]
+	if !slices.Equal(leased, []string{dirChatID}) {
+		t.Fatalf("LeaseCreated calls = %v, want [%s]", leased, dirChatID)
+	}
+	outcomes = g.readOutcomesSlot(t, g.s.dev.ID())
+	wantOutcomes = []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: soloChatID},
+		{Number: 2, Status: clientproto.OutcomeDone, Agent: dirChatID},
+	}
+	if !slices.Equal(outcomes, wantOutcomes) {
+		t.Fatalf("outcomes after non-solo create = %+v, want %+v", outcomes, wantOutcomes)
+	}
+}
+
+// TestP13SwitchingFromSoloToDirectoryBetweenRoundsWithoutRestart verifies that
+// when LocalChats flips from ok to not ok between rounds on the same running
+// runner (a computer that just paired a second computer), the runner uses the
+// directory from the next round on: a chat held only locally becomes not_holder
+// again and a directory-held chat runs (contract P13).
+func TestP13SwitchingFromSoloToDirectoryBetweenRoundsWithoutRestart(t *testing.T) {
+	solo := true
+	g := newSoloRig(t, func() ([]string, bool) {
+		if solo {
+			return []string{"chat-b", "chat-a"}, true
+		}
+		return nil, false
+	}, nil)
+	se := g.useScriptedEngine(t)
+	// Place chat-dir in the directory leased by this computer, while chat-a and
+	// chat-b exist only locally.
+	if _, err := g.dir.Create(context.Background(), "chat-dir", directory.CellInit{Head: strings.Repeat("1", 64), Class: "chat"}); err != nil {
+		t.Fatal(err)
+	}
+	g.enroll(t, []string{"agents.entries"}, clientproto.MethodSend)
+
+	// Round 1 (solo == true): publishes sorted local chats ["chat-a", "chat-b"]
+	// and runs a send to chat-a.
+	g.queueCall(t, 1, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "chat-a", "text": "round-1-local", "client_id": "c-r1",
+	}, false, 0)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var round1Entries []struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(g.slot(t, "agents.entries"), &round1Entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(round1Entries) != 2 || round1Entries[0].Agent != "chat-a" || round1Entries[1].Agent != "chat-b" {
+		t.Fatalf("round 1 agents.entries = %+v, want [chat-a chat-b]", round1Entries)
+	}
+	if len(se.sends) != 1 || se.sends[0].ID != "chat-a" {
+		t.Fatalf("round 1 sends = %+v, want [chat-a]", se.sends)
+	}
+
+	// Flip LocalChats from ok to not ok between rounds without restarting the runner.
+	solo = false
+	g.clock.Advance(clientproto.WatchingFloor)
+	g.queueCall(t, 2, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "chat-a", "text": "round-2-local-must-refuse", "client_id": "c-r2-local",
+	}, false, 0)
+	g.queueCall(t, 3, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "chat-dir", "text": "round-2-dir-must-run", "client_id": "c-r2-dir",
+	}, false, 0)
+
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// In round 2, chat-a is refused / not_holder without calling the engine,
+	// while chat-dir runs and finishes done, and agents.entries switches to chat-dir.
+	wantSends := []sentMsg{
+		{ID: "chat-a", Text: "round-1-local", ClientID: "c-r1"},
+		{ID: "chat-dir", Text: "round-2-dir-must-run", ClientID: "c-r2-dir"},
+	}
+	if !slices.Equal(se.sends, wantSends) {
+		t.Fatalf("sends across switch = %+v, want %+v", se.sends, wantSends)
+	}
+	outcomes := g.readOutcomesSlot(t, g.s.dev.ID())
+	wantOutcomes := []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: "chat-a"},
+		{Number: 2, Status: clientproto.OutcomeRefused, Reason: clientproto.ReasonNotHolder},
+		{Number: 3, Status: clientproto.OutcomeDone, Agent: "chat-dir"},
+	}
+	if !slices.Equal(outcomes, wantOutcomes) {
+		t.Fatalf("outcomes across switch = %+v, want %+v", outcomes, wantOutcomes)
+	}
+	var round2Entries []struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(g.slot(t, "agents.entries"), &round2Entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(round2Entries) != 1 || round2Entries[0].Agent != "chat-dir" {
+		t.Fatalf("round 2 agents.entries = %+v, want [chat-dir]", round2Entries)
+	}
+}
+
+// TestP13RecoverStartedAfterCrashInSoloModeSkipsLeaseCreated verifies that
+// recoverStarted after a crash in solo mode finishes done with the created chat
+// without calling LeaseCreated (contract P13).
+func TestP13RecoverStartedAfterCrashInSoloModeSkipsLeaseCreated(t *testing.T) {
+	leaseCalls := 0
+	localChats := func() ([]string, bool) {
+		return []string{"chat-a"}, true
+	}
+	leaseStub := func(context.Context, appwire.Agent) error {
+		leaseCalls++
+		return nil
+	}
+	g := newSoloRig(t, localChats, leaseStub)
+	se := g.useScriptedEngine(t)
+	chatsDir := se.chatsDir
+	g.enroll(t, []string{"agents.list"}, clientproto.MethodCreate)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	const cid = "cid-solo-recover-started"
+	const createdChatID = "01JSOLORECOVERSTARTED00001"
+	snapHome := t.TempDir()
+
+	if err := g.r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r1, err := Open(Config{
+		Home:         g.state,
+		Relay:        g.url,
+		Name:         "desk",
+		Identity:     g.id.PublicKey(),
+		Signer:       g.s,
+		Directory:    g.dir,
+		Engine:       se,
+		LocalChats:   localChats,
+		LeaseCreated: leaseStub,
+		Log:          noopLog,
+		Logf:         g.logf,
+		Now:          g.clock.Now,
+		HTTP: &http.Client{Transport: transport(func(req *http.Request) (*http.Response, error) {
+			if req.Method == "DELETE" && strings.Contains(req.URL.Path, "/queue/") {
+				return nil, errors.New("crash before delete")
+			}
+			return http.DefaultTransport.RoundTrip(req)
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.r = r1
+
+	totalCreates := 0
+	se.createFn = func(ask appwire.CreateAsk) (appwire.Agent, error) {
+		totalCreates++
+		folder := filepath.Join(chatsDir, createdChatID)
+		if err := ask.BeforeMint(filepath.Join(folder, "transcript.jsonl")); err != nil {
+			return appwire.Agent{}, err
+		}
+		if err := os.MkdirAll(folder, 0700); err != nil {
+			return appwire.Agent{}, err
+		}
+		for _, fn := range []func(string) string{StatePath, PinsPath, TombstonesPath} {
+			if raw, err := os.ReadFile(fn(g.state)); err == nil {
+				dst := fn(snapHome)
+				_ = os.MkdirAll(filepath.Dir(dst), 0700)
+				_ = os.WriteFile(dst, raw, 0600)
+			}
+		}
+		return appwire.Agent{}, errors.New("crash after folder created in solo mode")
+	}
+
+	g.queueCall(t, 1, clientproto.MethodCreate, g.s.dev.ID(), map[string]string{
+		"client_id": cid,
+	}, false, clientproto.CreateLifetime)
+	_ = g.r.Step(context.Background())
+	if totalCreates != 1 {
+		t.Fatalf("totalCreates in round 1 = %d, want 1", totalCreates)
+	}
+	if leaseCalls != 0 {
+		t.Fatalf("leaseCalls in round 1 = %d, want 0", leaseCalls)
+	}
+
+	// Reopen from snapHome (where receipt #1 is at status "started" and the
+	// folder exists on disk) in solo mode and run recovery Step.
+	if err := g.r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	g.state = snapHome
+	se2 := newScriptedEngine(g.e)
+	se2.chatsDir = chatsDir
+	se2.createFn = func(ask appwire.CreateAsk) (appwire.Agent, error) {
+		totalCreates++
+		return appwire.Agent{ID: "unexpected-second-create"}, nil
+	}
+	r2, err := Open(Config{
+		Home:         g.state,
+		Relay:        g.url,
+		Name:         "desk",
+		Identity:     g.id.PublicKey(),
+		Signer:       g.s,
+		Directory:    g.dir,
+		Engine:       se2,
+		LocalChats:   localChats,
+		LeaseCreated: leaseStub,
+		Log:          noopLog,
+		Logf:         g.logf,
+		Now:          g.clock.Now,
+		HTTP:         g.srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+	g.r = r2
+
+	if recs := g.r.Receipts(); len(recs) != 1 || recs[0].Status != "started" {
+		t.Fatalf("receipts on disk before recovery = %+v, want started", recs)
+	}
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatalf("recovery Step in solo mode: %v", err)
+	}
+	if totalCreates != 1 {
+		t.Fatalf("totalCreates across crash and recovery = %d, want 1", totalCreates)
+	}
+	if leaseCalls != 0 {
+		t.Fatalf("LeaseCreated calls during solo recoverStarted = %d, want 0", leaseCalls)
+	}
+	if g.queueLen(t, g.client.dev.ID()) != 0 {
+		t.Fatal("recovered started receipt in solo mode was not acknowledged")
+	}
+	outcomes := g.readOutcomesSlot(t, g.s.dev.ID())
+	wantOutcomes := []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: createdChatID},
+	}
+	if !slices.Equal(outcomes, wantOutcomes) {
+		t.Fatalf("outcomes after solo recoverStarted = %+v, want %+v", outcomes, wantOutcomes)
+	}
 }

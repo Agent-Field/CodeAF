@@ -138,6 +138,14 @@ type Config struct {
 	// LeaseCreated publishes a new chat's real initial head and holds it on
 	// this executor before its first turn. Nil is for engines without sync.
 	LeaseCreated func(context.Context, appwire.Agent) error
+	// LocalChats reports the chats this computer holds locally when it is the
+	// only computer of its identity (ok == true). An ok == false result, or a
+	// nil func, means the directory's cell leases decide which chats this
+	// computer holds. The runner calls LocalChats at the moment of each
+	// decision and never caches the answer across rounds, because approving a
+	// second computer ends solo mode immediately and the runner must switch to
+	// directory arbitration without a restart (contract P13).
+	LocalChats func() ([]string, bool)
 }
 
 // Runner serializes discovery and publication rounds while keeping derived

@@ -373,7 +373,7 @@ func (r *Runner) recoverStarted(ctx context.Context, c Client, e Queued, receipt
 			}
 		}
 		chatExists = receipt.Agent != "" && chatFolderExists(receipt.Transcript)
-		if chatExists && r.cfg.LeaseCreated != nil {
+		if _, local := r.localChats(); !local && chatExists && r.cfg.LeaseCreated != nil {
 			_ = r.cfg.LeaseCreated(ctx, appwire.Agent{ID: receipt.Agent})
 			if fresh, err := r.cfg.Directory.List(ctx); err == nil {
 				*listing = fresh
@@ -496,6 +496,10 @@ func (r *Runner) dispatch(ctx context.Context, c Client, e Queued, call clientpr
 	leased := false
 	lease := func(a appwire.Agent) error {
 		if leased || r.cfg.LeaseCreated == nil {
+			return nil
+		}
+		if _, local := r.localChats(); local {
+			leased = true
 			return nil
 		}
 		if err := r.cfg.LeaseCreated(ctx, a); err != nil {
@@ -688,7 +692,13 @@ func validateCallParams(call clientproto.CallPlain) (agent string, createClientI
 }
 
 func (r *Runner) holdsChat(l directory.Listing, agent string) bool {
-	if agent == "" || r.cfg.Signer == nil {
+	if agent == "" {
+		return false
+	}
+	if local, ok := r.localChats(); ok {
+		return slices.Contains(local, agent)
+	}
+	if r.cfg.Signer == nil {
 		return false
 	}
 	self := r.cfg.Signer.Cert().DeviceID()
