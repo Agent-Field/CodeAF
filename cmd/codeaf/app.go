@@ -1249,7 +1249,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		mint:       appMint,
 	}
 	b.startedAt = b.now()
-	b.emit = appClientEmitter{b: b, next: b.newAppInbox(emit)}
+	b.emit = b.newAppInbox(emit)
 	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
 	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
 	// with keys.set at the next.

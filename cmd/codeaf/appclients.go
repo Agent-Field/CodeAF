@@ -28,32 +28,34 @@ import (
 // initiated on behalf of local client management.
 const appClientOperationTimeout = 30 * time.Second
 
-// appClientEmitter schedules fresh snapshots after the engine has published
-// its changes. The empty case is one pointer load with no goroutine or timer.
-type appClientEmitter struct {
-	b    *appBackend
-	next appwire.Emitter
+// clientBefore updates the phone's partial before either reader is notified, and returns the
+// runner to tell afterwards (nil when no phone is being served, which costs one pointer load
+// and no goroutine or timer). The ordinary app event stays unchanged and is still delivered
+// through its outbox.
+func (b *appBackend) clientBefore(data any) *clientrun.Runner {
+	r := b.clientRunner.Load()
+	if r == nil {
+		return nil
+	}
+	switch v := data.(type) {
+	case appwire.TurnDelta:
+		r.Delta(v)
+	case appwire.EntryAdded:
+		if v.Entry.Msg != nil {
+			r.ClearStream(v.Entry.Agent)
+		}
+	case appwire.TurnDone:
+		r.ClearStream(v.Agent)
+	case appwire.TurnRetrying:
+		r.ClearStream(v.Agent)
+	}
+	return r
 }
 
-func (e appClientEmitter) Emit(name string, data any) {
-	// Update the phone's partial before notifying either reader. The ordinary
-	// app event remains unchanged and is still delivered through its outbox.
-	r := e.b.clientRunner.Load()
-	if r != nil {
-		switch v := data.(type) {
-		case appwire.TurnDelta:
-			r.Delta(v)
-		case appwire.EntryAdded:
-			if v.Entry.Msg != nil {
-				r.ClearStream(v.Entry.Agent)
-			}
-		case appwire.TurnDone:
-			r.ClearStream(v.Agent)
-		case appwire.TurnRetrying:
-			r.ClearStream(v.Agent)
-		}
-	}
-	e.next.Emit(name, data)
+// clientAfter schedules fresh snapshots once the engine has published the change that r was
+// told about in clientBefore. It lives on the backend's own emitter, appInboxTap, and not in a
+// wrapper around it, so b.emit keeps the one type everything else asserts on.
+func (b *appBackend) clientAfter(r *clientrun.Runner, name string) {
 	if r == nil {
 		return
 	}

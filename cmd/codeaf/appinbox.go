@@ -71,6 +71,10 @@ type appInboxTap struct {
 }
 
 func (t *appInboxTap) Emit(event string, data any) {
+	// A PHONE'S PARTIAL IS UPDATED BEFORE EITHER READER IS TOLD, and its runner is told after
+	// the event has gone out (appclients.go).
+	client := t.b.clientBefore(data)
+	defer t.b.clientAfter(client, event)
 	// A QUESTION COUNTS FOR UNREAD BEFORE THE WINDOW HEARS OF IT, so a mark
 	// sent once the window has it is never stamped ahead of it.
 	var opening *appwire.InboxItem

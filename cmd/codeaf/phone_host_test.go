@@ -684,7 +684,7 @@ func TestS1AndS2QueuedCreateThroughBackendLeasesChatAndDeduplicates(t *testing.T
 
 // TestL1EngineTurnDeltaReachesRunnerStream verifies L1: emitting
 // appwire.TurnDelta on appBackend.emit reaches Runner.Delta through
-// appClientEmitter and appears in the published agents.entries slot, and
+// the backend's inbox tap and appears in the published agents.entries slot, and
 // emitting TurnDone clears the partial stream entry.
 func TestL1EngineTurnDeltaReachesRunnerStream(t *testing.T) {
 	celltest.Available(t)
@@ -745,7 +745,7 @@ func TestL1EngineTurnDeltaReachesRunnerStream(t *testing.T) {
 		t.Fatal("startPhoneRunner did not load runner")
 	}
 
-	// Emit a TurnDelta through b.emit (which is wrapped by appClientEmitter).
+	// Emit a TurnDelta through b.emit (which tells the phone runner as it goes out).
 	b.emit.Emit(appwire.EventTurnDelta, appwire.TurnDelta{
 		Agent: agent.ID,
 		Turn:  1,
