@@ -90,6 +90,22 @@ type Approval struct {
 	Grant  string `json:"grant"` // b64u of the sealed box
 }
 
+// MarshalJSON encodes only class and grant for a client-class approval so the
+// strict wire decoder never sees an empty device or cert field.
+func (a Approval) MarshalJSON() ([]byte, error) {
+	if a.Class != "" {
+		return json.Marshal(struct {
+			Class string `json:"class"`
+			Grant string `json:"grant"`
+		}{Class: a.Class, Grant: a.Grant})
+	}
+	return json.Marshal(struct {
+		Device Device `json:"device"`
+		Cert   string `json:"cert"`
+		Grant  string `json:"grant"`
+	}{Device: a.Device, Cert: a.Cert, Grant: a.Grant})
+}
+
 // Requests is the open side of link pairing: what the new device calls, with
 // no identity. Links.From serves it in process and LinkHTTP over the wire.
 type Requests interface {
