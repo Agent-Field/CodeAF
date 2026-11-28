@@ -1286,6 +1286,9 @@ asks for high thinking separately.
   the one-shot role calls only, never the work inside a task. At a headless door —
   `codeaf do`, `exec`, `plan` or `run` — the pin fills a seat instead, and every request
   the seat sends carries its level.
+- **An Ollama tag is part of the model's name**, not a level: `ollama/flint:latest` and
+  `ollama/qwen3:0.6b` are taken as written, and a level goes after the tag
+  (`ollama/qwen3:0.6b:high`).
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
   provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,

@@ -1679,7 +1679,8 @@ func writeTierModel(profileDir, tier, raw string) error {
 	return writeProfileValue(profileDir, tierKeyFor(tier), raw)
 }
 
-// ValidateTierValue refuses every suffix except the three thinking levels. Tier
+// ValidateTierValue refuses every suffix except the three thinking levels and
+// the tag of an Ollama model (`ollama/flint:latest`). Tier
 // rows own the `:<level>` notation, so accepting an unknown suffix here would
 // silently turn a misspelling into a model id and defer a clear settings error
 // until a provider call much later.
@@ -1689,12 +1690,25 @@ func ValidateTierValue(value string) error {
 	if at <= 0 {
 		return nil
 	}
+	if isOllamaTag(value) {
+		return nil
+	}
 	suffix := strings.ToLower(strings.TrimSpace(value[at+1:]))
 	if roles.ValidEffort(suffix) {
 		return nil
 	}
 	return fmt.Errorf("%q is not a thinking level. Add %s to a model id, or leave the level off",
 		suffix, strings.Join(quoted(roles.Efforts), ", "))
+}
+
+// isOllamaTag reports whether the one colon in an Ollama model's name is the
+// tag Ollama itself writes there. A second colon is a level, and is checked.
+func isOllamaTag(value string) bool {
+	written, name, found := strings.Cut(value, "/")
+	if !found || !strings.EqualFold(written, "ollama") {
+		return false
+	}
+	return strings.Count(name[strings.LastIndex(name, "/")+1:], ":") == 1
 }
 
 // quoted spells a list of words the way a refusal reads them: `low`, `medium`,
