@@ -28,11 +28,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -46,6 +48,7 @@ type PendingDevice struct {
 	Name        string // opened by the door; the relay never held it plain
 	Platform    string // darwin|linux|windows|ios|android|other
 	Check       string // four digits the new device shows too
+	Client      bool   // true when the request is a phone (client-class)
 	RequestedAt time.Time
 	ExpiresAt   time.Time
 }
@@ -63,16 +66,28 @@ type PermitSetter interface {
 	SetPermit(id string, watch, drive *bool) error
 }
 
+// PhoneUnpairer is an optional face of the Approvals door (or an in-process
+// runner) that records a local tombstone when a phone is removed.
+type PhoneUnpairer interface {
+	Unpair(ctx context.Context, id string) error
+}
+
 // DeviceRow is one device of the fleet as the device list shows it.
 type DeviceRow struct {
 	ID       string
 	Name     string
 	Platform string
+	Kind     string // "client" for a phone; empty for a computer
+	Client   bool   // true when the device is a phone (client-class)
 	Self     bool
 	Revoked  bool
 	Online   bool          // set by the screen from the feed, not by the door
 	LastSeen time.Time     // zero when never seen
 	Permit   *DevicePermit // nil when this door does not offer the switches
+}
+
+func (d DeviceRow) isPhone() bool {
+	return d.Client || d.Kind == clientproto.ClientLinkClass
 }
 
 // Approvals is the door onto answering and revoking devices. Nil in [Options]
@@ -132,7 +147,8 @@ func buildLinkShape() *regexp.Regexp {
 	}
 	live := strings.Join(quoted, "|")
 	all := strings.Join(append(quoted, regexp.QuoteMeta("codeaf.link")), "|")
-	return regexp.MustCompile(`(?i)^(https?://)?((?:` + live + `)/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?(?:` + all + `)/p/.+$`)
+	clientLen := strconv.Itoa(clientproto.ClientLinkCodeLen)
+	return regexp.MustCompile(`(?i)^(https?://)?((?:` + live + `)/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^[0-9a-hjkmnp-tv-z]{` + clientLen + `}([.#].+)?$|^(https?://)?(?:` + all + `)/p/.+$`)
 }
 
 // isPairLink is the one recogniser for a link pasted or typed where no pairing
@@ -251,7 +267,11 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 	case m.approved:
 		a.pair.close()
 		a.addMachine.grew()
-		a.toastJoined(m.req.Name, m.req.Device)
+		if m.req.Client {
+			a.toastJoinedPhone(m.req.Name, m.req.Device)
+		} else {
+			a.toastJoined(m.req.Name, m.req.Device)
+		}
 	default:
 		a.pair.close()
 		a.toast(fmt.Sprintf(approveDenied, m.req.Name))
@@ -296,11 +316,20 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 		return dressed(wrap(text, max(width, 4)), pal.ink)
 	}
 	r, info := c.req, platformOf(c.req.Platform)
-	out := dressed(wrap(approveAsk, max(width, 4)), pal.ink)
+	ask := approveAsk
+	if r.Client {
+		ask = pair.PhoneWantsToConnectLine
+	}
+	out := dressed(wrap(ask, max(width, 4)), pal.ink)
 	out = append(out, pal.accent(fit("  "+pal.glyph(info.icon)+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
-	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
-	out = append(out, dressed(wrap(pair.PairedControlLine(r.Name), max(width, 4)), pal.ink)...)
+	if r.Client {
+		out = append(out, dressed(wrap(pair.PhoneAccessLine, max(width, 4)), pal.ink)...)
+		out = append(out, dressed(wrap(pair.PhoneCheckQuestion(r.Check), max(width, 4)), pal.ink)...)
+	} else {
+		out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
+		out = append(out, dressed(wrap(pair.PairedControlLine(r.Name), max(width, 4)), pal.ink)...)
+	}
 	line := c.line
 	if line == "" && !r.ExpiresAt.After(now) {
 		line = approveGone
@@ -428,6 +457,11 @@ func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) toastJoined(name, device string) {
 	a.approve.markApproved(device)
 	a.toast(pair.ApprovedLine(name))
+}
+
+func (a *app) toastJoinedPhone(name, device string) {
+	a.approve.markApproved(device)
+	a.toast(pair.ApprovedPhoneLine(name))
 }
 
 // toast says a sentence where it is seen at once: in the transcript, and on

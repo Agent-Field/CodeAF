@@ -30,6 +30,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -61,6 +62,12 @@ const (
 	devicesTypeOnWord     = "%s can type into chats on this computer."
 	devicesTypeOffWord    = "%s can watch, not type."
 	devicesPermitNoSetter = "this build cannot change that"
+	devicesPhoneWord      = pair.PhoneWord
+	devicesPhoneAccess    = pair.PhoneAccessWord
+	devicesPhonePermitSet = pair.PhonePermitSetLine
+	devicesAddPhoneHead   = "add a phone: open this link on your phone, then choose a computer in the app:"
+	devicesAddPhoneTail   = "The phone then shows its own link; paste it here with /pair."
+	devicesAddPhoneOff    = "sync is off on this computer, so a phone cannot connect yet."
 )
 
 func devicesTypeAskFor(name string) string  { return fmt.Sprintf(devicesTypeAsk, name) }
@@ -232,15 +239,24 @@ func orderDevices(rows []DeviceRow) []DeviceRow {
 	return rows
 }
 
-// rank is the group a row sorts in: this device 0, online 1, away 2.
+// rank is the group a row sorts in: this device 0, online 1, away 2, phone 3.
 func (d DeviceRow) rank() int {
 	switch {
 	case d.Self:
 		return 0
+	case d.isPhone():
+		return 3
 	case d.Online:
 		return 1
 	}
 	return 2
+}
+
+func (d DeviceRow) systemWord() string {
+	if d.isPhone() {
+		return devicesPhoneWord
+	}
+	return platformOf(d.Platform).word
 }
 
 func (d DeviceRow) before(o DeviceRow) bool {
@@ -289,14 +305,14 @@ func (c *deviceCard) hint() string {
 }
 
 // rowActionKeys returns the action keys offered for one device row: removal on
-// another computer that is not yet removed, plus watch and type switches when
-// that row carries permit information.
+// another computer or phone that is not yet removed, plus watch and type
+// switches when a computer row carries permit information.
 func (c *deviceCard) rowActionKeys(row DeviceRow) []string {
 	if row.Self || row.Revoked {
 		return nil
 	}
 	out := []string{devicesGoneKey}
-	if row.Permit != nil {
+	if !row.isPhone() && row.Permit != nil {
 		out = append(out, devicesWatchKey, devicesTypeKey)
 	}
 	return out
@@ -454,7 +470,7 @@ func (c *deviceCard) rowText(d DeviceRow, now time.Time, pal palette) string {
 	online, _ := c.livePresence()
 	d.Online = online[d.ID] && !d.Revoked
 	nameW, wordW := c.columns()
-	text := d.dot(pal) + " " + padTo(c.shownName(d), nameW) + "  " + padTo(platformOf(d.Platform).word, wordW)
+	text := d.dot(pal) + " " + padTo(c.shownName(d), nameW) + "  " + padTo(d.systemWord(), wordW)
 	for _, tail := range d.tails(now) {
 		text += "  " + tail
 	}
@@ -476,7 +492,7 @@ func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palet
 func (c *deviceCard) columns() (nameW, wordW int) {
 	for _, d := range c.rowsOf {
 		nameW = max(nameW, ansi.StringWidth(c.shownName(d)))
-		wordW = max(wordW, ansi.StringWidth(platformOf(d.Platform).word))
+		wordW = max(wordW, ansi.StringWidth(d.systemWord()))
 	}
 	return nameW, wordW
 }
@@ -492,7 +508,7 @@ func (d DeviceRow) dot(pal palette) string {
 }
 
 func (d DeviceRow) canEditPermit() bool {
-	return !d.Self && !d.Revoked && d.Permit != nil
+	return !d.Self && !d.Revoked && !d.isPhone() && d.Permit != nil
 }
 
 func (d DeviceRow) permitWord() string {
@@ -515,6 +531,12 @@ func (d DeviceRow) tails(now time.Time) []string {
 		return []string{"removed"}
 	case d.Self:
 		return []string{devicesSelf}
+	case d.isPhone():
+		var out []string
+		if !d.Online && !d.LastSeen.IsZero() {
+			out = append(out, seenTail(d.LastSeen, now))
+		}
+		return append(out, devicesPhoneAccess)
 	}
 	var out []string
 	switch {
@@ -580,8 +602,37 @@ func (c *deviceCard) key(a *app, name string) (tea.Cmd, bool) {
 		a.toggleDeviceWatch(c)
 	case name == "t":
 		a.toggleDeviceType(c)
+	case name == "a":
+		c.showAddPhone(a)
+		a.syncSheetDeviceCard(c, c.loaded && c.cursor == len(c.rowsOf))
 	}
 	return nil, false
+}
+
+func (c *deviceCard) showAddPhone(a *app) {
+	addr := c.syncAddress(a)
+	if addr == "" {
+		c.line = devicesAddPhoneOff
+		return
+	}
+	c.line = devicesAddPhoneHead + "\n" + pair.SetupLink(addr) + "\n" + devicesAddPhoneTail
+}
+
+func (c *deviceCard) syncAddress(a *app) string {
+	address := c.service
+	if address == "" && a != nil {
+		address = a.syncService
+		if door, ok := a.approvals.(interface{ SyncService() string }); ok {
+			if s := door.SyncService(); s != "" {
+				address = s
+			}
+		}
+	}
+	service := syncsetup.Relay{URL: address, Off: strings.EqualFold(address, "off")}
+	if !service.On() {
+		return ""
+	}
+	return address
 }
 
 func boolPtr(v bool) *bool { return &v }
@@ -593,7 +644,15 @@ func (a *app) permitSetter() PermitSetter {
 
 func (a *app) toggleDeviceWatch(c *deviceCard) {
 	row, ok := c.pick()
-	if !ok || !row.canEditPermit() {
+	if !ok {
+		return
+	}
+	if row.isPhone() && !row.Revoked {
+		c.line = devicesPhonePermitSet
+		a.syncSheetDeviceCard(c, false)
+		return
+	}
+	if !row.canEditPermit() {
 		return
 	}
 	name := c.shownName(row)
@@ -606,7 +665,15 @@ func (a *app) toggleDeviceWatch(c *deviceCard) {
 
 func (a *app) toggleDeviceType(c *deviceCard) {
 	row, ok := c.pick()
-	if !ok || !row.canEditPermit() {
+	if !ok {
+		return
+	}
+	if row.isPhone() && !row.Revoked {
+		c.line = devicesPhonePermitSet
+		a.syncSheetDeviceCard(c, false)
+		return
+	}
+	if !row.canEditPermit() {
 		return
 	}
 	name := c.shownName(row)
@@ -670,7 +737,13 @@ func (a *app) removeDevice(c *deviceCard, row DeviceRow) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
 		defer cancel()
-		return revokedMsg{card: c, row: row, err: door.Revoke(ctx, row.ID)}
+		err := door.Revoke(ctx, row.ID)
+		if err == nil && row.isPhone() {
+			if u, ok := door.(PhoneUnpairer); ok {
+				_ = u.Unpair(ctx, row.ID)
+			}
+		}
+		return revokedMsg{card: c, row: row, err: err}
 	}
 }
 

@@ -167,6 +167,22 @@ func PairedControlLine(name string) string {
 // ApprovedLine is what the approving device says when it let one in.
 func ApprovedLine(name string) string { return name + " is now paired. " + PairedControlLine(name) }
 
+// PhoneWantsToConnectLine is the heading when a phone asks to connect.
+const PhoneWantsToConnectLine = "A phone wants to connect."
+
+// PhoneAccessLine states what a paired phone can and cannot do across the fleet.
+const PhoneAccessLine = "It can start chats and answer on all your computers. It never gets your keys or your files."
+
+// PhoneCheckQuestion is what the approving person is asked when a phone connects.
+func PhoneCheckQuestion(check string) string {
+	return "Check number " + check + ". Approve only if the phone shows the same number."
+}
+
+// ApprovedPhoneLine is what the approving computer says when it let a phone in.
+func ApprovedPhoneLine(name string) string {
+	return name + " is now paired as a phone. It can start chats and answer on every computer you have paired. Remove it in /devices."
+}
+
 // RecordUnsaidLine is what a device says when its own record did not reach the
 // directory after a pairing that itself worked: the pairing stands, and the
 // next chat start writes the record anyway, so this is one dim line and not a
