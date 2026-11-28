@@ -331,7 +331,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them; while hosted storage is off, a chat moves by blind pass-through when both computers are running codeaf. Read *Sync your chats between machines* in the terminal page for the sync settings.
 
-There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
+To get my chats on my phone, connect the codeaf phone app: open `/devices` on a paired computer, press `a` (`a add a phone`) to show the `workaf://setup?v=1&sync=...` setup link, and paste the phone's 10-character link into `/pair` (see *Your phone*). The `/p/` pairing-link page in a browser still shows the approval command and link when you are pairing two computers, while the phone app lets your phone start chats and answer on your paired computers without moving the project folder or model keys onto the phone.
 
 ## Devices and revoking — what you can stop, and what you cannot
 
@@ -516,7 +516,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 - **The same chats on both computers:** pair them with `/pair`. This page.
 - **Work on one machine from the other, with no ssh:** `codeaf serve` on the machine that has the work, and `codeaf chat --at <name>` on the other. Read *Reaching a machine with a pairing code*.
 - **Work on one machine from the other, with ssh:** `codeaf chat --host <machine>`. Read *Running on another machine*.
-- **A phone:** there is no phone client in this stage.
+- **A phone:** connect the codeaf phone app with `a` in `/devices` and `/pair` (see *Your phone*); a phone starts chats and answers on your computers without holding your files or model keys.
 
 
 ## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build

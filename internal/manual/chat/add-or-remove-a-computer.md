@@ -205,11 +205,36 @@ A filled dot is online, a hollow one is not, and an offline device says when it 
 
 ## Remove a computer — r asks once, y removes, any other key keeps it
 
-The removable row’s key line says `r remove`. To remove a device (the command line calls this revoking: `codeaf devices revoke <name>`), move to its row and press `r`. The card asks `remove desk? it must pair again to come back  ·  y removes  ·  any other key keeps it`. It uses the shown name, including a duplicate name’s `#tail`. Only `y` removes it; every other key, including `esc`, cancels and keeps that row selected without doing anything else. After `y`, the row says `removed`:
+The removable row’s key line says `r remove`. To remove a device or phone (the command line calls this revoking: `codeaf devices revoke <name>`), move to its row and press `r`. The card asks `remove desk? it must pair again to come back  ·  y removes  ·  any other key keeps it`. It uses the shown name, including a duplicate name’s `#tail`. Only `y` removes it; every other key, including `esc`, cancels and keeps that row selected without doing anything else. After `y`, the row says `removed`:
 
 ```
 desk was removed — it can no longer reach your chats.
 ```
+
+Removing a phone stops every one of your computers serving it, clears whatever was waiting for it, and each of them remembers the removal, so an older copy of the device list cannot let it back in.
+
+## Add a phone
+
+To connect the codeaf phone app instead of another computer, open `/devices` (or `Settings → Devices`) and press `a` (`a add a phone`).
+
+- When sync is on, `/devices` shows the setup link to open on your phone:
+  - `add a phone: open this link on your phone, then choose a computer in the app:`
+  - `workaf://setup?v=1&sync=<url-encoded-sync-url>`
+  - `The phone then shows its own link; paste it here with /pair.`
+- When sync is off (`CODEAF_SYNC_URL=off`), pressing `a` shows no link and says:
+  `sync is off on this computer, so a phone cannot connect yet.`
+
+After you open the setup link on your phone, the phone shows its own 10-character pairing link (`<code>.<key>`) and a four-digit check number. Paste that link into `/pair <link>` on your computer (or run `codeaf pair approve <link-or-token> [--check <n>]` in a terminal). The approval card says:
+
+- `A phone wants to connect.`
+- `It can start chats and answer on all your computers. It never gets your keys or your files.`
+- `Check number 4821. Approve only if the phone shows the same number.`
+
+Press `a` to approve once the four-digit check number matches your phone. When approval finishes, codeaf says:
+
+`iPhone is now paired as a phone. It can start chats and answer on every computer you have paired. Remove it in /devices.`
+
+In `/devices` and `codeaf devices`, a paired phone is listed after your computers with system `phone` and access `starts chats, answers`. Pressing `w` or `t` on a phone row (or running `codeaf devices permit` on a phone) says `this is set on the phone`. See *Your phone* (`your-phone`) for what a phone can do and how to start a chat on a computer from your phone.
 
 ## Removed device rows, list order and a missing computer
 

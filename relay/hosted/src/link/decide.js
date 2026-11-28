@@ -4,9 +4,10 @@
 // repeat of the same approve decides nothing new and writes the same device again, a crash between
 // the two steps is mended by the caller's retry.
 import { checkCert } from '../verify.js';
+import { fromBase64Url } from '../codec.js';
 import { badRequest, unwrap } from '../wire.js';
-import { asGrant, codeOf, platformOf } from './code.js';
-import { gone } from './refusals.js';
+import { asGrant, CLIENT_CLASS, codeOf, platformOf } from './code.js';
+import { gone, notEnrolled } from './refusals.js';
 
 const gateOf = (c) => c.env.LINK_GATE.get(c.env.LINK_GATE.idFromName('gate'));
 
@@ -26,9 +27,14 @@ async function certDevice(c, cert) {
   return proof.device;
 }
 
-/** checkApprovalDevice validates the certificate before a request can be reserved. */
+/**
+ * checkApprovalDevice validates the certificate before a request can be reserved. It is the full-device
+ * body of a computer's request: a body that names a `class`, or any body for a phone's request, is 400
+ * here, so a phone's request can never be turned into a device with an identity's authority.
+ */
 export async function checkApprovalDevice(c, body, request) {
   if (!isObject(body) || !isObject(body.device)) throw badRequest();
+  if (body.class !== undefined || request.class !== undefined) throw badRequest();
   if ((body.device.kind ?? '') !== '' || (body.device.methods?.length ?? 0) > 0) throw badRequest();
   if ((await certDevice(c, body.cert)) !== request.device) throw badRequest();
 }
@@ -41,13 +47,47 @@ async function asApproval(c, body, request) {
   return { grant, device: { ...body.device, platform: platformOf(body.device.platform ?? request.platform) } };
 }
 
+/**
+ * clientGrant checks the body of a phone's approval: exactly {"class":"client","grant":<base64url>}, with
+ * the grant at most `max` bytes decoded. Every refusal here is 400 (routes.json link.approve.client), the
+ * oversize grant too, unlike a computer's approval, which answers that 413 too_big.
+ */
+export function clientGrant(body, max) {
+  if (!isObject(body)) throw badRequest();
+  const keys = Object.keys(body);
+  if (keys.length !== 2 || body.class !== CLIENT_CLASS || !keys.includes('grant')) throw badRequest();
+  const bytes = typeof body.grant === 'string' ? fromBase64Url(body.grant) : null;
+  if (!bytes || bytes.length === 0 || bytes.length > max) throw badRequest();
+  return body.grant;
+}
+
+/**
+ * requireEnrolled is the precondition of a phone's approval: the device is registered as a client of this
+ * identity, not revoked, and its enrollment is stored. The approver enrolls and registers first (design
+ * 3.7), because the approval itself writes no device row. Otherwise 409 not_enrolled and the request
+ * stays pending.
+ */
+export function requireEnrolled(row, enrolled) {
+  if (row?.kind !== 'client' || row.revoked || !enrolled) throw notEnrolled();
+}
+
 /** approve answers the 204 of a request approved, or throws the refusal that says why not. */
 export async function approve(c, [text]) {
   const { code, box } = requestOf(c, text);
   const request = unwrap(await box.read(0));
+  if (request.class === CLIENT_CLASS) return approveClient(c, code, box, request);
   const { grant, device } = await asApproval(c, parseJson(c.body), request);
   unwrap(await box.decide('approved', grant));
   c.tenant.join(request.device, device);
+  await gateOf(c).decided(code);
+}
+
+// A phone's approval writes no device row: it marks the request approved and keeps the grant for the
+// phone's read. Nothing here reaches the directory, so there is nothing for the phone to be mistaken for.
+async function approveClient(c, code, box, request) {
+  const grant = clientGrant(parseJson(c.body), c.tenant.limits.linkMaxGrant);
+  requireEnrolled(c.tenant.dir.read('devices', request.device), c.tenant.fabric.hasEnrollment(request.device));
+  unwrap(await box.decide('approved', grant));
   await gateOf(c).decided(code);
 }
 

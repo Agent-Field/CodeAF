@@ -92,6 +92,12 @@ signed approve and deny routes under `/v1/dir/requests/` enter through the ident
 The shared Go state machine commits device authorization, metadata and the sealed decision together.
 A retained outbox delivers that decision to the request object afterward and repairs interrupted
 delivery. The grant and sealed name remain opaque bytes.
+A phone's request names `class: "client"` and a 16-byte `bind` that the relay stores and serves back as sent and never
+checks, and gets a 10-character code (a computer's stays 8; every lookup takes both). Its approve body is exactly
+`{"class":"client","grant":...}`: the coordinator requires the phone to be registered as a non-revoked client and an
+enrollment to be stored (`409 not_enrolled` otherwise), commits nothing to Raft and writes no device row (nor does a
+denial of a phone's request), and the request object reserves the code for the identity and keeps the grant under a delivery named by the grant itself,
+so a repeat is `204` and a different grant is `409 already_decided`.
 
 The pinned modified Go Raft core and directory state machine compile into the Worker's WASI reactor.
 JavaScript owns authentication, storage, transport and encrypted blobs; it does not decide lease or

@@ -2426,11 +2426,15 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 
 	case "enter":
 		return a.activate(), true
-	case "r", "n", "w", "t":
+	case "r", "n", "w", "t", "a":
 		key := msg.String()
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
+				if key == "a" {
+					cmd, _ := s.dev.key(a, key)
+					return cmd, true
+				}
 				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
 					cmd, _ := s.dev.key(a, key)
 					return cmd, true

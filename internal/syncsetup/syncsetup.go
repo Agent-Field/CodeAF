@@ -82,7 +82,10 @@ type Sync struct {
 	// offers, with the pass's lock released: a pass lasts as long as its
 	// uploads keep moving, and the caller counts (CountUnshared) and does its
 	// other sharing work between chats instead of after the whole backlog.
-	BetweenChats      func()
+	BetweenChats func()
+	// phoneBase, when set, is what the phone gate's client sends through instead of the
+	// default transport. A wire test sets it to a recorder; production never does.
+	phoneBase         http.RoundTripper
 	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
 	teamsShared       bool               // Enabling sharing must restore an already-known vault.
 	removed           atomic.Bool

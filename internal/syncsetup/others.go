@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
@@ -37,7 +38,10 @@ func othersPath(home string, b deviceBinding) string {
 func rememberOthers(home string, b deviceBinding, devices map[string]directory.Device) {
 	others := false
 	for id, rec := range devices {
-		if id != b.self && !rec.Revoked {
+		// A PHONE IS NOT ANOTHER COMPUTER of this identity: there is no chat to carry to
+		// it, and counting it would make a computer that only serves a phone behave as
+		// if it shared its chats (contract P13).
+		if id != b.self && !rec.Revoked && rec.Kind != clientproto.ClientLinkClass {
 			others = true
 			break
 		}

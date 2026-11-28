@@ -233,9 +233,10 @@ with the same host name are two entries.
 connection to the relay. What that means for the conversation on the far machine is the
 same as for any other connection; nothing about `--at` changes it.
 
-**A phone or a tablet cannot do this yet.** There is no browser client and no phone app;
-`--at` is a terminal command, so a phone reaches a machine only if you have a terminal on
-it that can run codeaf.
+**`--at` is for a terminal; a phone uses the phone app instead.** There is no browser client for
+`--at`; `--at` is a terminal command, so to start chats and answer questions from your phone
+without a terminal, pair the codeaf phone app through `/devices` (`a add a phone`) and `/pair`
+(see *Your phone*), or run `codeaf` in a mobile terminal on the phone.
 
 ## What a paired device is allowed to do
 
@@ -374,6 +375,14 @@ not mention `--all` at all.
 computer that syncs your chats as well as a device that can use this machine. It used to look
 only at devices that can use this machine, so `codeaf devices revoke <name> --all` said `no
 device called "<name>" is paired with this machine` for a computer the list showed.
+
+**Two phones with one name.** Every phone first arrives under the name its app gave it, so two
+phones often share one. `codeaf devices revoke "WorkAF phone"` refuses them with the choices, and
+`codeaf devices revoke "WorkAF phone" --all` removes every phone of that name, answering one line
+for each, such as `WorkAF phone #8381 was removed — it can no longer reach your chats.` It used to
+refuse them again with the same `more than one device is called` sentence. A name this computer
+answers to is never removed by `--all`: it says `that is this device — remove it from another of
+your devices instead` and removes nothing, not even the others of that name.
 
 Removing one device with `--all` answers in the ordinary sentence — `laptop was removed — it
 can no longer open a chat here, and it needs a new pairing code to come back.` Removing

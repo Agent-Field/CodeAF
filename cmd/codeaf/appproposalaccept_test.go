@@ -40,7 +40,7 @@ func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle, layout
 	rec.mu.Lock()
 	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
 	rec.mu.Unlock()
-	backend.mint = func(string) (string, error) {
+	backend.mint = func(string, ...func(string) error) (string, error) {
 		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), layout, "transcript.jsonl"), nil
 	}
 	backend.open = func(ask appOpenAsk) (*appConn, error) {
@@ -158,7 +158,7 @@ func TestAppCrewProposalSeatsAHelperWhoseOpenFails(t *testing.T) {
 	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
 	rec.mu.Unlock()
 	var minted atomic.Int64
-	backend.mint = func(string) (string, error) {
+	backend.mint = func(string, ...func(string) error) (string, error) {
 		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), "transcript.jsonl"), nil
 	}
 	backend.open = func(ask appOpenAsk) (*appConn, error) {
@@ -361,7 +361,7 @@ func TestAppMemberPauseIsKeptInTheTeamStore(t *testing.T) {
 	rec.mu.Lock()
 	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
 	rec.mu.Unlock()
-	backend.mint = func(string) (string, error) {
+	backend.mint = func(string, ...func(string) error) (string, error) {
 		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), "transcript.jsonl"), nil
 	}
 	backend.open = func(ask appOpenAsk) (*appConn, error) {

@@ -419,6 +419,41 @@ func (s *Sync) PublishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	return err
 }
 
+// HoldNewChat records a chat just made on this computer and takes its lease,
+// without uploading anything. It is the road for an account whose relay keeps no
+// chats (storage off), where [Sync.PublishCopy] can only refuse: the record is
+// coordination (who holds the chat, and under which key), not content, and it is
+// what lets a phone find the chat on this computer and send to it.
+//
+// THE RECORD NAMES NO HEAD, NO TITLE AND NO FOLDER. A head would name turns the
+// relay cannot hold, and the two sealed names are the first thing about a chat
+// the relay would otherwise keep: the same choice [liveRecordsCarryTitle] makes
+// for a chat that moves by blind pass-through. It does carry the chat's class
+// and its wrapped key row, which a publish that moves the head later cannot add,
+// so the chat's own drive can carry on from this record the way it does for any
+// record whose head is still empty.
+//
+// A second call finds the record and only takes the lease again, so a create
+// that is retried after a crash holds the chat once.
+func (s *Sync) HoldNewChat(ctx context.Context, c cell.Cell) error {
+	if Quiet(s.Home) {
+		return ErrQuiet
+	}
+	// Serialize with a foreground opening of the same chat on this home, as the
+	// create in publishCopy does.
+	lock, err := s.lockChat(c.ID, ".publication")
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	info := s.publishInfo(c, "")
+	if _, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Class: info.Class, Keys: info.Keys}); err != nil && !errors.Is(err, directory.ErrExists) {
+		return err
+	}
+	_, err = s.Dir.Acquire(ctx, c.ID, directory.AcquireOpts{})
+	return err
+}
+
 // publishCopy is PublishCopy that times each request to the relay with watch
 // and reports what it sent.
 // earlier is the frame bytes earlier attempts already put for this chat.

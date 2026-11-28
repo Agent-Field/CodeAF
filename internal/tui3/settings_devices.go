@@ -272,7 +272,7 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		for i, d := range s.dev.rowsOf {
 			fields := []string{
 				s.dev.shownName(d),
-				platformOf(d.Platform).word,
+				d.systemWord(),
 				tabDevices,
 				"devices",
 				"remove",
@@ -382,7 +382,7 @@ func (s *sheet) devicesNote(pal palette, width int) ([]string, bool) {
 		return nil, true
 	}
 	room := max(1, width-2)
-	if s.dev.line != "" && ansi.StringWidth(s.dev.line) <= room {
+	if s.dev.line != "" && !strings.Contains(s.dev.line, "\n") && ansi.StringWidth(s.dev.line) <= room {
 		return []string{" " + pal.dim(noteFit(s.dev.line, room))}, true
 	}
 	if s.dev.line == "" && s.dev.readErr != nil && ansi.StringWidth(s.dev.readErr.Error()) <= room {
@@ -415,7 +415,7 @@ func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
 	if s.dev == nil {
 		return lines
 	}
-	if s.dev.line != "" && ansi.StringWidth(s.dev.line) > ruleRoom {
+	if s.dev.line != "" && (strings.Contains(s.dev.line, "\n") || ansi.StringWidth(s.dev.line) > ruleRoom) {
 		lines = append(lines, wrap(s.dev.line, wrapRoom)...)
 	}
 	if s.dev.readErr != nil && (s.dev.line != "" || ansi.StringWidth(s.dev.readErr.Error()) > ruleRoom) {

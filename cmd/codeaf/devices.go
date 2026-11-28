@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"runtime"
@@ -27,14 +28,17 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -49,8 +53,10 @@ type deviceKind interface {
 	stop(name string) (string, error)
 }
 
-// allStopper is a kind that can stop every device answering to one name. Only
-// the remote-access kind can: two laptops with one host name are common there,
+// allStopper is a kind that can stop every device answering to one name. The
+// remote-access kind can, since two laptops with one host name are common there,
+// and so can the computers that sync the chats, which hold phones too: every
+// phone is first called by the name its maker gave it, so two phones share one,
 // and each is a key the person can tell apart no other way.
 type allStopper interface {
 	stopAll(name string) (string, error)
@@ -313,10 +319,13 @@ func stopAllByName(kinds []deviceKind, name string) (string, error) {
 			stop = many.stopAll
 		}
 		line, err := stop(name)
+		// What a kind did stop before it failed is still said.
+		if line != "" {
+			said = append(said, line)
+		}
 		if err != nil {
 			return strings.Join(said, "\n"), err
 		}
-		said = append(said, line)
 	}
 	if len(said) == 0 {
 		return "", cmp.Or(failed, unknownDevice(name))
@@ -467,20 +476,38 @@ type chatsKind struct {
 	self     string // this computer's device id
 	relay    string // named when the relay cannot be reached
 	identity string // identity id for this computer's permit book
+	unpair   tui3.PhoneUnpairer
+}
+
+func (c chatsKind) phoneUnpairer() tui3.PhoneUnpairer {
+	if c.unpair != nil {
+		return c.unpair
+	}
+	return activePhoneUnpairer()
 }
 
 // openChatsKind is the kind for this machine, and false when it has none: sync
 // off, or no identity yet. Both are the emptiness law, not an error, so the
 // heading is simply absent.
 func openChatsKind() (chatsKind, bool) {
-	if syncsetup.Quiet(home.Dir()) {
+	quiet := syncsetup.Quiet(home.Dir())
+	if quiet && !syncsetup.PhonesApproved(home.Dir()) {
 		return chatsKind{}, false
 	}
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		return chatsKind{}, false
 	}
-	c := chatsKindOf(s.Dir, s.Identity.CellKey(), s.Device.ID(), s.Relay)
+	dir := s.Dir
+	if quiet {
+		// A solo computer with an approved phone is quiet toward every other
+		// computer, so its ordinary client refuses everything. The person asked to see
+		// and remove the phone, which is their own explicit act, so this one read of
+		// its own device list goes out directly (contract P13).
+		sign := reqsign.SignFor(homeSigner{s.Identity, s.Device}, time.Now)
+		dir = directory.NewHTTP(s.Relay, sign, &http.Client{Timeout: linkTimeout})
+	}
+	c := chatsKindOf(dir, s.Identity.CellKey(), s.Device.ID(), s.Relay)
 	c.identity = s.Identity.ID()
 	return c, true
 }
@@ -514,9 +541,15 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 	for id, d := range l.Devices {
 		name := chatlist.DeviceName(l.Devices, id, open)
 		rows = append(rows, chatsRow{
-			ChatsDevice: pair.ChatsDevice{Name: name, This: id == c.self, Stopped: d.Revoked, Platform: d.Platform},
-			id:          id,
-			baseName:    name,
+			ChatsDevice: pair.ChatsDevice{
+				Name:     name,
+				This:     id == c.self,
+				Stopped:  d.Revoked,
+				Phone:    d.Kind == clientproto.ClientLinkClass,
+				Platform: d.Platform,
+			},
+			id:       id,
+			baseName: name,
 		})
 	}
 	for i := range rows {
@@ -525,9 +558,9 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 			rows[i].LastSeen = time.UnixMilli(seen)
 		}
 	}
-	// This computer first, removed ones last, then by name: the order the chat's list uses.
+	// This computer first, phones after computers, removed ones last, then by name.
 	slices.SortFunc(rows, func(a, b chatsRow) int {
-		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id))
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(rank(a.Phone), rank(b.Phone)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id))
 	})
 	return rows, nil
 }
@@ -564,7 +597,7 @@ func chatsRowsTable(rows []chatsRow, now time.Time, duplicates map[string]bool) 
 		shown[i].Name = devname.DeviceLabel(row.baseName, row.id, duplicates[strings.ToLower(row.baseName)])
 	}
 	slices.SortStableFunc(shown, func(a, b pair.ChatsDevice) int {
-		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name))
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(rank(a.Phone), rank(b.Phone)), cmp.Compare(a.Name, b.Name))
 	})
 	text := pair.ChatsDevicesListAt(shown, now)
 	if stdinIsTerminal(os.Stdout) {
@@ -616,6 +649,42 @@ func (c chatsKind) stop(name string) (string, error) {
 	return c.revoke(rows[0])
 }
 
+// stopAll removes every device of this kind that answers to name, computers
+// and phones alike, each in the sentence its own removal says. Two phones that
+// both arrived as "WorkAF phone" are the ordinary case, and the plain form
+// refuses them with the choices, so this is the road that takes them all.
+//
+// THIS COMPUTER IS NEVER REMOVED, AND NOTHING IS REMOVED BEFORE THAT IS KNOWN:
+// a name this computer answers to refuses the whole call at once, rather than
+// removing the others first and then failing on the one it cannot.
+func (c chatsKind) stopAll(name string) (string, error) {
+	rows, err := c.called(name)
+	switch {
+	case err != nil:
+		return "", err
+	case len(rows) == 0:
+		return "", unknownDevice(name)
+	}
+	for _, row := range rows {
+		if row.This {
+			return "", errors.New(chatlist.RemoveSelf)
+		}
+	}
+	var said []string
+	for _, row := range rows {
+		if row.Stopped {
+			said = append(said, row.Name+" is already removed.")
+			continue
+		}
+		line, err := c.revoke(row)
+		if err != nil {
+			return strings.Join(said, "\n"), err
+		}
+		said = append(said, line)
+	}
+	return strings.Join(said, "\n"), nil
+}
+
 func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if row.This {
 		return "", errors.New(chatlist.RemoveSelf)
@@ -625,9 +694,19 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if err := c.dir.Revoke(ctx, row.id); err != nil {
 		return "", c.explain(err)
 	}
+	if u := c.phoneUnpairer(); u != nil {
+		_ = u.Unpair(ctx, row.id)
+	}
+	// FORGET THE PHONE AFTER THE RUNNER HAS UNPAIRED IT: while it is still recorded the
+	// runner's own client may send the revoke, and once the last one is forgotten a solo
+	// computer goes fully quiet again (contract P13).
+	_ = syncsetup.ForgetPhone(home.Dir(), row.id)
 	livedoor.NotifyRemoved(home.Dir(), row.id)
 	_ = pair.Permits().Forget(row.id)
 	forgetViewed(home.Dir(), row.id)
+	if row.Phone {
+		return pair.PhoneRevokedLine(row.Name), nil
+	}
 	return pair.ChatsRevokedLine(row.Name), nil
 }
 
@@ -652,6 +731,9 @@ func (c chatsKind) permit(name string, watch, drive *bool) (string, error) {
 		return "", unknownDevice(name)
 	}
 	row := rows[0]
+	if row.Phone {
+		return pair.PhonePermitSetLine, nil
+	}
 	id := c.identityID()
 	book := pair.Permits()
 	if watch != nil || drive != nil {

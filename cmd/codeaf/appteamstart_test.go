@@ -47,17 +47,24 @@ func newStartHarness(t *testing.T) *startHarness {
 	t.Cleanup(func() { h.b.Close() })
 	h.b.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
 	h.b.profileDir = t.TempDir()
-	h.b.mint = func(string) (string, error) {
+	h.b.mint = func(_ string, before ...func(string) error) (string, error) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		dir := filepath.Join(h.places, "conv-"+strconv.Itoa(len(h.minted)+1))
+		path := filepath.Join(dir, "transcript.jsonl")
+		for _, hook := range before {
+			if hook != nil {
+				if err := hook(path); err != nil {
+					return "", err
+				}
+			}
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return "", err
 		}
 		if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte("{}"), 0o600); err != nil {
 			return "", err
 		}
-		path := filepath.Join(dir, "transcript.jsonl")
 		h.minted = append(h.minted, path)
 		return path, nil
 	}
@@ -891,9 +898,9 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	defer second.Close()
 	minted := 0
 	mint := second.mint
-	second.mint = func(w string) (string, error) {
+	second.mint = func(w string, before ...func(string) error) (string, error) {
 		minted++
-		return mint(w)
+		return mint(w, before...)
 	}
 	entries, _, err := second.Entries(got.Start.Manager, "", appwire.MaxEntries)
 	if err != nil {
@@ -987,14 +994,14 @@ func TestStartLosingTheClaimToAnotherStartMakesNothing(t *testing.T) {
 	h := newStartHarness(t)
 	ask := appwire.CrewCreate{Name: "Raced", StartManager: true, ManagerStartsMembers: true, RequestID: "r-race", Goal: "g"}
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, before ...func(string) error) (string, error) {
 		a := ask
 		a.Name, a.Goal = strings.TrimSpace(a.Name), strings.TrimSpace(a.Goal)
 		if made, err := h.b.startClaims().create(appStartClaim{V: appStartClaimV, RequestID: "r-race", Fingerprint: appStartFingerprint(a),
 			State: appClaimIntent, Crew: "t-other", Manager: "m", ManagerKey: "/k", Goal: true}); err != nil || !made {
 			t.Errorf("the other start's claim: %v %v", made, err)
 		}
-		return mint(w)
+		return mint(w, before...)
 	}
 	if _, err := h.b.CrewStart(ask); startCode(t, err) != appwire.CodeUncertain {
 		t.Fatalf("%v", err)

@@ -145,7 +145,10 @@ func startRelay(t *testing.T) string {
 
 // startRelayAt leaves the owned data directory visible to acceptance tests that
 // measure total storage across both computers and the transfer service.
-func startRelayAt(t *testing.T, store string) string {
+//
+// A caller that wants the relay to start differently (storage off, say) passes the
+// extra flags; the relay's own defaults decide everything it is not given.
+func startRelayAt(t *testing.T, store string, extra ...string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "relay")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/relay")
@@ -159,7 +162,7 @@ func startRelayAt(t *testing.T, store string) string {
 	}
 	addr := ln.Addr().String()
 	_ = ln.Close()
-	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, "--listen", addr, "--store", store, "--quiet")
+	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, append([]string{"--listen", addr, "--store", store, "--quiet"}, extra...)...)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}

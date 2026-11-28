@@ -439,7 +439,7 @@ that live view ends; reopen the chat after reconnecting to recover its current
 record and live output. This does not promise that a hidden tab’s status stays
 live across a broken connection.
 
-## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
+## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs — and how do I get out of the new chat page
 
 **`ctrl+t` or `+` at the tab strip opens a start page. It does not create anything.** No session, no
 agent, no file, nothing on the switcher — pressing it three times and escaping three times

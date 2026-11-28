@@ -144,7 +144,9 @@ func TestAppCrewProposalOrgAcceptStaysFlat(t *testing.T) {
 	if !reflect.DeepEqual(proposal.Teams, wantTeams) || len(proposal.Helpers) != 4 {
 		t.Fatalf("proposal = %+v", proposal)
 	}
-	backend.mint = func(string) (string, error) { return filepath.Join(t.TempDir(), "transcript.jsonl"), nil }
+	backend.mint = func(string, ...func(string) error) (string, error) {
+		return filepath.Join(t.TempDir(), "transcript.jsonl"), nil
+	}
 	backend.open = func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	}

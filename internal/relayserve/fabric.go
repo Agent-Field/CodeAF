@@ -8,12 +8,18 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -21,8 +27,8 @@ import (
 
 // Fabric limits bound the opaque data held for each client.
 const (
-	MaxFabricBody    = 96 << 10
-	MaxClientMethods = 64
+	MaxFabricBody    = clientproto.MaxFabricBody
+	MaxClientMethods = clientproto.MaxClientMethods
 )
 
 var fabricName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
@@ -31,9 +37,16 @@ var fabricDevice = regexp.MustCompile(`^dev_[0-9a-f]{32}$`)
 // fabric serializes client registration, data mutations and directory writes.
 // A store belongs to one relay process, like the directory's revocation feed.
 type fabric struct {
-	ns   *namespaces
-	auth wireauth.Authenticate
-	mu   sync.Mutex
+	ns            *namespaces
+	auth          wireauth.Authenticate
+	mu            sync.Mutex
+	slotWaiters   map[string]*slotWaiters
+	clientWatches map[string]*clientWatch
+	waiting       int
+	stop          <-chan struct{}
+	// drain closes when the relay begins shutting down, a moment before stop: a
+	// parked slot wait ends then, so the shutdown does not wait out its 25 seconds.
+	drain <-chan struct{}
 }
 
 type fabricError struct {
@@ -150,6 +163,7 @@ func (w *fabricResponse) Write(p []byte) (int, error) {
 type fabricCall struct {
 	f       *fabric
 	r       *http.Request
+	header  http.Header
 	body    []byte
 	id, dev string
 	ns      *nativeNamespace
@@ -161,8 +175,12 @@ type fabricRoute func(fabricCall) (any, error)
 func (f *fabric) handler() http.Handler {
 	mux := http.NewServeMux()
 	f.mountQueue(mux)
+	mux.HandleFunc("GET /v1/clients", f.serve(listEnrollments))
 	mux.HandleFunc("PUT /v1/clients/{device}", f.serve(registerClient))
+	mux.HandleFunc("PUT /v1/clients/{device}/enroll", f.serve(putEnrollment))
+	mux.HandleFunc("GET /v1/clients/{device}/computers", f.serve(getComputers))
 	mux.HandleFunc("PUT /v1/clients/{device}/slots/{name}", f.serve(putSlot))
+	mux.HandleFunc("GET /v1/clients/{device}/slots", f.watchSlots)
 	mux.HandleFunc("GET /v1/clients/{device}/slots/{name}", f.serve(getSlot))
 	return mux
 }
@@ -190,6 +208,7 @@ func (f *fabric) serve(route fabricRoute) http.HandlerFunc {
 			if err != nil {
 				return nil, err
 			}
+			c.header = w.Header()
 			return route(c)
 		}()
 		if isDir && err == nil {
@@ -206,7 +225,7 @@ func (f *fabric) admit(r *http.Request, body []byte) (fabricCall, error) {
 	if err != nil {
 		return c, err
 	}
-	if !fabricDevice.MatchString(r.PathValue("device")) {
+	if !(r.Method == http.MethodGet && r.URL.Path == "/v1/clients") && !fabricDevice.MatchString(r.PathValue("device")) {
 		return c, badFabric(400, "bad_request")
 	}
 	c.ns, err = f.ns.activate(r.Context(), c.id, nil)
@@ -215,6 +234,154 @@ func (f *fabric) admit(r *http.Request, body []byte) (fabricCall, error) {
 	}
 	c.listing, err = c.ns.fabricListing(r.Context())
 	return c, err
+}
+
+type enrolledClient struct {
+	Device string                 `json:"device"`
+	Enroll clientproto.Enrollment `json:"enroll"`
+}
+
+func (f *fabric) enrollPath(id string) string {
+	return filepath.Join(f.ns.root, "fabric", id, "enroll.json")
+}
+
+// loadEnrollments reads the stored enrollments for one identity. The caller holds f.mu.
+func (f *fabric) loadEnrollments(id string) (map[string]clientproto.Enrollment, error) {
+	all := map[string]clientproto.Enrollment{}
+	raw, err := os.ReadFile(f.enrollPath(id))
+	if errors.Is(err, os.ErrNotExist) {
+		return all, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &all); err != nil {
+		return nil, err
+	}
+	return all, nil
+}
+
+// saveEnrollments atomically replaces the enrollment map on disk so readers never see a partial file.
+func (f *fabric) saveEnrollments(id string, all map[string]clientproto.Enrollment) error {
+	raw, err := json.Marshal(all)
+	if err != nil {
+		return err
+	}
+	path := f.enrollPath(id)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".enroll-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	_, werr := file.Write(raw)
+	err = errors.Join(werr, file.Sync(), file.Close())
+	if err != nil {
+		return err
+	}
+	if err := fsreplace.Rename(file.Name(), path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	return errors.Join(dir.Sync(), dir.Close())
+}
+
+func putEnrollment(c fabricCall) (any, error) {
+	if c.listing.Devices[c.dev].Kind == "client" {
+		return nil, wireauth.ErrUnauthorized
+	}
+	if c.listing.Identity.Rotation != nil {
+		return nil, wireauth.ErrRotated
+	}
+	var in clientproto.Enrollment
+	if err := decodeFabric(c.body, &in); err != nil || in.Methods == nil || in.Reads == nil {
+		return nil, badFabric(400, "bad_request")
+	}
+	if in.Device != c.r.PathValue("device") {
+		return nil, badFabric(400, "bad_request")
+	}
+	key, err := base64.RawURLEncoding.DecodeString(c.r.Header.Get(reqsign.HeaderIdentity))
+	if err != nil || in.Verify(key) != nil {
+		return nil, badFabric(400, "bad_request")
+	}
+	if d, ok := c.listing.Devices[in.Device]; ok && (d.Kind != "client" || d.Revoked) {
+		return nil, badFabric(409, "exists")
+	}
+	all, err := c.f.loadEnrollments(c.id)
+	if err != nil {
+		return nil, err
+	}
+	if old, ok := all[in.Device]; ok {
+		if in.Same(old) {
+			return nil, nil
+		}
+		if in.Ver <= old.Ver {
+			return nil, badFabric(409, "version")
+		}
+	} else if len(all) >= clientproto.MaxEnrollments {
+		return nil, badFabric(429, "full")
+	}
+	all[in.Device] = in
+	return nil, c.f.saveEnrollments(c.id, all)
+}
+
+func listEnrollments(c fabricCall) (any, error) {
+	if c.listing.Devices[c.dev].Kind == "client" {
+		return nil, wireauth.ErrUnauthorized
+	}
+	if len(c.body) != 0 || c.r.URL.RawQuery != "" {
+		return nil, badFabric(400, "bad_request")
+	}
+	all, err := c.f.loadEnrollments(c.id)
+	if err != nil {
+		return nil, err
+	}
+	devices := slices.Sorted(maps.Keys(all))
+	clients := make([]enrolledClient, 0, len(devices))
+	for _, dev := range devices {
+		clients = append(clients, enrolledClient{Device: dev, Enroll: all[dev]})
+	}
+	return struct {
+		Clients []enrolledClient `json:"clients"`
+	}{clients}, nil
+}
+
+type computerEntry struct {
+	Device  string `json:"device"`
+	Serving bool   `json:"serving"`
+	At      int64  `json:"at"`
+}
+
+func getComputers(c fabricCall) (any, error) {
+	if err := c.target(true); err != nil {
+		return nil, err
+	}
+	if len(c.body) != 0 {
+		return nil, badFabric(400, "bad_request")
+	}
+	now := c.f.ns.now().UnixMilli()
+	ids := slices.Sorted(maps.Keys(c.listing.Devices))
+	computers := make([]computerEntry, 0, len(ids))
+	for _, id := range ids {
+		d := c.listing.Devices[id]
+		if d.Kind == "client" || d.Revoked {
+			continue
+		}
+		serving, at := false, d.LastSeen
+		if c.ns != nil && c.ns.feed != nil {
+			serving, at = c.ns.feed.ComputerStatus(id, d.LastSeen, now)
+		}
+		computers = append(computers, computerEntry{Device: id, Serving: serving, At: at})
+	}
+	return struct {
+		Now       int64           `json:"now"`
+		Computers []computerEntry `json:"computers"`
+	}{Now: now, Computers: computers}, nil
 }
 
 func registerClient(c fabricCall) (any, error) {

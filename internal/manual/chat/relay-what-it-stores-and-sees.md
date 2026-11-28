@@ -4,7 +4,7 @@
 
 Hosted relay storage is off by default while its privacy terms are being finished. Pairing does not turn it on. Saved keys stay on this computer, and no chat or file content is uploaded; the relay refuses even encrypted uploads. A chat can still move by blind pass-through between your paired computers while both are running codeaf: see *Blind pass-through*. Existing stored frames stay readable and nothing is deleted.
 
-Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
+Pairing, seeing your devices, `--at` and your phone still work (*Does storage off stop my phone*); the other computer must be on for `--at`. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
 
 After pairing, open **Settings → Devices → relay storage** in the terminal and press **enter** (`enter request access`) while it says **off**. In the desktop app, Devices and Advanced → Devices show **Relay storage** and **Request access…**. This opens a pre-filled GitHub issue. GitHub may ask you to sign in before showing the request. The terminal shows a request-code panel only when the browser cannot open; its **Open request on GitHub** link keeps the complete destination behind a short label. The desktop offers **Copy request link** if opening fails, and **Copy request code** while storage is off.
 
@@ -25,6 +25,12 @@ Repeated `/status` requests for the same home, identity and relay share a 30-sec
 Pairing asks for the storage answer alongside its other finishing work, with up to three attempts inside a best-effort budget of about 1.5 seconds. A timely answer is saved for other open windows before pairing finishes, including a successful answer without the storage field. A timeout or failed reading leaves the saved answer untouched and adds no sentence. A revoked or gone identity is not retried.
 
 Background chat publication waits silently while storage is off. It does not add a contradictory “could not be shared yet; will try again” notice or discard the chat's pending copy. Publication resumes after approval.
+
+## Does storage off stop my phone — what a phone still sends the service
+
+No. With storage off the service refuses chat uploads and keeps the device list, and a paired phone keeps working. That is also what `--storage off` does on a server you run yourself. A phone starts a chat on a computer, sends to it, stops it, answers it and reads its replies. Those travel as sealed slots and queued requests between the phone and one computer. The service keeps only the newest slot of each kind, sealed to your phone so it cannot read it, until the computer replaces it or you remove the phone; it is not chat storage and needs no approval.
+
+A chat a phone starts while storage is off leaves one directory record: the chat's id, the computer that holds it, its lease and its wrapped key. It has no title, no folder name and no head, so it names nothing the service cannot hold, and no copy of the conversation is uploaded for another computer to restore. The chat stays on that computer and moves to another only by blind pass-through, as in *Blind pass-through*. The *Your phone* page says the same from the phone's side.
 
 ## Does the relay keep my chat when I move it without relay storage — what blind pass-through leaves behind
 
@@ -122,17 +128,40 @@ list allows offline reads only; adding methods requires a new paired key.
 A full device can replace a named sealed slot for one scoped client of the same
 identity. Only that client reads the slot. The relay adds the writer device and
 write time; readers can show when a snapshot was last refreshed. Each client has
-at most 64 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
+at most 128 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
 deletes its slots. The relay sees ciphertext and slot names, so names must not
 contain private content. Slots persist across relay restarts. The publishing box
 must seal to the client's current key and respect chat lease ownership.
+
+## Enrolled phones, the computers list and live slot waits — which of my computers are serving my phone, how a phone is told to refresh
+
+A phone is enrolled once, with a statement signed by the identity key naming the
+phone, its two public keys, the methods it may call and the names it may read. The
+server stores that statement beside the phone's other data. At most 16 phones can
+be enrolled per identity, and a statement can be replaced only by one with a
+higher version. The server reads none of it; it checks only the shape and the
+identity signature, and every computer checks the statement again itself.
+
+A phone can ask the server for the identity's computers. The list names each
+non-revoked computer, whether it is serving phones right now and when it was last
+seen. A computer counts as serving only while it holds a directory watch open
+with `serving=1`, so a computer that is switched off or asleep stops showing as serving
+shortly after its socket goes quiet.
+
+A phone can also wait for its slots to change: a read that names the last version
+it saw and a wait of up to 25 seconds returns as soon as any slot changes, or with
+nothing when the time is up. A phone may hold two waits, and revoking the phone
+ends them at once. While a phone is waiting or reading, the server tells serving
+computers that it is watching, and a write to a slot answers with a
+`Codeaf-Client-Watching: 1` header, so computers publish at once only for a phone
+that is looking. The server never reads slot contents.
 
 ## Client queue, offline calls and replay protection
 
 Scoped clients can append sealed calls for an allowed method. Each call carries
 a signed sequence number, time and target box, or `any`. Numbers must increase
 by one, including after acknowledgement or expiry. Each client can hold 128
-unacknowledged calls, each at most 4 KiB; calls expire at 24 hours. The relay
+unacknowledged calls, each at most 4 KiB; calls expire at 24 hours. The server
 rejects replays, gaps, stale calls and methods outside the pairing's allowlist.
 A client with no allowed methods cannot queue calls.
 
@@ -142,4 +171,4 @@ winning box acknowledges to delete the entry. Queue operations never acquire a
 chat lease. Revoking a client deletes its queue. An executor must verify the
 retained original request proof, permissions, age and any required biometric
 confirmation inside the encrypted call, use durable execution idempotency and
-log executed calls. The relay cannot read the call or verify biometric evidence.
+log executed calls. The server cannot read the call or verify biometric evidence.

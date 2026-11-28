@@ -216,11 +216,33 @@ var (
 	ErrLinkDecided = errors.New("that request was already answered")
 	// ErrCheckMismatch is a request whose check number does not fit its key.
 	ErrCheckMismatch = errors.New("the check number does not fit that device, so nothing was approved")
+	// ErrLinkKeyless is a 10-character phone pairing token typed without its key suffix.
+	ErrLinkKeyless = errors.New("that link has no key; copy the whole link from the phone")
+	// ErrBindMismatch is a client-class request whose class, code length, device id or MAC does not match its token.
+	ErrBindMismatch = errors.New("that request does not match its link. Nothing was approved.")
+	// ErrSetupLinkShape is text that does not satisfy the workaf://setup?v=1&sync=... grammar.
+	ErrSetupLinkShape = errors.New("that is not a codeaf setup link")
+	// ErrNoExecutorCard is a client approval called before the computer has supplied its signed card provider.
+	ErrNoExecutorCard = errors.New("this computer has no phone card ready yet; open codeaf and approve again")
+	// ErrNoFabricClient is a client approval called without a signed fabric client.
+	ErrNoFabricClient = errors.New("this computer cannot reach the relay to enroll a phone")
 	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
 	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
 	// ErrNotJoined is an approver that has no device of its own to answer with.
 	ErrNotJoined = errors.New("open codeaf on this computer once, then approve again")
 )
+
+// checkNumberMismatchError phrases a failed --check comparison in design 9.2's
+// exact sentence while unwrapping to ErrCheckMismatch for callers that test the family.
+type checkNumberMismatchError struct{}
+
+func (checkNumberMismatchError) Error() string {
+	return "that check number does not match. Nothing was approved."
+}
+func (checkNumberMismatchError) Unwrap() error { return ErrCheckMismatch }
+
+// ErrCheckNumberMismatch is returned by ApproveClientChecked when the typed check digits do not match.
+var ErrCheckNumberMismatch error = checkNumberMismatchError{}
 
 type cannotReachError struct{ line string }
 

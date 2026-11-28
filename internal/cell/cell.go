@@ -44,6 +44,10 @@ const (
 
 // Options describe a new cell. KeyID is generated when empty.
 type Options struct {
+	// BeforeCreate can durably reserve the generated identity before its folder
+	// exists. An error leaves no cell folder behind.
+	BeforeCreate func(Cell) error `json:"-"`
+
 	Class Class
 	KeyID string
 	Base  *Base
@@ -75,6 +79,11 @@ func CreateIn(parent string, opts Options) (Cell, error) {
 		return Cell{}, err
 	}
 	c := Cell{ID: id, Root: filepath.Join(parent, id), meta: m}
+	if opts.BeforeCreate != nil {
+		if err := opts.BeforeCreate(c); err != nil {
+			return Cell{}, err
+		}
+	}
 	if err := os.MkdirAll(c.Root+"/"+EnvPath, 0o700); err != nil {
 		return Cell{}, fmt.Errorf("create cell: %w", err)
 	}

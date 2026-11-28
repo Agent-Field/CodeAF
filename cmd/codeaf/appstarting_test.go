@@ -369,7 +369,7 @@ func TestAppCrewFromAProposalAnswersBeforeItsHelpersOpen(t *testing.T) {
 	}
 	helperRoot := t.TempDir()
 	var minted atomic.Int64
-	backend.mint = func(string) (string, error) {
+	backend.mint = func(string, ...func(string) error) (string, error) {
 		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), "transcript.jsonl"), nil
 	}
 	release := make(chan struct{})

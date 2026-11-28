@@ -237,7 +237,8 @@ func TestWatchDialsWithBeat(t *testing.T) {
 		t.Fatalf("BeatSeconds %d and KeepEvery %v disagree", directory.BeatSeconds, dirwatch.KeepEvery)
 	}
 	dials := map[string]func(*directory.HTTP) (dirwatch.Stream, error){
-		"home": func(c *directory.HTTP) (dirwatch.Stream, error) { return c.Watch(context.Background()) },
+		"home":    func(c *directory.HTTP) (dirwatch.Stream, error) { return c.Watch(context.Background()) },
+		"serving": func(c *directory.HTTP) (dirwatch.Stream, error) { return c.WatchServing(context.Background()) },
 		"holder": func(c *directory.HTTP) (dirwatch.Stream, error) {
 			return c.WatchHolding(context.Background(), []directory.Hold{{Cell: "c1", Fence: 3}})
 		},
@@ -254,8 +255,19 @@ func TestWatchDialsWithBeat(t *testing.T) {
 			t.Fatal(err)
 		}
 		s.Close()
-		if got := (<-seen)["beat"]; len(got) != 1 || got[0] != "10" {
+		q := <-seen
+		if got := q["beat"]; len(got) != 1 || got[0] != "10" {
 			t.Errorf("%s dial declared beat %v, want exactly [10]", name, got)
+		}
+		if name == "serving" {
+			if got := q["serving"]; len(got) != 1 || got[0] != "1" {
+				t.Errorf("serving dial declared serving %v, want [1]", got)
+			}
+			if got := q["events"]; len(got) != 1 || got[0] != "1" {
+				t.Errorf("serving dial declared events %v, want [1]", got)
+			}
+		} else if got := q["serving"]; len(got) != 0 {
+			t.Errorf("%s dial unexpectedly declared serving %v", name, got)
 		}
 	}
 }

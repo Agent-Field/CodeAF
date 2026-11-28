@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -78,7 +79,11 @@ func (l *Links) Open(peer string, in NewRequest) (Opened, error) {
 	defer l.mu.Unlock()
 	now := l.now()
 	l.sweep(now)
-	code, err := newCode()
+	codeLen := 8
+	if in.Class == clientproto.ClientLinkClass {
+		codeLen = clientproto.ClientLinkCodeLen
+	}
+	code, err := newCode(codeLen)
 	if err != nil {
 		return Opened{}, err
 	}
@@ -236,19 +241,15 @@ func (v linkView) GetRequest(ctx context.Context, code string, wait time.Duratio
 	return v.l.Read(ctx, v.peer, code, wait)
 }
 
-// newCode is 40 random bits in Crockford base32.
-func newCode() (string, error) {
-	var raw [5]byte
-	if _, err := rand.Read(raw[:]); err != nil {
+// newCode returns length random characters in Crockford base32 (8 for computers, 10 for clients).
+func newCode(length int) (string, error) {
+	raw := make([]byte, length)
+	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
-	var bits uint64
-	for _, b := range raw {
-		bits = bits<<8 | uint64(b)
-	}
-	out := make([]byte, 8)
-	for i := range out {
-		out[i] = codeAlphabet[bits>>(5*(7-i))&31]
+	out := make([]byte, length)
+	for i, b := range raw {
+		out[i] = codeAlphabet[b&31]
 	}
 	return string(out), nil
 }

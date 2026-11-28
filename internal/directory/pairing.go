@@ -28,12 +28,15 @@ func (p *pairing) SetOnJoin(f func(Joined)) { p.onJoin = f }
 // approve decides code as approved. write stores the device record for the
 // request and answers it as stored; it runs only when the decision is new.
 func (p *pairing) approve(code string, a Approval, write func(Request) (Device, error)) error {
+	if a.Class != "" {
+		return ErrBadRequest
+	}
 	dec, err := decisionOf(a)
 	if err != nil {
 		return err
 	}
 	return p.decide(code, dec, func(r Request) error {
-		if r.Device != dec.Device {
+		if r.Class != "" || r.Device != dec.Device {
 			return ErrBadRequest
 		}
 		d, err := write(r)

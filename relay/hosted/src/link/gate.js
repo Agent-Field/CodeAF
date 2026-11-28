@@ -7,7 +7,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Counters } from '../counters.js';
 import { limitsOf } from '../limits.js';
 import { guarded, unwrap } from '../wire.js';
-import { newCode } from './code.js';
+import { codeLengthOf, newCode } from './code.js';
 import { relayFull, slowDown } from './refusals.js';
 
 const HOUR_MS = 3_600_000;
@@ -30,10 +30,11 @@ export class LinkGate extends DurableObject {
       const now = Date.now();
       this.#hit(`create:${ip}`, HOUR_MS, this.limits.linkCreatePerHour, now);
       this.#admitLive(ip, now);
-      const record = { ...derived, code: this.#allocate(ip, now), requested_at: now, expires_at: now + this.limits.pairTtlMs };
+      const record = { ...derived, code: this.#allocate(ip, now, codeLengthOf(derived.class)), requested_at: now, expires_at: now + this.limits.pairTtlMs };
       unwrap(await this.#requestOf(record.code).open(record));
       const { code, device, check, requested_at, expires_at } = record;
-      return { code, device, check, requested_at, expires_at };
+      // `bind` is not echoed: the phone made it, and it reads it back from the request.
+      return { code, device, check, requested_at, expires_at, ...(record.class ? { class: record.class } : {}) };
     });
   }
 
@@ -95,10 +96,10 @@ export class LinkGate extends DurableObject {
     if (total >= this.limits.linkMaxLive) throw relayFull();
   }
 
-  // #allocate reserves a code no live request holds.
-  #allocate(ip, now) {
+  // #allocate reserves a code no live request holds, of the length the request's class has.
+  #allocate(ip, now, length) {
     for (;;) {
-      const code = newCode();
+      const code = newCode(length);
       if (this.sql.exec('SELECT 1 FROM live WHERE code = ?', code).toArray().length) continue;
       this.sql.exec('INSERT INTO live VALUES (?,?,1,?)', code, ip, now + this.limits.pairTtlMs);
       return code;

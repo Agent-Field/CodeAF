@@ -1,6 +1,7 @@
 package cell
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -122,5 +123,37 @@ func TestIDsSortByTime(t *testing.T) {
 func TestEnabled(t *testing.T) {
 	if got, want := Enabled(), true; got != want {
 		t.Fatalf("Enabled() = %v, want %v", got, want)
+	}
+}
+
+// TestBeforeCreateHookErrorLeavesNoFolder verifies that Options.BeforeCreate
+// receives the generated Cell before its folder exists on disk and that an
+// error from BeforeCreate leaves no cell directory behind (contract S2).
+func TestBeforeCreateHookErrorLeavesNoFolder(t *testing.T) {
+	parent := t.TempDir()
+	wantErr := errors.New("reserve failed")
+	var reserved Cell
+	_, err := CreateIn(parent, Options{
+		Class: HostBound,
+		BeforeCreate: func(c Cell) error {
+			reserved = c
+			if _, statErr := os.Stat(c.Root); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("cell folder existed before BeforeCreate returned: %v", statErr)
+			}
+			return wantErr
+		},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("CreateIn error = %v, want %v", err, wantErr)
+	}
+	if !ValidID(reserved.ID) {
+		t.Fatalf("BeforeCreate received invalid cell ID %q", reserved.ID)
+	}
+	if _, statErr := os.Stat(reserved.Root); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed BeforeCreate left cell folder behind: %v", statErr)
+	}
+	entries, readErr := os.ReadDir(parent)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("failed BeforeCreate left entries in parent: %v %v", entries, readErr)
 	}
 }

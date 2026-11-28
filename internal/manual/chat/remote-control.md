@@ -4,7 +4,7 @@
 
 Remote control lets this computer open a chat that another of your computers is running, and work in it without moving it. The chat opens **live**. On Home, press `enter` on a row that says `working on tower` or `held on tower`. The chat opens marked `on tower · live`, its box says `Message tower`, and what you see is what tower is doing as it happens. Typing, steering and stopping act on tower, in tower's folder, with tower's files and tools. Nothing moves, and tower's own window keeps working. `/status` adds a row that says how it travels, `live · direct` or `live · relay`.
 
-Three things have to be true. The two computers are paired. Both are running codeaf, because the other computer has to be there to answer. And remote control is on, on both; it is off until you turn it on (see *Remote control is off*). A chat that no computer is running right now cannot be opened live. Remote control never starts a chat on another computer. For a chat that is not running anywhere, `enter` does what it always did, and moving it here is the only way to carry on.
+Three things have to be true. The two computers are paired. Both are running codeaf, because the other computer has to be there to answer. And remote control is on, on both; it is off until you turn it on (see *Remote control is off*). A chat that no computer is running right now cannot be opened live. Remote control never starts a chat on another computer (to start a new chat on a computer from your phone, use the codeaf phone app — see *Your phone*). For a chat that is not running anywhere, `enter` does what it always did, and moving it here is the only way to carry on.
 
 ## A new chat on my other computer's Home — when it appears, while its first message is still running, working on <name>, why it says untitled
 
@@ -170,4 +170,4 @@ Both computers need a codeaf that includes it. If the other one still runs an ol
 
 ## Remote control versus --at, --host and codeaf serve
 
-`codeaf chat --at`, `--host` and `codeaf serve` are unchanged and need no pairing: they work on a machine you reach by name, and `--at` may start a chat there. Remote control is different. It is for your own paired computers, it opens only chats they are already running, and it starts none. The page *Reaching this machine without ssh* compares them.
+`codeaf chat --at`, `--host` and `codeaf serve` are unchanged and need no pairing: they work on a machine you reach by name, and `--at` may start a chat there. Remote control is different. It is for your own paired computers, it opens only chats they are already running, and it starts none (starting a new chat remotely from a mobile device is done in the codeaf phone app — see *Your phone*). The page *Reaching this machine without ssh* compares them.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -47,6 +48,8 @@ type Request struct {
 	X25519      string       `json:"x25519"`
 	NameSealed  string       `json:"name_sealed"`
 	Platform    string       `json:"platform"`
+	Class       string       `json:"class,omitempty"`
+	Bind        string       `json:"bind,omitempty"`
 	Check       string       `json:"check"`
 	RequestedAt int64        `json:"requested_at"`
 	ExpiresAt   int64        `json:"expires_at"`
@@ -61,6 +64,8 @@ type NewRequest struct {
 	X25519     string `json:"x25519"`
 	NameSealed string `json:"name_sealed"`
 	Platform   string `json:"platform"`
+	Class      string `json:"class,omitempty"`
+	Bind       string `json:"bind,omitempty"`
 }
 
 // Opened answers a create. The caller builds the link from Code and its own key.
@@ -70,15 +75,35 @@ type Opened struct {
 	Check       string `json:"check"`
 	RequestedAt int64  `json:"requested_at"`
 	ExpiresAt   int64  `json:"expires_at"`
+	Class       string `json:"class,omitempty"`
+	Bind        string `json:"bind,omitempty"`
 }
 
 // Approval is the body of an approve: the Device record to write for the
 // request's device, its certificate from the identity, and the grant sealed to
-// the new device, which the relay keeps as opaque bytes.
+// the new device, which the relay keeps as opaque bytes. For a client-class
+// request only Class ("client") and Grant are sent.
 type Approval struct {
+	Class  string `json:"class,omitempty"`
 	Device Device `json:"device"`
 	Cert   string `json:"cert"`  // b64u of the identity.Cert JSON
 	Grant  string `json:"grant"` // b64u of the sealed box
+}
+
+// MarshalJSON encodes only class and grant for a client-class approval so the
+// strict wire decoder never sees an empty device or cert field.
+func (a Approval) MarshalJSON() ([]byte, error) {
+	if a.Class != "" {
+		return json.Marshal(struct {
+			Class string `json:"class"`
+			Grant string `json:"grant"`
+		}{Class: a.Class, Grant: a.Grant})
+	}
+	return json.Marshal(struct {
+		Device Device `json:"device"`
+		Cert   string `json:"cert"`
+		Grant  string `json:"grant"`
+	}{Device: a.Device, Cert: a.Cert, Grant: a.Grant})
 }
 
 // Requests is the open side of link pairing: what the new device calls, with
@@ -100,6 +125,7 @@ var (
 	ErrBadRequest     = errors.New("directory: bad request")
 	ErrRequestGone    = errors.New("directory: no such request") // unknown, expired and deleted are one answer
 	ErrAlreadyDecided = errors.New("directory: request already decided")
+	ErrNotEnrolled    = errors.New("directory: client not enrolled")
 	ErrTooBig         = errors.New("directory: body too big")
 	ErrFull           = errors.New("directory: too many live requests")
 	ErrRateLimited    = wireauth.ErrRateLimited // the wire's sentinel, so callers need not import wireauth
@@ -128,22 +154,36 @@ func deviceOf(pubkey []byte) string {
 }
 
 // opened is the answer and the record for n made at now, or ErrBadRequest when n is not a
-// request: wrong key lengths, a name that is too long or not sealed.
+// request: wrong key lengths, a name that is too long or not sealed, or an invalid class/bind pair.
 func (n NewRequest) opened(code string, now int64) (Opened, Request, error) {
 	pub, ok1 := decodeKey(n.Pubkey)
 	_, ok2 := decodeKey(n.X25519)
-	if !ok1 || !ok2 || !sealedName(n.NameSealed) {
+	if !ok1 || !ok2 || !sealedName(n.NameSealed) || !validClassBind(n.Class, n.Bind) {
 		return Opened{}, Request{}, ErrBadRequest
 	}
-	o := Opened{Code: code, Device: deviceOf(pub), Check: CheckOf(pub), RequestedAt: now, ExpiresAt: now + RequestTTL.Milliseconds()}
+	o := Opened{Code: code, Device: deviceOf(pub), Check: CheckOf(pub), RequestedAt: now, ExpiresAt: now + RequestTTL.Milliseconds(), Class: n.Class}
 	r := Request{
 		Code: code, Device: o.Device, Pubkey: n.Pubkey, X25519: n.X25519, NameSealed: n.NameSealed,
-		Platform: platformOf(n.Platform), Check: o.Check, RequestedAt: now, ExpiresAt: o.ExpiresAt, State: RequestPending,
+		Platform: platformOf(n.Platform), Class: n.Class, Bind: n.Bind, Check: o.Check,
+		RequestedAt: now, ExpiresAt: o.ExpiresAt, State: RequestPending,
 	}
 	if r.Platform == "" {
 		r.Platform = "other"
 	}
 	return o, r, nil
+}
+
+// validClassBind enforces that computer requests carry neither class nor bind and
+// client requests carry class "client" with a 16-byte unpadded base64url bind MAC.
+func validClassBind(class, bind string) bool {
+	if class == "" {
+		return bind == ""
+	}
+	if class != clientproto.ClientLinkClass || bind == "" {
+		return false
+	}
+	raw, err := b64u.DecodeString(bind)
+	return err == nil && len(raw) == clientproto.ClientLinkBindLen && b64u.EncodeToString(raw) == bind
 }
 
 func decodeKey(s string) ([]byte, bool) {

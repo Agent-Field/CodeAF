@@ -82,7 +82,7 @@ unsent. If you change chats meanwhile, it says
 If you edit the draft meanwhile, it says
 `draft changed before sending; press enter to send your current words`.
 
-## How do I make this one chat think harder — can I click the thinking level — effort keys
+## How do I make this one chat think harder — set the effort to max, or click the thinking level — effort keys
 
 `alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and
 `/effort <rung>` sets it. The models-and-cost page explains the rungs.

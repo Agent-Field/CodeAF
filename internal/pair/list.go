@@ -121,9 +121,25 @@ type ChatsDevice struct {
 	Name     string
 	This     bool // the computer the command is typed on
 	Stopped  bool // removed: the relay no longer answers it
+	Phone    bool // a paired phone (directory kind "client")
 	Online   bool
 	Platform string
 	LastSeen time.Time
+}
+
+// PhoneWord is the device kind label shown for a phone in device tables.
+const PhoneWord = "phone"
+
+// PhoneAccessWord is the access summary shown for a phone in device tables.
+const PhoneAccessWord = "starts chats, answers"
+
+// PhonePermitSetLine is the sentence shown when watch or type permits are
+// asked to be changed on a phone row.
+const PhonePermitSetLine = "this is set on the phone"
+
+// PhoneRevokedLine is what a person reads when a paired phone has been removed.
+func PhoneRevokedLine(name string) string {
+	return name + " was removed \u2014 it can no longer reach your chats."
 }
 
 // ChatsDevicesList is the table of computers that hold the person's chats. Its
@@ -146,13 +162,25 @@ func ChatsDevicesListAt(rows []ChatsDevice, now time.Time, canPair ...bool) stri
 			removed = true
 		}
 		details := chatsMarks(one)
-		if platform := PlatformWord(one.Platform); platform != "" {
-			details += "  " + platform
-		}
-		if !one.Stopped && one.Online {
-			details += "  online"
-		} else if !one.Stopped && !one.LastSeen.IsZero() {
-			details += "  last seen " + since(one.LastSeen, now)
+		if one.Phone {
+			details += "  " + PhoneWord
+			if !one.Stopped && one.Online {
+				details += "  online"
+			} else if !one.Stopped && !one.LastSeen.IsZero() {
+				details += "  last seen " + since(one.LastSeen, now)
+			}
+			if !one.Stopped {
+				details += "  " + PhoneAccessWord
+			}
+		} else {
+			if platform := PlatformWord(one.Platform); platform != "" {
+				details += "  " + platform
+			}
+			if !one.Stopped && one.Online {
+				details += "  online"
+			} else if !one.Stopped && !one.LastSeen.IsZero() {
+				details += "  last seen " + since(one.LastSeen, now)
+			}
 		}
 		fmt.Fprintf(&out, "  %s%s\n", padded(one.Name, widest), details)
 	}

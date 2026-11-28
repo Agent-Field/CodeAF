@@ -12,10 +12,13 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/nacl/secretbox"
+
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 )
 
 // LinkOrigin is where a short link points for this binary's release channel,
@@ -25,12 +28,16 @@ import (
 var LinkOrigin string
 
 // linkKeySize is the secret in the link's fragment, which no server ever sees.
-const linkKeySize = 16
+const linkKeySize = clientproto.ClientLinkKeyBytes
 
 var b64u = base64.RawURLEncoding
 
-// codeShape is eight characters of Crockford base32.
+// codeShape is eight characters of Crockford base32 (a computer request).
 var codeShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
+
+// clientCodeShape is ten characters of Crockford base32 (a phone request),
+// derived from clientproto.ClientLinkCodeLen so the wire length has one source.
+var clientCodeShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{` + strconv.Itoa(clientproto.ClientLinkCodeLen) + `}$`)
 
 // legacyShape is the six-digit code with a nameplate, which keeps its own path.
 // Anything made only of digits, spaces and dashes is the older code, so a code
@@ -112,17 +119,25 @@ func IsLinkText(typed string) bool {
 }
 
 // ReadLink takes a short link, an app link, `<code>.<key>` or a bare code.
+// An 8-character code is a computer request (URL, token or bare code); a
+// 10-character code is a phone token and requires its 22-character key.
 func ReadLink(typed string) (LinkRef, error) {
-	code, frag := splitLink(strings.TrimSpace(typed))
+	code, frag, isURL := splitLinkWindow(strings.TrimSpace(typed))
 	code = strings.ToLower(code)
-	if !codeShape.MatchString(code) {
+	switch {
+	case codeShape.MatchString(code):
+		if frag == "" {
+			return LinkRef{Code: code}, nil
+		}
+	case !isURL && clientCodeShape.MatchString(code):
+		if frag == "" {
+			return LinkRef{}, ErrLinkKeyless
+		}
+	default:
 		return LinkRef{}, ErrLinkShape
 	}
-	if frag == "" {
-		return LinkRef{Code: code}, nil
-	}
 	key, err := b64u.DecodeString(frag)
-	if err != nil || len(key) != linkKeySize {
+	if err != nil || len(key) != linkKeySize || b64u.EncodeToString(key) != frag {
 		return LinkRef{}, ErrLinkShape
 	}
 	return LinkRef{Code: code, Key: key}, nil
@@ -130,13 +145,21 @@ func ReadLink(typed string) (LinkRef, error) {
 
 // splitLink cuts text into the code and the key text, whichever form it is in.
 func splitLink(text string) (code, key string) {
+	code, key, _ = splitLinkWindow(text)
+	return code, key
+}
+
+// splitLinkWindow reports whether text came from a URL form so 10-character
+// phone tokens are accepted only in token form while short-link URLs stay 8 characters.
+func splitLinkWindow(text string) (code, key string, isURL bool) {
 	if u, err := url.Parse(text); err == nil && u.Scheme != "" && u.Host != "" {
-		return fromURL(u)
+		c, k := fromURL(u)
+		return c, k, true
 	}
 	if i := strings.IndexAny(text, ".#"); i >= 0 {
-		return text[:i], text[i+1:]
+		return text[:i], text[i+1:], false
 	}
-	return text, ""
+	return text, "", false
 }
 
 // fromURL reads a hosted or self-hosted /p/<code>#<key> page and the app link

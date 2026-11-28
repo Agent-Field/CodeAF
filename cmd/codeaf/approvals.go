@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -27,6 +28,39 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
+// activePhone holds the in-process phone runner when one is running, so
+// removing a phone from /devices or `codeaf devices revoke` notifies it. The
+// runner's start and stop write it while screen goroutines read it, so it is
+// held behind a mutex: a plain package variable read there was a data race.
+var activePhone struct {
+	sync.Mutex
+	u tui3.PhoneUnpairer
+}
+
+// activePhoneUnpairer is the running phone runner, or nil when none is.
+func activePhoneUnpairer() tui3.PhoneUnpairer {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	return activePhone.u
+}
+
+// setActivePhoneUnpairer records the phone runner that has just started.
+func setActivePhoneUnpairer(u tui3.PhoneUnpairer) {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	activePhone.u = u
+}
+
+// clearActivePhoneUnpairer forgets u only while it is still the active one, so
+// a runner that stops late can never clear the runner that replaced it.
+func clearActivePhoneUnpairer(u tui3.PhoneUnpairer) {
+	activePhone.Lock()
+	defer activePhone.Unlock()
+	if activePhone.u == u {
+		activePhone.u = nil
+	}
+}
+
 // approvalsDoor is the surface's tui3.Approvals.
 type approvalsDoor struct {
 	dir      string
@@ -35,6 +69,8 @@ type approvalsDoor struct {
 	// permits is this computer's book of what each paired computer may do here.
 	// Nil reads the book in the default state folder.
 	permits func() *pair.PermitBook
+	// unpair notifies an in-process phone runner when a phone is removed.
+	unpair tui3.PhoneUnpairer
 
 	mu     sync.Mutex
 	asking map[string]pair.Asking // by code: what Pending read, for the answer
@@ -107,13 +143,22 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 		return tui3.PendingDevice{}, err
 	}
 	as, err := who.Look(ctx, ref)
-	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
-			return tui3.PendingDevice{}, err
+	if errors.Is(err, pair.ErrLinkDecided) {
+		if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+			// An approval whose reply was lost: a computer shares the identity,
+			// while a phone opens only the phone gate (contract P13).
+			if isClient {
+				if err := syncsetup.NotePhoneApproved(d.dir, devID); err != nil {
+					return tui3.PendingDevice{}, err
+				}
+			} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
+				return tui3.PendingDevice{}, err
+			}
+			if !isClient {
+				notePaired(d.dir, route)
+			}
+			return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 		}
-		notePaired(d.dir, route)
-		return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 	}
 	if err != nil {
 		return tui3.PendingDevice{}, told(err)
@@ -125,7 +170,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 func pendingOf(as pair.Asking) tui3.PendingDevice {
 	return tui3.PendingDevice{
 		Code: as.Ref.Code, Device: as.DeviceID(), Name: as.Name, Platform: as.Platform,
-		Check: as.Check, RequestedAt: as.RequestedAt, ExpiresAt: as.ExpiresAt,
+		Check: as.Check, Client: as.Client, RequestedAt: as.RequestedAt, ExpiresAt: as.ExpiresAt,
 	}
 }
 
@@ -152,10 +197,16 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 				return err
 			}
 		}
-		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
+		if as.Client {
+			if err := syncsetup.NotePhoneApproved(d.dir, as.DeviceID()); err != nil {
+				return err
+			}
+		} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return err
 		}
-		if route, err := d.mailbox(""); err == nil {
+		// A phone is not another computer of this identity, so it does not tell the home
+		// that one is paired (contract P13).
+		if route, err := d.mailbox(""); err == nil && !as.Client {
 			notePaired(d.dir, route)
 		}
 		return nil
@@ -199,22 +250,29 @@ const (
 // fleet, so a link some other fleet answered never counts as this one sharing.
 // An empty device is whichever device the request names.
 func approvedHere(who pair.Approver, code, device string) requestOutcome {
+	outcome, _, _ := approvedDeviceHere(who, code, device)
+	return outcome
+}
+
+func approvedDeviceHere(who pair.Approver, code, device string) (requestOutcome, string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), approveStep)
 	defer cancel()
 	r, err := who.Requests.GetRequest(ctx, code, 0)
 	switch {
 	case err != nil:
-		return requestUnknown
+		return requestUnknown, "", false
 	case r.State == directory.RequestPending:
-		return requestWaiting
+		return requestWaiting, "", false
 	case r.State != directory.RequestApproved || device != "" && r.Device != device:
-		return requestUnknown
+		return requestUnknown, "", false
 	}
 	listing, err := who.Dir.List(ctx)
-	if dev, ok := listing.Devices[r.Device]; err != nil || !ok || dev.Revoked {
-		return requestUnknown
+	dev, ok := listing.Devices[r.Device]
+	if err != nil || !ok || dev.Revoked {
+		return requestUnknown, "", false
 	}
-	return requestApprovedHere
+	isClient := r.Class == clientproto.ClientLinkClass || dev.Kind == clientproto.ClientLinkClass
+	return requestApprovedHere, r.Device, isClient
 }
 
 func (d *approvalsDoor) Deny(ctx context.Context, p tui3.PendingDevice) error {
@@ -259,7 +317,11 @@ func (d *approvalsDoor) home() (directory.Client, identity.Identity, string, err
 }
 
 func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
-	if syncsetup.Quiet(d.dir) {
+	// A COMPUTER THAT HAS ONLY EVER SERVED A PHONE IS STILL QUIET toward every other
+	// computer, but the person must be able to see the phone and remove it, so a
+	// solo computer with an approved phone reads its own device list: that list
+	// holds this computer and its phones and nothing else (contract P13).
+	if syncsetup.Quiet(d.dir) && !syncsetup.PhonesApproved(d.dir) {
 		return []tui3.DeviceRow{d.ownRow()}, nil
 	}
 	client, id, self, err := d.home()
@@ -303,7 +365,7 @@ func (d *approvalsDoor) withPermits(identityID string, rows []tui3.DeviceRow) []
 	}
 	book := d.book()
 	for i := range rows {
-		if rows[i].Self || rows[i].Revoked {
+		if rows[i].Self || rows[i].Revoked || rows[i].Client || rows[i].Kind == clientproto.ClientLinkClass {
 			continue
 		}
 		permit, _ := book.For(identityID, rows[i].ID)
@@ -352,7 +414,11 @@ func rowsOf(l directory.Listing, key []byte, self string) []tui3.DeviceRow {
 }
 
 func rowOf(id string, dev directory.Device, key []byte, self string) tui3.DeviceRow {
-	row := tui3.DeviceRow{ID: id, Name: openName(key, dev.Name), Platform: dev.Platform, Self: id == self, Revoked: dev.Revoked}
+	isClient := dev.Kind == clientproto.ClientLinkClass
+	row := tui3.DeviceRow{
+		ID: id, Name: openName(key, dev.Name), Platform: dev.Platform,
+		Kind: dev.Kind, Client: isClient, Self: id == self, Revoked: dev.Revoked,
+	}
 	if dev.LastSeen > 0 {
 		row.LastSeen = time.UnixMilli(dev.LastSeen)
 	}
@@ -367,6 +433,13 @@ func openName(key []byte, sealed string) string {
 	return "a device"
 }
 
+func (d *approvalsDoor) phoneUnpairer() tui3.PhoneUnpairer {
+	if d.unpair != nil {
+		return d.unpair
+	}
+	return activePhoneUnpairer()
+}
+
 func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	client, _, _, err := d.home()
 	if err != nil {
@@ -374,6 +447,14 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	}
 	if err := client.Revoke(ctx, id); err != nil {
 		return told(err)
+	}
+	if u := d.phoneUnpairer(); u != nil {
+		_ = u.Unpair(ctx, id)
+	}
+	// Forgotten after the runner has unpaired it, so that a solo computer's runner may
+	// still send the revoke while the phone is recorded (contract P13).
+	if err := syncsetup.ForgetPhone(d.dir, id); err != nil {
+		return err
 	}
 	// A REMOVED COMPUTER STOPS BEING ABLE TO WATCH AT ONCE: its open live views
 	// here close, its permit goes, and the last-seen copies kept of its chats go,

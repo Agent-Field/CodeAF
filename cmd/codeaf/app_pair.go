@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -285,6 +286,10 @@ func (o *appPairOperation) announceSync() {
 	o.backend.devices.wakePublication()
 	o.backend.chats.wakePublication()
 	o.backend.publishDevices()
+	o.backend.startPhoneRunner()
+	if r := o.backend.clientRunner.Load(); r != nil {
+		r.Changed()
+	}
 	sync, _ := o.backend.SyncStatus()
 	o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 }
@@ -316,6 +321,12 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		if p.Mode != "request_link" {
 			samplePairedStorage(o.ctx, dir, route)
 		}
+	}
+	// recordPhone is what approving a PHONE does: this computer's own record, and nothing
+	// that says another computer is paired or samples the shared storage, because a
+	// phone is not another computer of this identity (contract P13).
+	recordPhone := func() {
+		_ = ownDeviceRecord(o.ctx, dir, route)
 	}
 	switch p.Mode {
 	case "offer_code":
@@ -394,17 +405,52 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return nil
 		}
 		asking, err := who.Look(o.ctx, ref)
-		if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-			// An approval whose reply was lost: the device is in, so this computer is shared.
-			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
-				return err, false
+		if errors.Is(err, pair.ErrLinkDecided) {
+			if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+				// An approval whose reply was lost: a computer shares the identity,
+				// while a phone opens only the phone gate (contract P13).
+				if isClient {
+					if err := syncsetup.NotePhoneApproved(dir, devID); err != nil {
+						return err, false
+					}
+				} else if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
+					return err, false
+				}
+				if isClient {
+					recordPhone()
+				} else {
+					record()
+				}
+				o.line(tui3.ErrAlreadyPaired.Error())
+				return nil, false
 			}
-			record()
-			o.line(tui3.ErrAlreadyPaired.Error())
-			return nil, false
 		}
 		if err != nil {
 			return err, false
+		}
+		if asking.Client {
+			o.line(pair.PhoneWantsToConnectLine)
+			answer := o.ask(o.ctx, "approve", pair.PhoneWantsToConnectLine, pair.PhoneCheckQuestion(asking.Check), pairApprovalOptions())
+			if answer != "y" {
+				if o.ctx.Err() != nil {
+					return o.ctx.Err(), false
+				}
+				if err := who.Deny(o.ctx, asking); err != nil {
+					return err, false
+				}
+				return pair.ErrRefused, false
+			}
+			if err := who.Approve(o.ctx, asking); err != nil {
+				if err = settleApproval(who, asking, err); err != nil {
+					return err, false
+				}
+			}
+			if err := syncsetup.NotePhoneApproved(dir, asking.DeviceID()); err != nil {
+				return err, false
+			}
+			recordPhone()
+			o.line(pair.ApprovedPhoneLine(asking.Name))
+			return nil, false
 		}
 		label := pair.ComputerLabel(asking.Name, asking.Platform)
 		o.line(appPairApproveTitle(label))

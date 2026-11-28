@@ -1,15 +1,17 @@
 package directory
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -225,7 +227,35 @@ type fenceBody struct {
 }
 
 func approveRequest(c call, a Approval) (any, error) {
+	if !validApprovalBody(c.body, a) {
+		return nil, errBadRequest
+	}
 	return nothing(c.cl.ApproveRequest(c.ctx(), c.code(), a))
+}
+
+// validApprovalBody enforces strict JSON keys for both client-class and computer approvals.
+func validApprovalBody(raw []byte, a Approval) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if a.Class != "" {
+		if a.Class != clientproto.ClientLinkClass {
+			return false
+		}
+		var in struct {
+			Class string `json:"class"`
+			Grant string `json:"grant"`
+		}
+		if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF || in.Grant == "" {
+			return false
+		}
+		return true
+	}
+	var in struct {
+		Device Device `json:"device"`
+		Cert   string `json:"cert"`
+		Grant  string `json:"grant"`
+	}
+	return dec.Decode(&in) == nil && dec.Decode(new(any)) == io.EOF
 }
 func rotate(c call, req RotationReq) (any, error) { return pair(c.cl.Rotate(c.ctx(), req)) }
 func setVault(c call, s vaultSwap) (any, error)   { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }

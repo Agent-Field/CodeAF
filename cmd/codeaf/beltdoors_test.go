@@ -57,7 +57,7 @@ const helpLineCap = 132
 //     where hosted chats run says what it is for.
 //   - Git starts `git-credential` to ask for the chat's access over a pipe.
 var doorsOffThePage = map[string]bool{
-	"cell": true, "identity": true, "relay": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true, "sessionhost": true, "git-credential": true,
+	"cell": true, "identity": true, "relay": true, "phone": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true, "sessionhost": true, "git-credential": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a

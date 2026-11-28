@@ -35,6 +35,10 @@ export const DEFAULTS = {
   defaultGraceMs: 7 * 86_400_000,
   maxWatchers: 1_000, // directory watch sockets one identity may hold; the Go relay's directory.MaxWatchers
   maxHolds: 16, // cells one watch socket may vouch for; the Go relay's directory.MaxHolds
+  // Slot waits one identity may hold open at once, all its phones together (clientproto.SlotWaitersPerIdentity: 16 phones x 2
+  // waits each). A held request bills the identity's object for its duration, so this is the cap on that cost and 0 is the
+  // kill switch: a wait that has nothing newer to answer is then a 204 at once, and the phone falls back to its own polling.
+  slotWaitMax: 32,
   sweepPageSize: 1_000, // R2 objects deleted per alarm turn (R2's own limit per list and per delete)
   // The whole relay, by caller IP: how many identities one address may bring in.
   newIdentitiesPerIpPerDay: 200,

@@ -18,9 +18,11 @@ import { parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
 import { rotationView } from '../rotation.js';
 import { checkTime } from '../verify.js';
-import { checkApprovalDevice } from '../link/decide.js';
-import { asGrant } from '../link/code.js';
+import { checkApprovalDevice, clientGrant, requireEnrolled } from '../link/decide.js';
+import { asGrant, CLIENT_CLASS } from '../link/code.js';
 import { CommittedWatchers, CLOSE_REVOKED, CLOSE_ROTATED } from '../watch.js';
+import { holdWait } from '../clientwatch.js';
+import { SLOT_WAITERS_PER_CLIENT } from '../fabric.js';
 
 const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
 const segment=s=>Array.from(enc.encode(s),b=>b.toString(16).padStart(2,'0')).join('');
@@ -49,8 +51,12 @@ export class HostedIdentity {
     this.ctx=ctx;this.env=env;this.tenant=tenant;this.runtime=sharedRuntime();this.codec=new HostCodec(this.runtime);
     this.source=tenant.migration(ctx.storage,this.runtime);this.tail=Promise.resolve();this.pending=0;this.operationTail=Promise.resolve();this.operations=0;this.waiters=new Set();this.progressVersion=0;this.forwarding=new PersonalForward(this);this.members=new Map();this.states=new Map();this.inactiveMembers=new Set();this.queue=[];this.reads=[];
     this.seen=new Map();this.pendingIO=new Map();
+    this.endWaitsOnRevoke();
     this.readGeneration=0;this.memberWork=0;this.readLease=null;
   }
+  // A revoked phone's parked slot waits end with 401 whichever door the revoke came through (a committed revoke, a revoke
+  // answered here, a request that finds the phone revoked), and the phone stops counting as watching.
+  endWaitsOnRevoke(){this.tenant.fabric.whenRevoked=device=>{this.stopIO(device,'revoked');this.watchers?.clients?.forget(device);};}
   serial(fn){
     if(this.pending>=COORDINATOR_QUEUE)return Promise.reject(unavailable());this.pending++;
     const task=this.tail.then(fn);this.tail=task.catch(()=>{});return task.finally(()=>this.pending--);
@@ -871,14 +877,43 @@ export class HostedIdentity {
       const row=await this.readView(b,'state','device/'+segment(id));
       if(row.raw)devices[id]=this.project('device',row.raw);
     }
+    // The computers answer needs every device of the identity, not just the two or three rows above.
+    let every;
+    if(route.listing){every=JSON.parse(await this.listingJSON(b,{...authority.app,now:String(now)})).devices;Object.assign(devices,every);}
     if(devices[targetDevice]?.revoked)this.tenant.fabric.revokeClient(targetDevice);
-    const dir={read:(kind,id)=>(kind==='devices'?devices[id]:undefined)};
+    const dir={read:(kind,id)=>(kind==='devices'?devices[id]:undefined),devices:()=>every??devices};
     const reply=await this.tenant.fabric.withClockAndDir(now,dir,()=>route.handler(c,route.args));
+    // A slot wait with nothing newer to say is not answered here: it is registered, and the caller holds it outside the queue.
+    if(reply?.park){await this.finishRead(b,null);return this.parkSlotWait(reply.park);}
     return this.finishRead(b,reply);
+  }
+  // The registration half of a slot wait, run inside the first operation: it counts the wait (2 per phone, slotWaitMax per
+  // identity: 429 full past either) and files it with waitIO so a revoke can end it, then returns so the queue moves on.
+  // The kill switch (slotWaitMax 0) holds nothing and answers 204 at once.
+  parkSlotWait(park){
+    const max=this.tenant.limits.slotWaitMax;
+    if(!(max>0))return empty();
+    const handle=this.watchers.clients.park(park.device,{perClient:SLOT_WAITERS_PER_CLIENT,perIdentity:max});
+    return {parked:true,handle,io:this.waitIO(park.device,false),seconds:park.seconds};
+  }
+  // A held request cannot sit in operation(): a wait of 25 s would stall Raft ticks and revoke commits behind it, and eat
+  // the queue's 64 places. So the first operation authorizes and registers, the wait happens outside, and one more
+  // operation re-checks authority and reads what arrived. A revoke ends the wait through stopIO with 401 revoked.
+  async slotWait(c,route){
+    const ticket=await this.operation(()=>this.retryRead(fresh=>this.serveFabric(c,route,fresh)));
+    if(!ticket.parked)return ticket;
+    let how;
+    try{
+      if(ticket.io.entry.error)throw ticket.io.entry.error;
+      how=await holdWait({woken:ticket.handle.woken,stopped:ticket.io.stopped,seconds:ticket.seconds,signal:c.request.signal});
+    }finally{this.watchers.clients.release(ticket.handle);ticket.io.close();}
+    if(how==='aborted')return empty();
+    return this.operation(()=>this.retryRead(fresh=>this.serveFabric({...c,reentered:true},route,fresh)));
   }
   async dispatch(c,route){
     const path=new URL(c.request.url).pathname;
     if(path==='/v1/store/handoff')return this.operation(()=>this.retryRead(fresh=>this.handoff(c,fresh)));
+    if(route.wait)return this.slotWait(c,route);
     if(route.fabric&&!(c.request.method==='PUT'&&/^\/v1\/clients\/[^/]+$/.test(path)))return this.operation(()=>this.retryRead(fresh=>this.serveFabric(c,route,fresh)));
     if(!path.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(fresh=>this.serve(c,route,fresh)):this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
@@ -906,7 +941,7 @@ export class HostedIdentity {
       const holds=parseHolds(url.searchParams.getAll('hold'),this.tenant.limits.maxHolds),beat=parseBeat(url.searchParams.getAll('beat'));
       const a=await this.authorize(device,cert,true,fresh);
       await this.finishRead(a.barrier,null);
-      const reply=this.watchers.accept(device,Number(a.app.version),Date.now(),{holds,beat,events:url.searchParams.get('events')==='1',receipts:url.searchParams.get('receipts')==='1',certificate:cert});
+      const reply=this.watchers.accept(device,Number(a.app.version),Date.now(),{holds,beat,events:url.searchParams.get('events')==='1',receipts:url.searchParams.get('receipts')==='1',serving:url.searchParams.get('serving')==='1',certificate:cert});
       try{
         this.holds.opened(Date.now(),holds.length>0);
         if(holds.length)await this.holds.renew(Date.now(),this.watchers.holdEvidence(Date.now()));
@@ -938,6 +973,22 @@ export class HostedIdentity {
       // Invalid approvals cannot reserve a request for this cluster. The Go
       // command still checks authority and revocation at its committed index.
       const pending=unwrap(await joinBox.read(0));
+      // A phone's (client-class) request is decided without Raft: no device row, no committed decision, no outbox row (design 3.7, R3).
+      // An approval needs the device and its enrollment already stored; either decision only hands the request its outcome.
+      if(pending.class===CLIENT_CLASS){
+        if(join[2]==='approve'){
+          let approval;try{approval=JSON.parse(dec.decode(body));}catch{throw new Wire('bad_request',400);}
+          const grant=clientGrant(approval,this.tenant.limits.linkMaxGrant),target=await this.readView(authority.barrier,'state','device/'+segment(pending.device));
+          requireEnrolled(target.raw?this.project('device',target.raw):null,this.tenant.fabric.hasEnrollment(pending.device));
+          await this.finishRead(authority.barrier,null);
+          await this.effects.approveClient(joinBox,joinCode,grant);
+        }else{
+          await this.finishRead(authority.barrier,null);
+          await this.effects.denyClient(joinBox,joinCode);
+        }
+        unwrap(await this.env.LINK_GATE.get(this.env.LINK_GATE.idFromName('gate')).decided(joinCode));
+        return empty();
+      }
       if(join[2]==='approve'){
         const approval=JSON.parse(dec.decode(body));await checkApprovalDevice(c,approval,pending);
         const target=await this.readView(authority.barrier,'state','device/'+segment(pending.device));

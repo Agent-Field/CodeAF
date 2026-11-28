@@ -17,8 +17,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fabricclient"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -42,19 +44,24 @@ func linkRequests(route pair.Mailbox) directory.Requests {
 // homeDirectory is this computer's signed directory at a route, and the identity
 // it signs for.
 func homeDirectory(dir string, route pair.Mailbox) (directory.Client, identity.Identity, error) {
+	client, id, _, err := homeDirectoryDevice(dir, route)
+	return client, id, err
+}
+
+func homeDirectoryDevice(dir string, route pair.Mailbox) (directory.Client, identity.Identity, identity.Dev, error) {
 	id, err := identity.Load(dir)
 	if errors.Is(err, identity.ErrNone) {
-		return nil, id, pair.ErrNotJoined
+		return nil, id, identity.Dev{}, pair.ErrNotJoined
 	}
 	if err != nil {
-		return nil, id, err
+		return nil, id, identity.Dev{}, err
 	}
 	dev, err := identity.Device(dir)
 	if err != nil {
-		return nil, id, err
+		return nil, id, identity.Dev{}, err
 	}
 	sign := reqsign.SignFor(homeSigner{id, dev}, time.Now)
-	return directory.NewHTTP(route.URL, sign, &http.Client{Timeout: linkTimeout}), id, nil
+	return directory.NewHTTP(route.URL, sign, &http.Client{Timeout: linkTimeout}), id, dev, nil
 }
 
 type homeSigner struct {
@@ -172,7 +179,7 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 
 // approve is a device that is in: it reads the request, shows who is asking and
 // the check number, and lets them in on a. Anything else turns them down.
-func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
+func (d pairDoor) approve(ctx context.Context, relay, typed string, check ...string) error {
 	ref, err := pair.ReadLink(typed)
 	if err != nil {
 		return err
@@ -195,22 +202,46 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	asking, err := who.Look(ctx, ref)
-	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
-			return err
+	if errors.Is(err, pair.ErrLinkDecided) {
+		if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+			// An approval whose reply was lost: a computer shares the identity,
+			// while a phone opens only the phone gate (contract P13).
+			if isClient {
+				if err := syncsetup.NotePhoneApproved(d.joining(false).Home, devID); err != nil {
+					return err
+				}
+			} else if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
+				return err
+			}
+			if isClient {
+				d.recordOwnRowOrSay(ctx, route)
+			} else {
+				d.recordOwnDeviceOrSay(ctx, route)
+			}
+			d.term.say(tui3.ErrAlreadyPaired.Error())
+			return nil
 		}
-		d.recordOwnDeviceOrSay(ctx, route)
-		d.term.say(tui3.ErrAlreadyPaired.Error())
-		return nil
 	}
 	if err != nil {
 		return err
 	}
-	d.term.say(pair.WantsToJoinLine(asking.Name, asking.Platform))
-	d.term.say(pair.PairedControlLine(asking.Name))
-	if !d.term.approveLink(ctx, pair.CheckQuestion(asking.Check)) {
-		return d.decline(ctx, who, asking)
+	typedCheck := ""
+	if len(check) > 0 {
+		typedCheck = check[0]
+	}
+	if asking.Client {
+		return d.approvePhone(ctx, route, who, asking, typedCheck)
+	}
+	if typedCheck != "" {
+		if typedCheck != asking.Check {
+			return pair.ErrCheckNumberMismatch
+		}
+	} else {
+		d.term.say(pair.WantsToJoinLine(asking.Name, asking.Platform))
+		d.term.say(pair.PairedControlLine(asking.Name))
+		if !d.term.approveLink(ctx, pair.CheckQuestion(asking.Check)) {
+			return d.decline(ctx, who, asking)
+		}
 	}
 	if err := who.Approve(ctx, asking); err != nil {
 		err = settleApproval(who, asking, err)
@@ -229,6 +260,35 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	return nil
 }
 
+func (d pairDoor) approvePhone(ctx context.Context, route pair.Mailbox, who pair.Approver, asking pair.Asking, typedCheck string) error {
+	var err error
+	if typedCheck != "" {
+		err = who.ApproveClientChecked(ctx, asking, typedCheck)
+	} else {
+		d.term.say(pair.PhoneWantsToConnectLine)
+		d.term.say(pair.PhoneAccessLine)
+		if !d.term.approveLink(ctx, pair.PhoneCheckQuestion(asking.Check)) {
+			return d.decline(ctx, who, asking)
+		}
+		err = who.ApproveClient(ctx, asking)
+	}
+	if err != nil {
+		err = settleApproval(who, asking, err)
+		if errors.Is(err, tui3.ErrAnswerNotArrived) {
+			return errors.New(pairAnswerNotArrived)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if err := syncsetup.NotePhoneApproved(d.joining(false).Home, asking.DeviceID()); err != nil {
+		return err
+	}
+	d.recordOwnRowOrSay(ctx, route)
+	d.term.say(pair.ApprovedPhoneLine(asking.Name))
+	return nil
+}
+
 func (d pairDoor) decline(ctx context.Context, who pair.Approver, asking pair.Asking) error {
 	if ctx.Err() != nil {
 		return d.endedByPerson(ctx, nil)
@@ -243,12 +303,15 @@ func (d pairDoor) decline(ctx context.Context, who pair.Approver, asking pair.As
 // linkApprover is this computer as the device that approves.
 func linkApprover(dir string) func(pair.Mailbox) (pair.Approver, error) {
 	return func(route pair.Mailbox) (pair.Approver, error) {
-		client, id, err := homeDirectory(dir, route)
+		client, id, dev, err := homeDirectoryDevice(dir, route)
 		if err != nil {
 			return pair.Approver{}, err
 		}
 		return pair.Approver{
-			Requests: linkRequests(route), Dir: client, Identity: id,
+			Requests: linkRequests(route), Dir: client,
+			Fabric:       fabricclient.New(route.URL, homeSigner{id, dev}, &http.Client{Timeout: linkTimeout}),
+			Identity:     id,
+			Card:         func(context.Context) (clientproto.Card, error) { return phoneCard(dir) },
 			AfterApprove: func(ctx context.Context) { samplePairedStorage(ctx, dir, route) },
 			SyncURL:      syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
 		}, nil

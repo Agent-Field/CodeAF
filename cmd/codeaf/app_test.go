@@ -558,7 +558,16 @@ func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
 		open = refuseAppOpen
 	}
 	backend := newAppBackend(rec, open)
-	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
+	backend.mint = func(_ string, before ...func(string) error) (string, error) {
+		for _, hook := range before {
+			if hook != nil {
+				if err := hook(appFakeTranscript); err != nil {
+					return "", err
+				}
+			}
+		}
+		return appFakeTranscript, nil
+	}
 	backend.state = &appState{path: filepath.Join(os.TempDir(), "codeaf-app-test-"+strconv.Itoa(os.Getpid()), strconv.FormatUint(appFakeStates.Add(1), 10), appStateName)}
 	return backend
 }

@@ -84,7 +84,13 @@ gotest() {
 	if [[ $suite == watch ]]; then test_parallel=1; fi
 	local worker_concurrency=
 	local retries_before=0
-	if [[ $relay == worker ]]; then worker_concurrency=${CONFORMANCE_HTTP_CONCURRENCY:-$CODEAF_RELAYCONF_CONCURRENCY}; fi
+	if [[ $relay == worker ]]; then
+		worker_concurrency=${CONFORMANCE_HTTP_CONCURRENCY:-$CODEAF_RELAYCONF_CONCURRENCY}
+		# A slot wait keeps its request open for up to 25 seconds, and its cases hold two waiters, a refused third
+		# and the write that wakes them at once. Two request slots would queue the third waiter and the write
+		# behind the held two, so the case would measure the transport instead of the relay.
+		if [[ $suite == fabric && -z ${CONFORMANCE_HTTP_CONCURRENCY:-} ]]; then worker_concurrency=4; fi
+	fi
 	if [[ $relay == worker ]]; then retries_before=$(proxy_retries); fi
 	CODEAF_RELAYCONF_CONCURRENCY=$worker_concurrency \
 		go test -p=2 -parallel="$test_parallel" -json -count=1 -timeout 25m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"

@@ -49,6 +49,7 @@ var wireErrors = []wireError{
 	// and 410 for a deleted identity, so a row is matched by code and status.
 	{ErrRequestGone, "gone", http.StatusNotFound},
 	{ErrAlreadyDecided, "already_decided", http.StatusConflict},
+	{ErrNotEnrolled, "not_enrolled", http.StatusConflict},
 	{ErrTooBig, "too_big", http.StatusRequestEntityTooLarge},
 	// Shared capacity must precede the directory's general full error when encoding.
 	{wireauth.ErrRelayFull, "relay_storage_full", http.StatusInsufficientStorage},
