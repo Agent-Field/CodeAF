@@ -61,6 +61,9 @@ const (
 	ppDiscoveryWithin  = 30 * time.Second
 	ppCallWithin       = 35 * time.Second
 	ppRevokeWithin     = 25 * time.Second
+	// ppFirstRoundWithin is how long after its start line a restarted computer may
+	// take to claim an entry that was already waiting for it.
+	ppFirstRoundWithin = 5 * time.Second
 )
 
 // TestPersonalPhone proves the computer side of the personal phone through the
@@ -80,6 +83,8 @@ func TestPersonalPhone(t *testing.T) {
 		{"V1_revoke", ppScenarioV1Revoke},
 		{"P13_solo_computer_serves_a_phone_without_sharing_chats", ppScenarioP13SoloComputerServesPhoneWithoutSharingChats},
 		{"S5_lifetime", ppScenarioS5Lifetime},
+		{"D5_two_chats_in_a_row_are_both_listed", ppScenarioD5TwoChatsInARowAreBothListed},
+		{"D5_a_restart_leaves_the_released_chat_out_of_the_list", ppScenarioD5RestartReleasesTheStoppedChats},
 	} {
 		t.Run(sub.name, sub.run)
 	}
@@ -728,6 +733,128 @@ func ppScenarioS5Lifetime(t *testing.T) {
 	}
 }
 
+// ppMakeChat has the phone create a chat on computer comp and send it one
+// message, and returns the chat's id once the message is answered.
+func ppMakeChat(t *testing.T, rig *ppRig, comp ppComputer, ref func() (phonetest.CallRef, error)) string {
+	t.Helper()
+	made, err := ref()
+	if err != nil {
+		t.Fatalf("queue a create on %s: %v", comp.name, err)
+	}
+	out := rig.waitOutcome(comp.device, made, ppCallWithin)
+	if out.Status != clientproto.OutcomeDone || out.Agent == "" {
+		t.Fatalf("Create(%s) outcome = %+v, want status=done with a chat", comp.name, out)
+	}
+	sent, err := rig.phone.Send(t.Context(), comp.device, out.Agent, rcHostAsk)
+	if err != nil {
+		t.Fatalf("Send(%s, %s): %v", comp.name, out.Agent, err)
+	}
+	if sendOut := rig.waitOutcome(comp.device, sent, ppCallWithin); sendOut.Status != clientproto.OutcomeDone {
+		t.Fatalf("Send(%s, %s) outcome = %+v", comp.name, out.Agent, sendOut)
+	}
+	return out.Agent
+}
+
+// ppScenarioD5TwoChatsInARowAreBothListed proves that the `agents.list` slot a
+// computer publishes carries every chat it holds: two chats the phone makes on B
+// one after the other, with no restart between them, are both in B's newest slot,
+// each with its own row.
+func ppScenarioD5TwoChatsInARowAreBothListed(t *testing.T) {
+	rig := newPPRig(t)
+	rig.startPhoneServe(rig.compA)
+	rig.startPhoneServe(rig.compB)
+	rig.pairPhoneAt(rig.compA)
+	rig.waitForComputers(ppDiscoveryWithin, rig.compA.device, rig.compB.device)
+	rig.waitForCard(rig.compB.device, ppDiscoveryWithin)
+
+	create := func() (phonetest.CallRef, error) { return rig.phone.Create(t.Context(), rig.compB.device) }
+	first := ppMakeChat(t, rig, rig.compB, create)
+	second := ppMakeChat(t, rig, rig.compB, create)
+	list := rig.waitForList(rig.compB.device, ppCallWithin, "both chats in B's agents.list", first, second)
+	if len(list) != 2 {
+		t.Fatalf("B holds two chats and its agents.list slot has %d envelopes: %s", len(list), ppDescribeList(list))
+	}
+	if !ppChatExistsInHome(rig.compB.home, first) || !ppChatExistsInHome(rig.compB.home, second) {
+		t.Fatalf("B's home lacks one of the chats %s, %s", first, second)
+	}
+}
+
+// ppScenarioD5RestartReleasesTheStoppedChats pins what happens to a chat across
+// a restart of the computer's `phone serve`, which is what the first emulator run
+// saw as "the phone lists only the newer chat". B's `phone serve` is stopped
+// cleanly, which hands every chat it was running back (its lease is released), and
+// the phone queues a second create meanwhile. When B comes back it holds only the
+// chat it just made, so only that chat is in its slot: a chat is published by the
+// computer that holds its lease and read by nobody once it is released
+// (internal/clientrun TestSnapshotsOnlyContainLeasedChats). The first chat is
+// still in B's home. Nothing re-takes it, so no computer publishes it until
+// something runs it again.
+//
+// It also measures D4': after the restart the entry that was already waiting is
+// claimed within a round of the start line.
+func ppScenarioD5RestartReleasesTheStoppedChats(t *testing.T) {
+	rig := newPPRig(t)
+	rig.startPhoneServe(rig.compA)
+	procB := rig.startPhoneServe(rig.compB)
+	rig.pairPhoneAt(rig.compA)
+	rig.waitForComputers(ppDiscoveryWithin, rig.compA.device, rig.compB.device)
+	rig.waitForCard(rig.compB.device, ppDiscoveryWithin)
+
+	ctx := t.Context()
+	first := ppMakeChat(t, rig, rig.compB, func() (phonetest.CallRef, error) { return rig.phone.Create(ctx, rig.compB.device) })
+	rig.waitForList(rig.compB.device, ppCallWithin, "the first chat in B's agents.list", first)
+
+	procB.stop()
+	secondRef, err := rig.phone.Call(ctx, rig.compB.device, clientproto.MethodCreate, phonetest.CreateParams{}, phonetest.CallOptions{})
+	if err != nil {
+		t.Fatalf("phone.Call(Create) while B is stopped: %v", err)
+	}
+	restarted := rig.startPhoneServe(rig.compB)
+	second := ppMakeChat(t, rig, rig.compB, func() (phonetest.CallRef, error) { return secondRef, nil })
+
+	// D4': the first claim of the waiting entry, counted from the start line.
+	claimed := time.Time{}
+	for _, c := range rig.recorder.snapshot() {
+		if c.device == rig.compB.device && c.method == http.MethodPost && strings.HasSuffix(c.path, "/claim") && c.at.After(restarted.began) {
+			claimed = c.at
+			break
+		}
+	}
+	if claimed.IsZero() {
+		t.Fatalf("restarted B never claimed the waiting create: %s", rig.recorder.summaryFor(rig.compB.device))
+	}
+	afterReady := claimed.Sub(restarted.began) - restarted.ready
+	t.Logf("D4': restarted B said it was serving after %s and claimed the waiting create %s later", restarted.ready.Round(time.Millisecond), afterReady.Round(time.Millisecond))
+	if afterReady > ppFirstRoundWithin {
+		t.Errorf("restarted B claimed the waiting create %s after its start line, want within %s", afterReady, ppFirstRoundWithin)
+	}
+
+	// The stop released the first chat; the restart holds only the second.
+	sa, ok, err := syncsetup.Open(rig.compA.home)
+	if err != nil || !ok {
+		t.Fatalf("syncsetup.Open(A): ok=%v err=%v", ok, err)
+	}
+	listing, err := sa.Dir.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := listing.Cells[first].Lease; l.Device != rig.compB.device || l.Expires != 0 || l.ReleasedAt == 0 {
+		t.Fatalf("first chat's lease after B's clean stop = %+v, want released by B", l)
+	}
+	if l := listing.Cells[second].Lease; l.Device != rig.compB.device || l.Expires <= listing.Now {
+		t.Fatalf("second chat's lease after B's restart = %+v, want held by B", l)
+	}
+	list := rig.waitForList(rig.compB.device, ppCallWithin, "the second chat in B's agents.list", second)
+	for _, env := range list {
+		if env.Agent == first {
+			t.Fatalf("B published the chat it released: %s", ppDescribeList(list))
+		}
+	}
+	if !ppChatExistsInHome(rig.compB.home, first) || !ppChatExistsInHome(rig.compB.home, second) {
+		t.Fatalf("B's home lacks one of the chats %s, %s", first, second)
+	}
+}
+
 // ── world and helpers ────────────────────────────────────────────────────────
 
 type ppComputer struct {
@@ -1025,7 +1152,9 @@ type ppServeProc struct {
 	out    *ppSyncBuffer
 	done   chan error
 	once   sync.Once
-	// ready is how long the process took to print its start line.
+	// began is when the process was started, and ready how long it took to print
+	// its start line.
+	began time.Time
 	ready time.Duration
 }
 
@@ -1055,6 +1184,7 @@ func (r *ppRig) startPhoneServe(comp ppComputer) *ppServeProc {
 	r.t.Cleanup(proc.stop)
 
 	began := time.Now()
+	proc.began = began
 	deadline := began.Add(ppServeStartWithin)
 	for {
 		if strings.Contains(out.String(), ppPhoneServeStartLine) {
@@ -1248,6 +1378,66 @@ func (r *ppRig) waitForEntries(deviceID string, within time.Duration, what strin
 		}
 		if time.Now().After(deadline) {
 			r.t.Fatalf("timed out after %s waiting for %s in agents.entries.%s (last=%+v)", within, what, deviceID, last)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+type ppListEnvelope struct {
+	Writer string               `json:"writer"`
+	At     time.Time            `json:"at"`
+	Agent  string               `json:"agent"`
+	Result appwire.AgentsResult `json:"result"`
+}
+
+func ppDescribeList(envs []ppListEnvelope) string {
+	var parts []string
+	for _, env := range envs {
+		var ids []string
+		for _, a := range env.Result.Agents {
+			ids = append(ids, a.ID+"("+a.State+")")
+		}
+		parts = append(parts, fmt.Sprintf("{agent:%s rows:%v}", env.Agent, ids))
+	}
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// waitForList waits until the latest `agents.list` slot of a computer has an
+// envelope for every wanted chat, each carrying that chat's row.
+func (r *ppRig) waitForList(deviceID string, within time.Duration, what string, chats ...string) []ppListEnvelope {
+	r.t.Helper()
+	var last []ppListEnvelope
+	deadline := time.Now().Add(within)
+	for {
+		plain, err := r.phone.Read(r.t.Context(), deviceID, "agents.list")
+		switch {
+		case err == nil:
+			var envs []ppListEnvelope
+			if jsonErr := json.Unmarshal(plain.Payload, &envs); jsonErr != nil {
+				r.t.Fatalf("decode agents.list.%s: %v", deviceID, jsonErr)
+			}
+			last = envs
+			have := map[string]bool{}
+			for _, env := range envs {
+				for _, a := range env.Result.Agents {
+					if a.ID == env.Agent {
+						have[a.ID] = true
+					}
+				}
+			}
+			all := true
+			for _, want := range chats {
+				all = all && have[want]
+			}
+			if all {
+				return envs
+			}
+		case errors.Is(err, phonetest.ErrSlotReplay), errors.Is(err, phonetest.ErrNotFound):
+		default:
+			r.t.Fatalf("Read(agents.list.%s) while waiting for %s: %v", deviceID, what, err)
+		}
+		if time.Now().After(deadline) {
+			r.t.Fatalf("timed out after %s waiting for %s in agents.list.%s (last=%s)", within, what, deviceID, ppDescribeList(last))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
