@@ -211,7 +211,7 @@ The removable row’s key line says `r remove`. To remove a device or phone (the
 desk was removed — it can no longer reach your chats.
 ```
 
-Removing a phone revokes it at the sync service, clears whatever was waiting for it, and every one of your computers remembers the removal, so an older copy of the device list cannot let it back in.
+Removing a phone stops every one of your computers serving it, clears whatever was waiting for it, and each of them remembers the removal, so an older copy of the device list cannot let it back in.
 
 ## Add a phone
 

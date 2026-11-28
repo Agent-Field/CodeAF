@@ -8,13 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -54,7 +52,7 @@ func newPhoneServeFlags() phoneServeFlags {
 	return phoneServeFlags{
 		set:             set,
 		home:            set.String("home", "", "codeaf's state folder for this host, instead of CODEAF_HOME or ~/.codeaf"),
-		acceptOlderList: set.Bool("accept-older-list", false, "accept an older device list after a sync service reset"),
+		acceptOlderList: set.Bool("accept-older-list", false, "accept an older device list after a relay reset"),
 	}
 }
 
@@ -98,7 +96,7 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 		if errors.Is(err, syncsetup.ErrNoIdentity) && identity.Solo(home.Dir()) {
 			return reportPhoneError(out, errors.New(phoneQuietLine))
 		}
-		return reportPhoneError(out, phoneSyncRefusal(err))
+		return reportPhoneError(out, err)
 	}
 	if !syncsetup.PhoneMayTalk(s.Home) {
 		return reportPhoneError(out, errors.New(phoneQuietLine))
@@ -169,7 +167,7 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 	var pausedMu sync.Mutex
 	var lastPaused string
 	printPaused := func(reason string) {
-		paused := phonePausedLine(reason)
+		paused := reason
 		pausedMu.Lock()
 		defer pausedMu.Unlock()
 		if paused == "" {
@@ -190,12 +188,14 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 	}
 	runCtx, runCancel := context.WithCancel(ctx)
 	done := make(chan struct{})
-	backend.clientInit.Lock()
-	backend.clientCancel = runCancel
-	backend.clientDone = done
-	backend.clientRunner.Store(r)
-	activePhoneUnpairer = phoneRunnerUnpairer{r: r}
-	backend.clientInit.Unlock()
+	func() {
+		backend.clientInit.Lock()
+		defer backend.clientInit.Unlock()
+		backend.clientCancel = runCancel
+		backend.clientDone = done
+		backend.clientRunner.Store(r)
+		activePhoneUnpairer = phoneRunnerUnpairer{r: r}
+	}()
 
 	if *names.acceptOlderList {
 		if err := r.AcceptOlderList(ctx); err != nil {
@@ -230,25 +230,6 @@ func reportPhoneError(out io.Writer, err error) error {
 		fmt.Fprintln(out, err.Error())
 	}
 	return err
-}
-
-func phonePausedLine(paused string) string {
-	return strings.ReplaceAll(paused, "relay", "sync service")
-}
-
-// phoneSyncRefusal turns syncOf()'s error into one plain sentence without the
-// banned word "relay".
-func phoneSyncRefusal(err error) error {
-	if err == nil {
-		return nil
-	}
-	msg := err.Error()
-	if msg == chatlist.SyncOff {
-		msg = strings.ReplaceAll(msg, "relay's address", "sync address")
-	}
-	msg = strings.ReplaceAll(msg, "relay's", "sync service's")
-	msg = strings.ReplaceAll(msg, "relay", "sync service")
-	return errors.New(msg)
 }
 
 func appHomeBusy(dir string) bool {

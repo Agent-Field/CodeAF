@@ -154,13 +154,12 @@ func (b *appBackend) startPhoneRunner() {
 
 func (b *appBackend) ensurePhoneApprovalWatch() {
 	b.clientInit.Lock()
+	defer b.clientInit.Unlock()
 	if b.clientPhonesStop != nil {
-		b.clientInit.Unlock()
 		return
 	}
 	select {
 	case <-b.left:
-		b.clientInit.Unlock()
 		return
 	default:
 	}
@@ -192,7 +191,6 @@ func (b *appBackend) ensurePhoneApprovalWatch() {
 		})
 	})
 	b.clientPhonesStop = func() { stopListener(); cancel() }
-	b.clientInit.Unlock()
 }
 
 // phoneGatePollEvery is how often a host looks at the phone gate for a change another

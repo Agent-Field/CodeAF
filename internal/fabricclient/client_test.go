@@ -250,7 +250,7 @@ func assertReadableError(t *testing.T, err error) {
 	for _, forbidden := range []string{
 		"bad_request", "not_found", "not_enrolled", "already_decided",
 		"too_large", "too_big", "rate_limited", "relay_storage_full",
-		"relay", "auditor", "verdict", "verified", "refuted",
+		"relay_admission_full", "auditor", "verdict", "verified", "refuted",
 	} {
 		if strings.Contains(strings.ToLower(msg), forbidden) {
 			t.Fatalf("error %q contains forbidden code or word %q", msg, forbidden)

@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -1106,10 +1107,12 @@ func TestPhoneNoticeSentencesAndNoForbiddenWords(t *testing.T) {
 		phoneAlreadyServingLine,
 		phoneQuietLine,
 		phoneAcceptedOlderListLine,
-		phonePausedLine(clientrun.PausedOlderListReason),
+		clientrun.PausedOlderListReason,
 	)
+	// "relay" is not on this list: it is the repository's word for the server, and the paused
+	// sentence names it on purpose. internal/wordlaw is the gate for where it may appear.
 	forbidden := []string{
-		"relay", "auditor", "verdict", "verified", "refuted",
+		"auditor", "verdict", "verified", "refuted",
 		"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer",
 		"dev_phone1",
 	}
@@ -1206,8 +1209,8 @@ func TestPhoneServeSyncOffNoIdentityAndQuietRefusalsMakeNoRequests(t *testing.T)
 	t.Setenv(syncsetup.URLVar, "off")
 	var outOff bytes.Buffer
 	err := runPhoneContext(context.Background(), []string{"serve", "--home", homeSyncOff}, &outOff)
-	if err == nil || strings.Contains(strings.ToLower(err.Error()), "relay") {
-		t.Fatalf("sync-off err = %v (out=%q), want non-nil without 'relay'", err, outOff.String())
+	if err == nil || err.Error() != chatlist.SyncOff {
+		t.Fatalf("sync-off err = %v (out=%q), want the sentence %q", err, outOff.String(), chatlist.SyncOff)
 	}
 
 	// 2. No identity on disk.
@@ -1215,8 +1218,8 @@ func TestPhoneServeSyncOffNoIdentityAndQuietRefusalsMakeNoRequests(t *testing.T)
 	t.Setenv(syncsetup.URLVar, srv.URL)
 	var outNoID bytes.Buffer
 	err = runPhoneContext(context.Background(), []string{"serve", "--home", homeNoID}, &outNoID)
-	if err == nil || strings.Contains(strings.ToLower(err.Error()), "relay") {
-		t.Fatalf("no-identity err = %v (out=%q), want non-nil without 'relay'", err, outNoID.String())
+	if err == nil {
+		t.Fatalf("no-identity err = nil (out=%q), want a refusal", outNoID.String())
 	}
 
 	// 3. Solo identity with no approved phone.
@@ -1313,7 +1316,7 @@ func TestV3AndV5PhoneServeVersionPinPauseAndAcceptOlderList(t *testing.T) {
 	go func() {
 		done2 <- runPhoneContext(ctx2, []string{"serve", "--home", homeDir}, &out2)
 	}()
-	wantPaused := phonePausedLine(clientrun.PausedOlderListReason)
+	wantPaused := clientrun.PausedOlderListReason
 	out2.waitFor(t, `phone serving is paused: the device list on this sync address is older`)
 	// Must keep running (not exit on its own) while paused.
 	select {
@@ -1373,7 +1376,7 @@ func TestPhoneServeHelpAndFrontPageAbsence(t *testing.T) {
 			}
 		}
 		lower := strings.ToLower(page)
-		for _, bad := range append(slices.Clone(machineryVocabulary), "relay") {
+		for _, bad := range slices.Clone(machineryVocabulary) {
 			if strings.Contains(lower, bad) {
 				t.Fatalf("`codeaf phone %s` used forbidden word %q:\n%s", strings.Join(args, " "), bad, page)
 			}

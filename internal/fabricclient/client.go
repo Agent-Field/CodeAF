@@ -41,19 +41,19 @@ var (
 	// ErrExists means a device record with that id already exists in the directory.
 	ErrExists = errors.New("that device is already registered")
 	// ErrBadRequest means the request body or parameters violated the route contract.
-	ErrBadRequest = errors.New("the sync service refused an invalid phone request")
+	ErrBadRequest = errors.New("the relay refused an invalid phone request")
 	// ErrUnauthorized means the caller is not permitted to use this route.
 	ErrUnauthorized error = &codedError{"this computer is not authorized for that request", wireauth.ErrUnauthorized}
 	// ErrRevoked means the calling device has been removed from the identity.
 	ErrRevoked error = &codedError{"this computer was removed and can no longer reach your chats", wireauth.ErrRevoked}
-	// ErrSkew means the caller's clock differs too much from the sync service's clock.
-	ErrSkew error = &codedError{"this computer's clock is too far from the sync service's clock", wireauth.ErrSkew}
+	// ErrSkew means the caller's clock differs too much from the relay's clock.
+	ErrSkew error = &codedError{"this computer's clock is too far from the relay's clock", wireauth.ErrSkew}
 	// ErrMethodDenied means a client attempted an action outside its enrolled method list.
 	ErrMethodDenied = errors.New("that action is not enabled for this phone")
 	// ErrStorageOff means storage is disabled on the sync service.
-	ErrStorageOff error = &codedError{"storage is turned off on this sync service", wireauth.ErrStorageOff}
+	ErrStorageOff error = &codedError{"storage is turned off on this relay", wireauth.ErrStorageOff}
 	// ErrNotFound means the target client or resource does not exist.
-	ErrNotFound = errors.New("that phone is not registered on the sync service")
+	ErrNotFound = errors.New("that phone is not registered on the relay")
 	// ErrClaimed means another computer or token already owns the queue entry.
 	ErrClaimed = errors.New("that phone call is already claimed")
 	// ErrSequence means a queue entry number was out of sequence.
@@ -67,15 +67,15 @@ var (
 	// ErrGone means the identity was replaced and deleted.
 	ErrGone error = &codedError{"this identity was replaced and removed", wireauth.ErrGone}
 	// ErrTooLarge means the request body exceeded the route's size cap.
-	ErrTooLarge = errors.New("that phone record is too large for the sync service")
+	ErrTooLarge = errors.New("that phone record is too large for the relay")
 	// ErrFull means the identity has reached its phone or slot capacity on the sync service.
-	ErrFull = errors.New("this account has reached the phone limit on the sync service")
+	ErrFull = errors.New("this account has reached the phone limit on the relay")
 	// ErrRateLimited means the caller must wait before retrying.
-	ErrRateLimited error = &codedError{"the sync service is busy right now; try again in a moment", wireauth.ErrRateLimited}
+	ErrRateLimited error = &codedError{"the relay is busy right now; try again in a moment", wireauth.ErrRateLimited}
 	// ErrUnavailable means the sync service is temporarily unable to serve the request.
-	ErrUnavailable error = &codedError{"the sync service is not available right now", wireauth.ErrUnavailable}
+	ErrUnavailable error = &codedError{"the relay is not available right now", wireauth.ErrUnavailable}
 	// ErrUnreachable means the HTTP request could not reach the sync service.
-	ErrUnreachable = errors.New("cannot reach the sync service")
+	ErrUnreachable = errors.New("cannot reach the relay")
 )
 
 // EnrollmentRow is one stored phone enrollment returned by GET /v1/clients.

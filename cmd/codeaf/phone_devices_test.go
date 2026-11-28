@@ -311,7 +311,9 @@ func TestU2PhoneCLIStringsContainNoForbiddenWords(t *testing.T) {
 		fabricclient.ErrAlreadyDecided.Error(),
 		fabricclient.ErrFull.Error(),
 	}
-	forbidden := []string{"relay", "auditor", "verdict", "verified", "refuted"}
+	// "relay" is the repository's word for the server, so it is allowed here; internal/wordlaw
+	// decides where it may appear. The machinery words stay banned.
+	forbidden := []string{"auditor", "verdict", "verified", "refuted"}
 	for _, s := range stringsToCheck {
 		lower := strings.ToLower(s)
 		for _, bad := range forbidden {

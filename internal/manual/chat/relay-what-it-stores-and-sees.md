@@ -131,12 +131,12 @@ must seal to the client's current key and respect chat lease ownership.
 
 A phone is enrolled once, with a statement signed by the identity key naming the
 phone, its two public keys, the methods it may call and the names it may read. The
-relay stores that statement beside the phone's other data. At most 16 phones can
+server stores that statement beside the phone's other data. At most 16 phones can
 be enrolled per identity, and a statement can be replaced only by one with a
-higher version. The relay reads none of it; it checks only the shape and the
+higher version. The server reads none of it; it checks only the shape and the
 identity signature, and every computer checks the statement again itself.
 
-A phone can ask the relay for the identity's computers. The list names each
+A phone can ask the server for the identity's computers. The list names each
 non-revoked computer, whether it is serving phones right now and when it was last
 seen. A computer counts as serving only while it holds a directory watch open
 with `serving=1`, so a computer that is switched off or asleep stops showing as serving
@@ -145,17 +145,17 @@ shortly after its socket goes quiet.
 A phone can also wait for its slots to change: a read that names the last version
 it saw and a wait of up to 25 seconds returns as soon as any slot changes, or with
 nothing when the time is up. A phone may hold two waits, and revoking the phone
-ends them at once. While a phone is waiting or reading, the relay tells serving
+ends them at once. While a phone is waiting or reading, the server tells serving
 computers that it is watching, and a write to a slot answers with a
 `Codeaf-Client-Watching: 1` header, so computers publish at once only for a phone
-that is looking. The relay never reads slot contents.
+that is looking. The server never reads slot contents.
 
 ## Client queue, offline calls and replay protection
 
 Scoped clients can append sealed calls for an allowed method. Each call carries
 a signed sequence number, time and target box, or `any`. Numbers must increase
 by one, including after acknowledgement or expiry. Each client can hold 128
-unacknowledged calls, each at most 4 KiB; calls expire at 24 hours. The relay
+unacknowledged calls, each at most 4 KiB; calls expire at 24 hours. The server
 rejects replays, gaps, stale calls and methods outside the pairing's allowlist.
 A client with no allowed methods cannot queue calls.
 
@@ -165,4 +165,4 @@ winning box acknowledges to delete the entry. Queue operations never acquire a
 chat lease. Revoking a client deletes its queue. An executor must verify the
 retained original request proof, permissions, age and any required biometric
 confirmation inside the encrypted call, use durable execution idempotency and
-log executed calls. The relay cannot read the call or verify biometric evidence.
+log executed calls. The server cannot read the call or verify biometric evidence.

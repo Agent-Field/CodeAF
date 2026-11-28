@@ -17,7 +17,7 @@ When it is approved codeaf says `<name> is now paired as a phone. It can start c
 
 If the link was copied without its key, codeaf says `that link has no key; copy the whole link from the phone`. If the request does not match its link it says `that request does not match its link. Nothing was approved.`
 
-A computer that has never been paired with anything keeps quiet and makes no requests to the sync service. Approving a phone lets it make only the requests that serving that phone needs, so one computer and a phone are enough. Removing the last phone makes that computer quiet again.
+A computer that has never been paired with anything keeps quiet and makes no requests to the relay. Approving a phone lets it make only the requests that serving that phone needs, so one computer and a phone are enough. Removing the last phone makes that computer quiet again.
 
 ## Start a chat on a computer from my phone
 
@@ -82,6 +82,6 @@ That is deliberate: a computer that cannot recognise a phone's link cannot mista
 
 ## The phone and your keys
 
-The phone makes its own keys and keeps them. When you approve it, this computer gives it only a certificate for those keys, your identity's public key and this computer's signed card, sealed so that only the phone can read it. Your identity's secret, your sync keys and your provider keys are never sent to the phone, and the sync service cannot read what passes between the phone and your computers.
+The phone makes its own keys and keeps them. When you approve it, this computer gives it only a certificate for those keys, your identity's public key and this computer's signed card, sealed so that only the phone can read it. Your identity's secret, your sync keys and your provider keys are never sent to the phone, and the relay cannot read what passes between the phone and your computers.
 
-If phone serving pauses with a message that the device list on this sync address is older than one this computer saw, the sync service was probably reset. Chats and sync are untouched; only the phone is paused. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. It says `accepted the older device list. Phones paired before the reset must pair again.` and keeps serving.
+If phone serving pauses with a message that the device list on this sync address is older than one this computer saw, the relay was probably reset. Chats and sync are untouched; only the phone is paused. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. It says `accepted the older device list. Phones paired before the reset must pair again.` and keeps serving.

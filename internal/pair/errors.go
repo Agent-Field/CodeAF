@@ -225,7 +225,7 @@ var (
 	// ErrNoExecutorCard is a client approval called before the computer has supplied its signed card provider.
 	ErrNoExecutorCard = errors.New("this computer has no phone card ready yet; open codeaf and approve again")
 	// ErrNoFabricClient is a client approval called without a signed fabric client.
-	ErrNoFabricClient = errors.New("this computer cannot reach the sync service to enroll a phone")
+	ErrNoFabricClient = errors.New("this computer cannot reach the relay to enroll a phone")
 	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
 	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
 	// ErrNotJoined is an approver that has no device of its own to answer with.
