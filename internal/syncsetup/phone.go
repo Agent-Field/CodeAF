@@ -163,6 +163,14 @@ func ForgetPhone(home, device string) error {
 	return nil
 }
 
+// phoneRecorded reports whether device is one of the approved phones recorded for home.
+func phoneRecorded(home, device string) bool {
+	phonesMu.Lock()
+	ids, err := readPhonesLocked(home)
+	phonesMu.Unlock()
+	return err == nil && slices.Contains(ids, device)
+}
+
 // PhonesApproved reports whether home has at least one approved, unrevoked
 // phone recorded on disk.
 func PhonesApproved(home string) bool {
@@ -311,14 +319,14 @@ func (w phoneWire) RoundTrip(r *http.Request) (*http.Response, error) {
 		return removedReply(r), nil
 	}
 	if !MayTalk(w.home) {
-		if !PhoneMayTalk(w.home) || !phoneAllowedRequest(r, w.self) {
+		if !PhoneMayTalk(w.home) || !phoneAllowedRequest(w.home, r, w.self) {
 			return nil, ErrQuiet
 		}
 	}
 	return w.next.RoundTrip(r)
 }
 
-func phoneAllowedRequest(r *http.Request, self string) bool {
+func phoneAllowedRequest(home string, r *http.Request, self string) bool {
 	if r == nil || r.URL == nil {
 		return false
 	}
@@ -335,6 +343,12 @@ func phoneAllowedRequest(r *http.Request, self string) bool {
 		return true
 	case r.Method == http.MethodGet && p == "/v1/clients":
 		return true
+	case r.Method == http.MethodPost && strings.HasPrefix(p, "/v1/dir/devices/"):
+		// REMOVING A PHONE THIS COMPUTER APPROVED is the runner's own traffic: it unpairs
+		// the phone and the removal has to reach the sync service. Only an id recorded
+		// as an approved phone here may be revoked through this gate, never another device.
+		id, ok := strings.CutSuffix(strings.TrimPrefix(p, "/v1/dir/devices/"), "/revoke")
+		return ok && id != "" && !strings.Contains(id, "/") && phoneRecorded(home, id)
 	}
 	rest, ok := strings.CutPrefix(p, "/v1/clients/")
 	if !ok {

@@ -220,6 +220,8 @@ func TestP13PhoneWireRecorderSoloWithApprovedPhone(t *testing.T) {
 		{http.MethodDelete, "/v1/clients/" + testPhoneID + "/queue/1"},
 		{http.MethodPut, "/v1/clients/" + testPhoneID + "/slots/card." + self},
 		{http.MethodGet, "/v1/clients/" + testPhoneID + "/slots/card." + self},
+		// Removing a phone this computer approved is the runner's own traffic.
+		{http.MethodPost, "/v1/dir/devices/" + testPhoneID + "/revoke"},
 	}
 	for _, tc := range allowed {
 		req, err := http.NewRequestWithContext(ctx, tc.method, fake.srv.URL+tc.path, nil)
@@ -259,7 +261,8 @@ func TestP13PhoneWireRecorderSoloWithApprovedPhone(t *testing.T) {
 		{"lease acquire", http.MethodPost, "/v1/dir/cells/01J0000000000000000000000A/acquire"},
 		{"dir vault", http.MethodPost, "/v1/dir/vault"},
 		{"put other device", http.MethodPut, "/v1/dir/devices/" + testOtherDeviceID},
-		{"revoke device", http.MethodPost, "/v1/dir/devices/" + testPhoneID + "/revoke"},
+		{"revoke a device that is not a recorded phone", http.MethodPost, "/v1/dir/devices/" + testOtherDeviceID + "/revoke"},
+		{"revoke with a nested path", http.MethodPost, "/v1/dir/devices/" + testPhoneID + "/extra/revoke"},
 		{"client enroll", http.MethodPut, "/v1/clients/" + testPhoneID + "/enroll"},
 		{"client register", http.MethodPut, "/v1/clients/" + testPhoneID},
 		{"client computers", http.MethodGet, "/v1/clients/" + testPhoneID + "/computers"},
@@ -287,8 +290,8 @@ func TestP13PhoneWireRecorderSoloWithApprovedPhone(t *testing.T) {
 	if err := pdir.PutDevice(ctx, testOtherDeviceID, directory.Device{V: 1}); !errors.Is(err, ErrQuiet) {
 		t.Fatalf("PhoneDirectory.PutDevice(other) = %v, want ErrQuiet", err)
 	}
-	if err := pdir.Revoke(ctx, testPhoneID); !errors.Is(err, ErrQuiet) {
-		t.Fatalf("PhoneDirectory.Revoke = %v, want ErrQuiet", err)
+	if err := pdir.Revoke(ctx, testOtherDeviceID); !errors.Is(err, ErrQuiet) {
+		t.Fatalf("PhoneDirectory.Revoke(not a phone) = %v, want ErrQuiet", err)
 	}
 	if _, err := pdir.Acquire(ctx, "01J0000000000000000000000A", directory.AcquireOpts{}); !errors.Is(err, ErrQuiet) {
 		t.Fatalf("PhoneDirectory.Acquire = %v, want ErrQuiet", err)
