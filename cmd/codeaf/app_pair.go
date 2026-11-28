@@ -406,6 +406,30 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		if err != nil {
 			return err, false
 		}
+		if asking.Client {
+			o.line(pair.PhoneWantsToConnectLine)
+			answer := o.ask(o.ctx, "approve", pair.PhoneWantsToConnectLine, pair.PhoneCheckQuestion(asking.Check), pairApprovalOptions())
+			if answer != "y" {
+				if o.ctx.Err() != nil {
+					return o.ctx.Err(), false
+				}
+				if err := who.Deny(o.ctx, asking); err != nil {
+					return err, false
+				}
+				return pair.ErrRefused, false
+			}
+			if err := who.Approve(o.ctx, asking); err != nil {
+				if err = settleApproval(who, asking, err); err != nil {
+					return err, false
+				}
+			}
+			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
+				return err, false
+			}
+			record()
+			o.line(pair.ApprovedPhoneLine(asking.Name))
+			return nil, false
+		}
 		label := pair.ComputerLabel(asking.Name, asking.Platform)
 		o.line(appPairApproveTitle(label))
 		answer := o.ask(o.ctx, "approve", appPairApproveTitle(label), appPairCheck(label, asking.Check), pairApprovalOptions())

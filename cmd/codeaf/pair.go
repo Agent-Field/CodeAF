@@ -59,10 +59,10 @@ func newPairDoor(in io.Reader, out io.Writer) pairDoor {
 		ownRecord: func(ctx context.Context, route pair.Mailbox) error { return ownDeviceRecord(ctx, home.Dir(), route) }}
 }
 
-const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code | codeaf pair --org <address> [--code]"
+const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> [--check <n>] | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code | codeaf pair --org <address> [--code]"
 
 // approveUsage is what `codeaf pair approve` with nothing after it is told.
-const approveUsage = "usage: codeaf pair approve <link-or-token> \u2014 the link or token the new device shows; for a numeric pairing code use codeaf pair <code>"
+const approveUsage = "usage: codeaf pair approve <link-or-token> [--check <n>] \u2014 the link or token the new device shows; for a numeric pairing code use codeaf pair <code>"
 
 // Numeric alternatives belong on this command's page, keeping the front page
 // within its shared screen-height budget while explaining both pairing doors.
@@ -166,6 +166,7 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
 	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
+	check := flags.String("check", "", "verify the four-digit check number before approving a pairing link")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -188,7 +189,7 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	}
 	d.term.waitingStop = terminalSyncProgress(progressAddress)
 	defer d.term.stopProgress()
-	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
+	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code, *check), *via)
 }
 
 // naming settles the label shown during approval. A join keeps the choice in
@@ -245,13 +246,17 @@ func (d *pairDoor) askName(ctx context.Context) error {
 
 // dispatch picks the door by what was typed: nothing asks to join, `approve`
 // and anything shaped like a link approve, and a six-digit code joins as before.
-func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, replace, code bool) error {
+func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, replace, code bool, check ...string) error {
+	var typedCheck string
+	if len(check) > 0 {
+		typedCheck = check[0]
+	}
 	switch {
-	case code && len(args) == 0 && !replace:
+	case code && len(args) == 0 && !replace && typedCheck == "":
 		return d.show(ctx, relay)
-	case code && len(args) == 1 && args[0] == "approve" && !replace:
+	case code && len(args) == 1 && args[0] == "approve" && !replace && typedCheck == "":
 		return d.show(ctx, relay)
-	case len(args) == 0 && !code:
+	case len(args) == 0 && !code && typedCheck == "":
 		return d.askToJoin(ctx, relay, replace)
 	case len(args) == 1 && args[0] == "approve":
 		return wrongCall(approveUsage)
@@ -259,10 +264,10 @@ func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, rep
 		if _, err := pair.ReadJoinCode(args[1]); err == nil {
 			return wrongCall("that is a numeric pairing code; use: codeaf pair " + args[1])
 		}
-		return d.withApprovalRecord().approve(ctx, relay, args[1])
+		return d.withApprovalRecord().approve(ctx, relay, args[1], typedCheck)
 	case len(args) == 1 && !code && pair.IsLinkText(args[0]):
-		return d.withApprovalRecord().approve(ctx, relay, args[0])
-	case len(args) == 1 && !code:
+		return d.withApprovalRecord().approve(ctx, relay, args[0], typedCheck)
+	case len(args) == 1 && !code && typedCheck == "":
 		return d.join(ctx, relay, args[0], replace)
 	}
 	return wrongCall(pairUsage)

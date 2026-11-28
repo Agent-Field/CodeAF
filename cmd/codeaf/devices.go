@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -35,6 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -467,6 +469,14 @@ type chatsKind struct {
 	self     string // this computer's device id
 	relay    string // named when the relay cannot be reached
 	identity string // identity id for this computer's permit book
+	unpair   tui3.PhoneUnpairer
+}
+
+func (c chatsKind) phoneUnpairer() tui3.PhoneUnpairer {
+	if c.unpair != nil {
+		return c.unpair
+	}
+	return activePhoneUnpairer
 }
 
 // openChatsKind is the kind for this machine, and false when it has none: sync
@@ -514,9 +524,15 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 	for id, d := range l.Devices {
 		name := chatlist.DeviceName(l.Devices, id, open)
 		rows = append(rows, chatsRow{
-			ChatsDevice: pair.ChatsDevice{Name: name, This: id == c.self, Stopped: d.Revoked, Platform: d.Platform},
-			id:          id,
-			baseName:    name,
+			ChatsDevice: pair.ChatsDevice{
+				Name:     name,
+				This:     id == c.self,
+				Stopped:  d.Revoked,
+				Phone:    d.Kind == clientproto.ClientLinkClass,
+				Platform: d.Platform,
+			},
+			id:       id,
+			baseName: name,
 		})
 	}
 	for i := range rows {
@@ -525,9 +541,9 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 			rows[i].LastSeen = time.UnixMilli(seen)
 		}
 	}
-	// This computer first, removed ones last, then by name: the order the chat's list uses.
+	// This computer first, phones after computers, removed ones last, then by name.
 	slices.SortFunc(rows, func(a, b chatsRow) int {
-		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id))
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(rank(a.Phone), rank(b.Phone)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id))
 	})
 	return rows, nil
 }
@@ -564,7 +580,7 @@ func chatsRowsTable(rows []chatsRow, now time.Time, duplicates map[string]bool) 
 		shown[i].Name = devname.DeviceLabel(row.baseName, row.id, duplicates[strings.ToLower(row.baseName)])
 	}
 	slices.SortStableFunc(shown, func(a, b pair.ChatsDevice) int {
-		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name))
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(rank(a.Phone), rank(b.Phone)), cmp.Compare(a.Name, b.Name))
 	})
 	text := pair.ChatsDevicesListAt(shown, now)
 	if stdinIsTerminal(os.Stdout) {
@@ -625,9 +641,15 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if err := c.dir.Revoke(ctx, row.id); err != nil {
 		return "", c.explain(err)
 	}
+	if u := c.phoneUnpairer(); u != nil {
+		_ = u.Unpair(ctx, row.id)
+	}
 	livedoor.NotifyRemoved(home.Dir(), row.id)
 	_ = pair.Permits().Forget(row.id)
 	forgetViewed(home.Dir(), row.id)
+	if row.Phone {
+		return pair.PhoneRevokedLine(row.Name), nil
+	}
 	return pair.ChatsRevokedLine(row.Name), nil
 }
 
@@ -652,6 +674,9 @@ func (c chatsKind) permit(name string, watch, drive *bool) (string, error) {
 		return "", unknownDevice(name)
 	}
 	row := rows[0]
+	if row.Phone {
+		return pair.PhonePermitSetLine, nil
+	}
 	id := c.identityID()
 	book := pair.Permits()
 	if watch != nil || drive != nil {

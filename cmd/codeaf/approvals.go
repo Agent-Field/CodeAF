@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -27,6 +28,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
+// activePhoneUnpairer holds the in-process phone runner when one is running,
+// so removing a phone from /devices or `codeaf devices revoke` notifies it.
+var activePhoneUnpairer tui3.PhoneUnpairer
+
 // approvalsDoor is the surface's tui3.Approvals.
 type approvalsDoor struct {
 	dir      string
@@ -35,6 +40,8 @@ type approvalsDoor struct {
 	// permits is this computer's book of what each paired computer may do here.
 	// Nil reads the book in the default state folder.
 	permits func() *pair.PermitBook
+	// unpair notifies an in-process phone runner when a phone is removed.
+	unpair tui3.PhoneUnpairer
 
 	mu     sync.Mutex
 	asking map[string]pair.Asking // by code: what Pending read, for the answer
@@ -125,7 +132,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 func pendingOf(as pair.Asking) tui3.PendingDevice {
 	return tui3.PendingDevice{
 		Code: as.Ref.Code, Device: as.DeviceID(), Name: as.Name, Platform: as.Platform,
-		Check: as.Check, RequestedAt: as.RequestedAt, ExpiresAt: as.ExpiresAt,
+		Check: as.Check, Client: as.Client, RequestedAt: as.RequestedAt, ExpiresAt: as.ExpiresAt,
 	}
 }
 
@@ -303,7 +310,7 @@ func (d *approvalsDoor) withPermits(identityID string, rows []tui3.DeviceRow) []
 	}
 	book := d.book()
 	for i := range rows {
-		if rows[i].Self || rows[i].Revoked {
+		if rows[i].Self || rows[i].Revoked || rows[i].Client || rows[i].Kind == clientproto.ClientLinkClass {
 			continue
 		}
 		permit, _ := book.For(identityID, rows[i].ID)
@@ -352,7 +359,11 @@ func rowsOf(l directory.Listing, key []byte, self string) []tui3.DeviceRow {
 }
 
 func rowOf(id string, dev directory.Device, key []byte, self string) tui3.DeviceRow {
-	row := tui3.DeviceRow{ID: id, Name: openName(key, dev.Name), Platform: dev.Platform, Self: id == self, Revoked: dev.Revoked}
+	isClient := dev.Kind == clientproto.ClientLinkClass
+	row := tui3.DeviceRow{
+		ID: id, Name: openName(key, dev.Name), Platform: dev.Platform,
+		Kind: dev.Kind, Client: isClient, Self: id == self, Revoked: dev.Revoked,
+	}
 	if dev.LastSeen > 0 {
 		row.LastSeen = time.UnixMilli(dev.LastSeen)
 	}
@@ -367,6 +378,13 @@ func openName(key []byte, sealed string) string {
 	return "a device"
 }
 
+func (d *approvalsDoor) phoneUnpairer() tui3.PhoneUnpairer {
+	if d.unpair != nil {
+		return d.unpair
+	}
+	return activePhoneUnpairer
+}
+
 func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	client, _, _, err := d.home()
 	if err != nil {
@@ -374,6 +392,9 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	}
 	if err := client.Revoke(ctx, id); err != nil {
 		return told(err)
+	}
+	if u := d.phoneUnpairer(); u != nil {
+		_ = u.Unpair(ctx, id)
 	}
 	// A REMOVED COMPUTER STOPS BEING ABLE TO WATCH AT ONCE: its open live views
 	// here close, its permit goes, and the last-seen copies kept of its chats go,

@@ -652,7 +652,7 @@ Housekeeping — changes state on disk or on the network
       discard everything codeaf worked out from the journal and replay it
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
-  codeaf pair approve <link-or-token>
+  codeaf pair approve <link-or-token> [--check <n>]
       approve a device's link or terminal token after comparing its check number
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
