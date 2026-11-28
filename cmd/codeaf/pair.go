@@ -133,6 +133,14 @@ func (d pairDoor) ownHome() string {
 // written here.
 func (d pairDoor) recordOwnDeviceOrSay(ctx context.Context, route pair.Mailbox) {
 	notePaired(d.ownHome(), route)
+	d.recordOwnRowOrSay(ctx, route)
+}
+
+// recordOwnRowOrSay is the record alone, for the approval of a PHONE: a phone is not
+// another computer of this identity, so it must not tell the home that one is paired,
+// or a computer that has only ever served a phone would start behaving as if it
+// shared its chats (contract P13).
+func (d pairDoor) recordOwnRowOrSay(ctx context.Context, route pair.Mailbox) {
 	if d.ownRecord == nil {
 		return
 	}

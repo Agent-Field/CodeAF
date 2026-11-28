@@ -295,9 +295,10 @@ func (a Approver) ApproveClient(ctx context.Context, as Asking) error {
 			return phraseDecision(err)
 		}
 	}
-	if a.AfterApprove != nil {
-		a.AfterApprove(ctx)
-	}
+	// AfterApprove is deliberately NOT called for a phone: it refreshes what this computer
+	// knows about the account it shares with another computer, and a phone is not another
+	// computer. On a computer that has never been paired it would also be the first request
+	// that computer sends to the shared storage (contract P13).
 	return nil
 }
 

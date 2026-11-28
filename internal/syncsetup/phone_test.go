@@ -590,3 +590,29 @@ func TestP13PhoneGateLeavesMayTalkAndQuietUnchanged(t *testing.T) {
 		t.Fatalf("Sync.Rows on solo+phone home = %v, %v; want empty, nil", rows, err)
 	}
 }
+
+// TestP13ARosterWithOnlyAPhoneIsNotAnotherComputer verifies that a device list that
+// holds this computer and a phone does not tell the home that another computer is
+// paired, while a second computer does (contract P13).
+func TestP13ARosterWithOnlyAPhoneIsNotAnotherComputer(t *testing.T) {
+	fake := newFakePhoneServer(t)
+	home, s, _ := newSoloPhoneHome(t, fake.srv.URL)
+	binding := deviceBindingFor(s.Relay, s.Identity, s.Device)
+	self := s.Device.ID()
+
+	rememberOthers(home, binding, map[string]directory.Device{
+		self:        {},
+		testPhoneID: {Kind: clientproto.ClientLinkClass},
+	})
+	if s.OthersPaired() {
+		t.Fatal("a roster holding this computer and a phone counted the phone as another computer")
+	}
+	rememberOthers(home, binding, map[string]directory.Device{
+		self:              {},
+		testPhoneID:       {Kind: clientproto.ClientLinkClass},
+		testOtherDeviceID: {},
+	})
+	if !s.OthersPaired() {
+		t.Fatal("a roster holding a second computer did not count as another computer")
+	}
+}

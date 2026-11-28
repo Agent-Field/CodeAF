@@ -322,6 +322,12 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			samplePairedStorage(o.ctx, dir, route)
 		}
 	}
+	// recordPhone is what approving a PHONE does: this computer's own record, and nothing
+	// that says another computer is paired or samples the shared storage, because a
+	// phone is not another computer of this identity (contract P13).
+	recordPhone := func() {
+		_ = ownDeviceRecord(o.ctx, dir, route)
+	}
 	switch p.Mode {
 	case "offer_code":
 		grant, err := pairGrantAt(dir, route)
@@ -410,7 +416,11 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 				} else if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 					return err, false
 				}
-				record()
+				if isClient {
+					recordPhone()
+				} else {
+					record()
+				}
 				o.line(tui3.ErrAlreadyPaired.Error())
 				return nil, false
 			}
@@ -438,7 +448,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			if err := syncsetup.NotePhoneApproved(dir, asking.DeviceID()); err != nil {
 				return err, false
 			}
-			record()
+			recordPhone()
 			o.line(pair.ApprovedPhoneLine(asking.Name))
 			return nil, false
 		}

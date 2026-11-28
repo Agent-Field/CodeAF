@@ -125,7 +125,9 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 			} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 				return tui3.PendingDevice{}, err
 			}
-			notePaired(d.dir, route)
+			if !isClient {
+				notePaired(d.dir, route)
+			}
 			return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 		}
 	}
@@ -173,7 +175,9 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 		} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return err
 		}
-		if route, err := d.mailbox(""); err == nil {
+		// A phone is not another computer of this identity, so it does not tell the home
+		// that one is paired (contract P13).
+		if route, err := d.mailbox(""); err == nil && !as.Client {
 			notePaired(d.dir, route)
 		}
 		return nil

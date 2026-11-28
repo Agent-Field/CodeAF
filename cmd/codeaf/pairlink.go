@@ -213,7 +213,11 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string, check ...str
 			} else if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
 				return err
 			}
-			d.recordOwnDeviceOrSay(ctx, route)
+			if isClient {
+				d.recordOwnRowOrSay(ctx, route)
+			} else {
+				d.recordOwnDeviceOrSay(ctx, route)
+			}
 			d.term.say(tui3.ErrAlreadyPaired.Error())
 			return nil
 		}
@@ -280,7 +284,7 @@ func (d pairDoor) approvePhone(ctx context.Context, route pair.Mailbox, who pair
 	if err := syncsetup.NotePhoneApproved(d.joining(false).Home, asking.DeviceID()); err != nil {
 		return err
 	}
-	d.recordOwnDeviceOrSay(ctx, route)
+	d.recordOwnRowOrSay(ctx, route)
 	d.term.say(pair.ApprovedPhoneLine(asking.Name))
 	return nil
 }

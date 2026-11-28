@@ -1007,3 +1007,26 @@ func TestSetupLinkAndParseSetupLink(t *testing.T) {
 		})
 	}
 }
+
+// TestP13ApprovingAPhoneNeverRunsTheAfterApproveHook proves that approving a phone does
+// not run the hook that refreshes what this computer knows about the account it shares
+// with another computer. A phone is not another computer, and on a computer that has
+// never been paired the hook would be its first request to the shared storage.
+func TestP13ApprovingAPhoneNeverRunsTheAfterApproveHook(t *testing.T) {
+	r := newClientPairRig(t)
+	ctx := context.Background()
+	var ran int
+	r.approver.AfterApprove = func(context.Context) { ran++ }
+
+	phone := r.openPhoneRequest(t, "phone")
+	as, err := r.approver.Look(ctx, phone.ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.approver.ApproveClient(ctx, as); err != nil {
+		t.Fatalf("ApproveClient: %v", err)
+	}
+	if ran != 0 {
+		t.Fatalf("AfterApprove ran %d times when approving a phone, want 0", ran)
+	}
+}
