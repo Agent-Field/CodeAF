@@ -72,6 +72,7 @@ func TestPersonalPhone(t *testing.T) {
 		run  func(*testing.T)
 	}{
 		{"P8_quiet_until_a_phone_exists", ppScenarioP8QuietUntilPhoneExists},
+		{"D3_a_fresh_computer_says_no_phone_is_paired", ppScenarioD3FreshComputerQuiet},
 		{"P2_P9_pairing_through_the_real_door", ppScenarioP2P9PairingThroughTheRealDoor},
 		{"P1_P4_P5_one_pairing_both_computers", ppScenarioP1P4P5OnePairingBothComputers},
 		{"S1_S2_L1_start_a_chat_on_B_see_the_reply", ppScenarioS1S2L1StartChatOnBSeeReply},
@@ -126,6 +127,43 @@ func ppScenarioP8QuietUntilPhoneExists(t *testing.T) {
 			t.Fatalf("computer %s (%s) missing dir list (%v) or serving=1 watch (%v); calls: %s",
 				comp.name, comp.device, sawList, sawServingWatch, rig.recorder.summaryFor(comp.device))
 		}
+	}
+}
+
+// ppScenarioD3FreshComputerQuiet proves D3 of the first emulator run: on a
+// computer whose home holds no identity at all, `codeaf phone serve` exits
+// non-zero with the quiet sentence the manual promises, never the sentence that
+// tells a person to import an identity, and sends nothing to the relay.
+func ppScenarioD3FreshComputerQuiet(t *testing.T) {
+	root := ppNewShortRoot(t)
+	model := startRCModel(t)
+	relayURL, recorder := startPersonalPhoneRelay(t, root)
+	t.Setenv(syncsetup.URLVar, relayURL)
+	comp := ppComputer{name: "fresh-e", home: filepath.Join(root, "e"), work: filepath.Join(root, "we")}
+	if err := os.MkdirAll(comp.home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspaceAt(t, comp.work, false)
+	ppWriteConfig(t, comp.home)
+	rig := &ppRig{t: t, root: root, model: model, recorder: recorder, relayURL: relayURL}
+	recorder.reset()
+
+	out, err := rig.runCLI(comp, "phone", "serve")
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() == 0 {
+		t.Fatalf("phone serve on a fresh computer: err = %v, want a non-zero exit; output:\n%s", err, out)
+	}
+	if !strings.Contains(out, ppPhoneQuietLine) {
+		t.Fatalf("phone serve on a fresh computer said %q, want it to contain %q", out, ppPhoneQuietLine)
+	}
+	if strings.Contains(out, "identity import") {
+		t.Fatalf("phone serve on a fresh computer told the person to import an identity: %q", out)
+	}
+	if _, loadErr := identity.Load(comp.home); !errors.Is(loadErr, identity.ErrNone) {
+		t.Fatalf("phone serve made an identity on a fresh computer: load err = %v", loadErr)
+	}
+	if calls := recorder.snapshot(); len(calls) != 0 {
+		t.Fatalf("a fresh computer sent requests before anything was paired: %s", recorder.summary())
 	}
 }
 
@@ -987,6 +1025,8 @@ type ppServeProc struct {
 	out    *ppSyncBuffer
 	done   chan error
 	once   sync.Once
+	// ready is how long the process took to print its start line.
+	ready time.Duration
 }
 
 func (r *ppRig) startPhoneServe(comp ppComputer) *ppServeProc {
@@ -1014,9 +1054,12 @@ func (r *ppRig) startPhoneServe(comp ppComputer) *ppServeProc {
 	}()
 	r.t.Cleanup(proc.stop)
 
-	deadline := time.Now().Add(ppServeStartWithin)
+	began := time.Now()
+	deadline := began.Add(ppServeStartWithin)
 	for {
 		if strings.Contains(out.String(), ppPhoneServeStartLine) {
+			proc.ready = time.Since(began)
+			r.t.Logf("phone serve on %s said it was serving after %s", comp.name, proc.ready.Round(time.Millisecond))
 			return proc
 		}
 		select {

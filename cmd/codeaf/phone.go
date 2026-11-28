@@ -18,7 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -93,7 +92,13 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 	}
 	s, err := syncOf()
 	if err != nil {
-		if errors.Is(err, syncsetup.ErrNoIdentity) && identity.Solo(home.Dir()) {
+		// A COMPUTER WITH NO IDENTITY HAS NEVER BEEN PAIRED WITH ANYTHING, and the
+		// manual promises one sentence for that computer: no phone is paired yet.
+		// The identity refusal tells a person to import one, which is the wrong
+		// next step for a computer that is only waiting for its first phone. It
+		// stays for a home that has an identity file that will not load, since
+		// that is a real fault and not a quiet one.
+		if errors.Is(err, syncsetup.ErrNoIdentity) {
 			return reportPhoneError(out, errors.New(phoneQuietLine))
 		}
 		return reportPhoneError(out, err)

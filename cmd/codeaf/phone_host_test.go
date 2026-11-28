@@ -1218,8 +1218,8 @@ func TestPhoneServeSyncOffNoIdentityAndQuietRefusalsMakeNoRequests(t *testing.T)
 	t.Setenv(syncsetup.URLVar, srv.URL)
 	var outNoID bytes.Buffer
 	err = runPhoneContext(context.Background(), []string{"serve", "--home", homeNoID}, &outNoID)
-	if err == nil {
-		t.Fatalf("no-identity err = nil (out=%q), want a refusal", outNoID.String())
+	if err == nil || err.Error() != phoneQuietLine || strings.TrimSpace(outNoID.String()) != phoneQuietLine {
+		t.Fatalf("no-identity err = %v out = %q, want %q", err, outNoID.String(), phoneQuietLine)
 	}
 
 	// 3. Solo identity with no approved phone.
@@ -1235,6 +1235,51 @@ func TestPhoneServeSyncOffNoIdentityAndQuietRefusalsMakeNoRequests(t *testing.T)
 
 	if got := hits.Load(); got != 0 {
 		t.Fatalf("refused phone serve runs made %d HTTP requests, want 0", got)
+	}
+}
+
+// TestPhoneServeOnAFreshHomeSaysNoPhoneIsPairedAndMakesNothing is D3 of the
+// first emulator run: a computer whose home holds no identity file at all, not
+// even the solo marker, is the computer the manual describes as "never paired
+// with a phone or another computer". It must say the one quiet sentence, send
+// nothing, and leave the home without an identity, rather than telling a person
+// who only wants to pair a phone to import one.
+func TestPhoneServeOnAFreshHomeSaysNoPhoneIsPairedAndMakesNothing(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("DO_NOT_TRACK", "1")
+
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	t.Setenv(syncsetup.URLVar, srv.URL)
+
+	fresh := t.TempDir()
+	for _, name := range []string{identity.File, "identity-solo", "device.json"} {
+		if _, err := os.Stat(filepath.Join(fresh, name)); err == nil {
+			t.Fatalf("fixture is not fresh: %s exists", name)
+		}
+	}
+
+	var out bytes.Buffer
+	err := runPhoneContext(context.Background(), []string{"serve", "--home", fresh}, &out)
+	if err == nil || err.Error() != phoneQuietLine {
+		t.Fatalf("fresh home err = %v, want %q", err, phoneQuietLine)
+	}
+	if got := strings.TrimSpace(out.String()); got != phoneQuietLine {
+		t.Fatalf("fresh home printed %q, want only %q", got, phoneQuietLine)
+	}
+	if strings.Contains(out.String(), "identity import") || errors.Is(err, syncsetup.ErrNoIdentity) {
+		t.Fatalf("fresh home was told to import an identity: err=%v out=%q", err, out.String())
+	}
+	if _, loadErr := identity.Load(fresh); !errors.Is(loadErr, identity.ErrNone) {
+		t.Fatalf("refusing made an identity on a fresh home: load err = %v", loadErr)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("fresh-home phone serve made %d HTTP requests, want 0", got)
 	}
 }
 
