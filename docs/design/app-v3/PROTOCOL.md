@@ -457,6 +457,16 @@ keeps the value in a private file the agent's commands read (the model's own
 | `devices.remove` | `in.DeviceRemoveParams` | `DeviceRemoveResult` |
 | `devices.rename` | `in.DeviceRenameParams` | `DeviceRenameResult` |
 
+## clients methods
+
+A computer that serves paired phones announces `clients.manage` in `hello.features`; one that does not refuses these methods as unknown. A phone is listed by its device id, its name, the methods and reads it was enrolled for and whether it is paused, never with a key or a secret. Pairing a phone is not a method here: it goes through the pairing link a person approves.
+
+| method | params | result |
+|---|---|---|
+| `clients.list` | `{}` | `{clients: PairedClient[]}` |
+| `clients.pause` | `{id, paused}` | `{}` |
+| `clients.unpair` | `{id}` | `{}` |
+
 ## factory methods
 
 | method | params | result |
