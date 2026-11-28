@@ -85,8 +85,102 @@ func TestPersonalPhone(t *testing.T) {
 		{"S5_lifetime", ppScenarioS5Lifetime},
 		{"D5_two_chats_in_a_row_are_both_listed", ppScenarioD5TwoChatsInARowAreBothListed},
 		{"D5_a_restart_keeps_the_released_chat_in_the_list", ppScenarioD5RestartKeepsTheReleasedChatInTheList},
+		{"D7_with_relay_storage_off_a_phone_still_starts_a_chat_and_sees_the_reply", ppScenarioD7StorageOffPhoneStillStartsAChat},
 	} {
 		t.Run(sub.name, sub.run)
+	}
+}
+
+// ppHelloAsk is what the phone types in the storage-off scenario. It carries the
+// scripted model's marker and none of its special words, so the model answers it
+// with rcHostReply.
+const ppHelloAsk = "rc-host say hello"
+
+// ppScenarioD7StorageOffPhoneStillStartsAChat proves D7: with the relay's storage
+// switched off, a phone can still start a chat on a computer and see its reply.
+// Storage off means the relay keeps no chat content; it never meant that a
+// computer may not start a chat, and a phone reads a computer's chats from the
+// slots sealed to it, which is phone traffic and not storage.
+//
+// The relay here is the real Go relay started with `--storage off`, so it
+// refuses every chat upload exactly as the hosted relay does for an account it
+// has not approved. Nothing writes the computers' storage answer: they learn it
+// from the relay's own refusal.
+func ppScenarioD7StorageOffPhoneStillStartsAChat(t *testing.T) {
+	rig := newPPRig(t, "--storage", "off")
+	rig.startPhoneServe(rig.compA)
+	rig.startPhoneServe(rig.compB)
+	rig.pairPhoneAt(rig.compA)
+
+	rig.waitForComputers(ppDiscoveryWithin, rig.compA.device, rig.compB.device)
+	rig.waitForCard(rig.compA.device, ppDiscoveryWithin)
+	rig.waitForCard(rig.compB.device, ppDiscoveryWithin)
+
+	ctx := t.Context()
+	createRef, err := rig.phone.Create(ctx, rig.compB.device)
+	if err != nil {
+		t.Fatalf("phone.Create(B): %v", err)
+	}
+	createOut := rig.waitOutcome(rig.compB.device, createRef, ppCallWithin)
+	if createOut.Status != clientproto.OutcomeDone || createOut.Agent == "" {
+		t.Fatalf("with relay storage off, Create(B) outcome = %+v, want status=done with a chat", createOut)
+	}
+	chatID := createOut.Agent
+	if !ppChatExistsInHome(rig.compB.home, chatID) {
+		t.Fatalf("created chat %s does not exist under B's home %s", chatID, rig.compB.home)
+	}
+	rig.waitForEntries(rig.compB.device, ppCallWithin, "the new chat listed in B's agents.entries", func(envs []ppEntriesEnvelope) bool {
+		return ppEnvelopesHaveChat(envs, chatID)
+	})
+
+	sendRef, err := rig.phone.Send(ctx, rig.compB.device, chatID, ppHelloAsk)
+	if err != nil {
+		t.Fatalf("phone.Send(B, %s): %v", chatID, err)
+	}
+	if sendOut := rig.waitOutcome(rig.compB.device, sendRef, ppCallWithin); sendOut.Status != clientproto.OutcomeDone || sendOut.Agent != chatID {
+		t.Fatalf("with relay storage off, Send(B) outcome = %+v, want status=done agent=%s", sendOut, chatID)
+	}
+	replied := rig.waitForEntries(rig.compB.device, ppCallWithin, "the scripted reply in B's agents.entries", func(envs []ppEntriesEnvelope) bool {
+		for _, env := range envs {
+			if env.Agent != chatID {
+				continue
+			}
+			for _, e := range env.Result.Entries {
+				if strings.Contains(e.Text, rcHostReply) {
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	// The phone sees the conversation and nothing else: no line about a chat that
+	// could not be saved or shared, which would be noise about a relay that is
+	// working as it was set up.
+	for _, env := range replied {
+		if env.Agent != chatID {
+			continue
+		}
+		for _, e := range env.Result.Entries {
+			if e.Kind == appwire.EntryNotice && !strings.HasSuffix(e.Text, " started this chat.") {
+				t.Fatalf("with relay storage off the chat carries the notice %q, want only the line saying the phone started it", e.Text)
+			}
+		}
+	}
+	// The phone's traffic is not storage: the relay still holds no chat content,
+	// and the chat is on B and no other computer.
+	if ppChatExistsInHome(rig.compA.home, chatID) {
+		t.Fatalf("created chat %s unexpectedly exists under A's home %s", chatID, rig.compA.home)
+	}
+	var held []string
+	_ = filepath.Walk(filepath.Join(rig.root, "relay", "blobs"), func(path string, info os.FileInfo, err error) error {
+		if err == nil && info.Mode().IsRegular() {
+			held = append(held, path)
+		}
+		return nil
+	})
+	if len(held) > 0 {
+		t.Fatalf("the relay holds chat content with storage off: %d file(s), first %s", len(held), held[0])
 	}
 }
 
@@ -910,11 +1004,14 @@ type ppEntriesEnvelope struct {
 	Result appwire.EntriesResult `json:"result"`
 }
 
-func newPPRig(t *testing.T) *ppRig {
+// newPPRig builds two computers of one identity, a phone and a relay. relayArgs
+// are extra flags for the relay (the storage switch is one), so a scenario can
+// ask for the relay a person's account really has.
+func newPPRig(t *testing.T, relayArgs ...string) *ppRig {
 	t.Helper()
 	root := ppNewShortRoot(t)
 	model := startRCModel(t)
-	relayURL, recorder := startPersonalPhoneRelay(t, root)
+	relayURL, recorder := startPersonalPhoneRelay(t, root, relayArgs...)
 
 	compA := ppComputer{name: ppNameA, home: filepath.Join(root, "a"), work: filepath.Join(root, "wa")}
 	compB := ppComputer{name: ppNameB, home: filepath.Join(root, "b"), work: filepath.Join(root, "wb")}
@@ -1686,9 +1783,9 @@ type ppRelayRecorder struct {
 	calls []ppRecordedCall
 }
 
-func startPersonalPhoneRelay(t *testing.T, root string) (string, *ppRelayRecorder) {
+func startPersonalPhoneRelay(t *testing.T, root string, relayArgs ...string) (string, *ppRelayRecorder) {
 	t.Helper()
-	upstreamURL := startRelayAt(t, filepath.Join(root, "relay"))
+	upstreamURL := startRelayAt(t, filepath.Join(root, "relay"), relayArgs...)
 	upstream, err := url.Parse(upstreamURL)
 	if err != nil {
 		t.Fatal(err)
