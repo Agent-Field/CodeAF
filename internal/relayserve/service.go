@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,7 +67,34 @@ type Service struct {
 	fabric  *fabric
 	stop    chan struct{}
 	swept   sync.WaitGroup
+	// drain is closed when the relay starts shutting down, so a request held open
+	// on purpose ends at once instead of holding the shutdown for its full wait.
+	drain     chan struct{}
+	drainOnce sync.Once
 }
+
+// Drain ends every request the relay is holding open on purpose: a slot wait, a
+// pairing poll and a directory watch socket. [Serve] calls it when its server
+// begins to shut down; it is safe to call more than once, and on a pipe-only
+// service.
+//
+// THE SHUTDOWN CANNOT DO THIS ITSELF. http.Server.Shutdown waits for every
+// request still being answered, and a held wait is one: up to 25 seconds for a
+// slot wait or a pairing poll, so a phone with a wait parked kept the relay
+// alive past a SIGTERM until it was killed. Shutdown also ignores a hijacked
+// connection such as a watch socket, which it is up to the caller to tell.
+// Requests that are doing work, an upload or a write to the directory, are not
+// touched: they still finish, as Serve promises.
+func (s *Service) Drain() { s.drainOnce.Do(func() { close(s.drain) }) }
+
+// drainable is the handler of a built relay: the same routes, plus the Drain
+// that [Serve] looks for.
+type drainable struct {
+	http.Handler
+	drain func()
+}
+
+func (d drainable) Drain() { d.drain() }
 
 // Close stops the sweep and releases the directory files. It is safe on a
 // pipe-only service.
@@ -119,10 +147,11 @@ func New(cfg Config) *Service {
 		now = time.Now
 	}
 	mux := pipeMux(&relay.Server{Note: cfg.Note, Peer: peerOf(cfg)}, cfg.Status)
-	mountPairing(mux, cfg, now)
+	svc := &Service{drain: make(chan struct{})}
+	mountPairing(mux, cfg, now, svc.drain)
 	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
-	svc := &Service{Handler: stamped(now, mux)}
+	svc.Handler = drainable{Handler: stamped(now, mux), drain: svc.Drain}
 	if cfg.Store == "" {
 		return svc
 	}
@@ -141,10 +170,10 @@ func New(cfg Config) *Service {
 	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
 	auth := noting(svc.ns.authenticate)
 	svc.stop = make(chan struct{})
-	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric), stop: svc.stop}
+	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric), stop: svc.stop, drain: svc.drain}
 	svc.fabric = fabric
 	svc.ns.fabric = fabric
-	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory)))
+	dirs := endOnDrain(svc.drain, isWatchSocket, logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory))))
 	clients := logged(cfg.Logf, fabric.handler())
 	mux.Handle("/v1/clients", clients)
 	mux.Handle("/v1/clients/", clients)
@@ -182,13 +211,14 @@ func sweepInterval(d time.Duration) time.Duration {
 // device that is pairing has no identity yet. Its log line is the verb and the
 // status and nothing else: the key travels in a header and the messages in a
 // body, and neither is ever handed to the logger.
-func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time) {
+func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time, drain <-chan struct{}) {
 	limits := cfg.Pair
 	if limits == (pairbox.Limits{}) {
 		limits = pairbox.DefaultLimits
 	}
 	peer := peerOf(cfg)
 	h := logged(cfg.Logf, pairbox.Handler(pairbox.NewMemory(limits, now), peer))
+	h = endOnDrain(drain, isPairingPoll, h)
 	mux.Handle(pairbox.Path, h)
 	mux.Handle(pairbox.Path+"/", h)
 }
@@ -218,6 +248,39 @@ func pipeMux(service *relay.Server, status bool) *http.ServeMux {
 	return mux
 }
 
+// endOnDrain cancels the context of each request that held says is held open on
+// purpose, when drain closes. A handler that waits on its request's context ends
+// then: a pairing poll answers with nothing, and a watch socket closes. Every
+// other request passes through untouched and is not cancelled.
+func endOnDrain(drain <-chan struct{}, held func(*http.Request) bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !held(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		go func() {
+			select {
+			case <-drain:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// isWatchSocket is a directory watch: the one request on the directory's
+// routes that stays open until a peer or the relay ends it.
+func isWatchSocket(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
+
+// isPairingPoll is a read of the pairing mailbox, which parks for up to
+// pairbox.MaxWait when nothing has been written yet.
+func isPairingPoll(r *http.Request) bool { return r.Method == http.MethodGet }
+
 // drainWithin is how long in-flight requests get to finish after SIGTERM.
 const drainWithin = 30 * time.Second
 
@@ -230,6 +293,12 @@ const drainWithin = 30 * time.Second
 // relay.HandshakeWithin, and a carrier that stops answering pings is dropped.
 func Serve(ctx context.Context, ln net.Listener, h http.Handler) error {
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 20 * time.Second}
+	// A handler that holds requests open on purpose says so by having a Drain
+	// (a built relay's does): it is told the moment the shutdown begins, since
+	// Shutdown would otherwise wait out every held wait and ignore every socket.
+	if d, ok := h.(interface{ Drain() }); ok {
+		srv.RegisterOnShutdown(d.Drain)
+	}
 	done := make(chan error, 1)
 	go func() {
 		<-ctx.Done()

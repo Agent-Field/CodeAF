@@ -336,6 +336,10 @@ func (f *fabric) watchSlots(w http.ResponseWriter, r *http.Request) {
 			release()
 			fabricReply(w, nil, badFabric(503, "unavailable"))
 			return
+		case <-f.drain:
+			release()
+			fabricReply(w, nil, badFabric(503, "unavailable"))
+			return
 		}
 	}
 }

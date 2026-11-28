@@ -44,6 +44,9 @@ type fabric struct {
 	clientWatches map[string]*clientWatch
 	waiting       int
 	stop          <-chan struct{}
+	// drain closes when the relay begins shutting down, a moment before stop: a
+	// parked slot wait ends then, so the shutdown does not wait out its 25 seconds.
+	drain <-chan struct{}
 }
 
 type fabricError struct {

@@ -49,7 +49,7 @@ codeaf relay --listen :8787 --store /var/lib/codeaf
 - `--quiet` turns the log off. `--status=false` turns off `GET /status`.
 - `--trust-proxy` makes registration, dial and pairing limits count the first address in `X-Forwarded-For`, falling back to the socket address when absent or blank. without it, forwarding headers are ignored. a relay behind Railway, a load balancer or nginx must pass this flag or every caller shares the proxy's allowance. use it only behind a proxy that sets that header.
 
-Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has no TLS of its own.** Put a proxy that ends TLS in front of it if any computer reaches it over a network you do not own.
+Stop it with SIGTERM or ctrl+c: requests under way finish first, but a wait a phone or a computer is only holding open (a parked slot wait, a pairing poll or a watch socket) ends at once, so a connected phone does not hold the shutdown up. **The relay has no TLS of its own.** Put a proxy that ends TLS in front of it if any computer reaches it over a network you do not own.
 
 There is no Docker image of the relay by itself; an organization's stack runs one (*Your organization's own relay*). The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
 
