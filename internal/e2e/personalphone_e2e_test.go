@@ -84,7 +84,7 @@ func TestPersonalPhone(t *testing.T) {
 		{"P13_solo_computer_serves_a_phone_without_sharing_chats", ppScenarioP13SoloComputerServesPhoneWithoutSharingChats},
 		{"S5_lifetime", ppScenarioS5Lifetime},
 		{"D5_two_chats_in_a_row_are_both_listed", ppScenarioD5TwoChatsInARowAreBothListed},
-		{"D5_a_restart_leaves_the_released_chat_out_of_the_list", ppScenarioD5RestartReleasesTheStoppedChats},
+		{"D5_a_restart_keeps_the_released_chat_in_the_list", ppScenarioD5RestartKeepsTheReleasedChatInTheList},
 	} {
 		t.Run(sub.name, sub.run)
 	}
@@ -779,20 +779,18 @@ func ppScenarioD5TwoChatsInARowAreBothListed(t *testing.T) {
 	}
 }
 
-// ppScenarioD5RestartReleasesTheStoppedChats pins what happens to a chat across
-// a restart of the computer's `phone serve`, which is what the first emulator run
-// saw as "the phone lists only the newer chat". B's `phone serve` is stopped
-// cleanly, which hands every chat it was running back (its lease is released), and
-// the phone queues a second create meanwhile. When B comes back it holds only the
-// chat it just made, so only that chat is in its slot: a chat is published by the
-// computer that holds its lease and read by nobody once it is released
-// (internal/clientrun TestSnapshotsOnlyContainLeasedChats). The first chat is
-// still in B's home. Nothing re-takes it, so no computer publishes it until
-// something runs it again.
+// ppScenarioD5RestartKeepsTheReleasedChatInTheList proves the contract for a
+// chat across a restart of the computer's `phone serve`, which the first emulator
+// run saw as "the phone lists only the newer chat". B's `phone serve` is stopped
+// cleanly, which hands every chat it was running back (the lease is released),
+// and the phone queues a second create meanwhile. When B comes back the first
+// chat is still B's: nobody holds it and B was its last holder, so B's slot lists
+// it beside the chat it just made. A message from the phone to it then takes the
+// lease first (the conditional take) and runs, and the lease is B's afterwards.
 //
 // It also measures D4': after the restart the entry that was already waiting is
 // claimed within a round of the start line.
-func ppScenarioD5RestartReleasesTheStoppedChats(t *testing.T) {
+func ppScenarioD5RestartKeepsTheReleasedChatInTheList(t *testing.T) {
 	rig := newPPRig(t)
 	rig.startPhoneServe(rig.compA)
 	procB := rig.startPhoneServe(rig.compB)
@@ -829,7 +827,7 @@ func ppScenarioD5RestartReleasesTheStoppedChats(t *testing.T) {
 		t.Errorf("restarted B claimed the waiting create %s after its start line, want within %s", afterReady, ppFirstRoundWithin)
 	}
 
-	// The stop released the first chat; the restart holds only the second.
+	// The stop released the first chat to nobody, and the restart holds only the second.
 	sa, ok, err := syncsetup.Open(rig.compA.home)
 	if err != nil || !ok {
 		t.Fatalf("syncsetup.Open(A): ok=%v err=%v", ok, err)
@@ -844,14 +842,39 @@ func ppScenarioD5RestartReleasesTheStoppedChats(t *testing.T) {
 	if l := listing.Cells[second].Lease; l.Device != rig.compB.device || l.Expires <= listing.Now {
 		t.Fatalf("second chat's lease after B's restart = %+v, want held by B", l)
 	}
-	list := rig.waitForList(rig.compB.device, ppCallWithin, "the second chat in B's agents.list", second)
-	for _, env := range list {
-		if env.Agent == first {
-			t.Fatalf("B published the chat it released: %s", ppDescribeList(list))
-		}
-	}
+	// Both chats are in B's slot: the one it holds and the one it released last.
+	list := rig.waitForList(rig.compB.device, ppCallWithin, "both chats in B's agents.list", first, second)
+	t.Logf("B's agents.list slot after the restart: %s", ppDescribeList(list))
 	if !ppChatExistsInHome(rig.compB.home, first) || !ppChatExistsInHome(rig.compB.home, second) {
 		t.Fatalf("B's home lacks one of the chats %s, %s", first, second)
+	}
+
+	// A message to the released chat takes it first, runs, and leaves it held by B.
+	sendRef, err := rig.phone.Send(ctx, rig.compB.device, first, rcLaptopAsk)
+	if err != nil {
+		t.Fatalf("Send(B, released chat): %v", err)
+	}
+	if out := rig.waitOutcome(rig.compB.device, sendRef, ppCallWithin); out.Status != clientproto.OutcomeDone || out.Agent != first {
+		t.Fatalf("Send(B, released chat) outcome = %+v, want done for %s", out, first)
+	}
+	rig.waitForEntries(rig.compB.device, ppCallWithin, "the reply to the message sent to the released chat", func(envs []ppEntriesEnvelope) bool {
+		for _, env := range envs {
+			if env.Agent != first {
+				continue
+			}
+			for _, e := range env.Result.Entries {
+				if strings.Contains(e.Text, rcLaptopReply) {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	if listing, err = sa.Dir.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if l := listing.Cells[first].Lease; l.Device != rig.compB.device || l.Expires <= listing.Now {
+		t.Fatalf("first chat's lease after the phone's message = %+v, want held by B", l)
 	}
 }
 
