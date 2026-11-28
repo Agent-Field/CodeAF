@@ -361,6 +361,11 @@ func run() error {
 		return runCluster(os.Args[2:])
 	case "devbox":
 		return runDevbox(os.Args[2:])
+	case "phone":
+		// Keep this computer ready to start chats and answer from your phone
+		// without opening the desktop app (phone.go). Like `relay`, it stays off
+		// the `codeaf --help` front page and answers its own `codeaf phone --help`.
+		return runPhone(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS

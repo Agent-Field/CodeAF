@@ -357,6 +357,9 @@ func usageForCommand(name string) string {
 	if name == "devbox" {
 		return devboxUsage
 	}
+	if name == "phone" || name == "phone serve" {
+		return phoneUsage
+	}
 	// Collection editing has its own short reference page so the front page
 	// can introduce organization without listing every membership operation.
 	if name == "collections" {

@@ -51,6 +51,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -185,6 +186,7 @@ func runApp(args []string) error {
 		}
 	}()
 	backend.useSyncDrives(syncDrives)
+	backend.startPhoneRunner()
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
 	appPipelineRoad.Store(backend)
@@ -648,6 +650,15 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// clientRunner is open while sync is on and this computer has a shared identity.
+	clientRunner     atomic.Pointer[clientrun.Runner]
+	clientInit       sync.Mutex
+	clientCancel     context.CancelFunc
+	clientDone       chan struct{}
+	clientPhonesStop func()
+	clientNamesMu    sync.Mutex
+	clientNames      map[string]string
+
 	// Hosted views go straight to the wire and stay out of local inventory.
 	hostedAgents   map[string]*appAgent
 	hostedEmit     appwire.Emitter
@@ -1238,7 +1249,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		mint:       appMint,
 	}
 	b.startedAt = b.now()
-	b.emit = b.newAppInbox(emit)
+	b.emit = appClientEmitter{b: b, next: b.newAppInbox(emit)}
 	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
 	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
 	// with keys.set at the next.
@@ -5169,6 +5180,7 @@ func (b *appBackend) Close() error {
 	if b.devices != nil {
 		b.devices.close()
 	}
+	b.stopClients()
 	// THIS MACHINE'S FACTORY IS LET GO BEFORE ANYTHING THAT WAITS ON A
 	// CONVERSATION. Stopping the close watch waits for a carry-on that may be
 	// opening a conversation, and nothing below it is the factory's business;

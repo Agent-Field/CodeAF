@@ -286,6 +286,10 @@ func (o *appPairOperation) announceSync() {
 	o.backend.devices.wakePublication()
 	o.backend.chats.wakePublication()
 	o.backend.publishDevices()
+	o.backend.startPhoneRunner()
+	if r := o.backend.clientRunner.Load(); r != nil {
+		r.Changed()
+	}
 	sync, _ := o.backend.SyncStatus()
 	o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 }
