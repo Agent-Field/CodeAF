@@ -376,6 +376,14 @@ computer that syncs your chats as well as a device that can use this machine. It
 only at devices that can use this machine, so `codeaf devices revoke <name> --all` said `no
 device called "<name>" is paired with this machine` for a computer the list showed.
 
+**Two phones with one name.** Every phone first arrives under the name its app gave it, so two
+phones often share one. `codeaf devices revoke "WorkAF phone"` refuses them with the choices, and
+`codeaf devices revoke "WorkAF phone" --all` removes every phone of that name, answering one line
+for each, such as `WorkAF phone #8381 was removed — it can no longer reach your chats.` It used to
+refuse them again with the same `more than one device is called` sentence. A name this computer
+answers to is never removed by `--all`: it says `that is this device — remove it from another of
+your devices instead` and removes nothing, not even the others of that name.
+
 Removing one device with `--all` answers in the ordinary sentence — `laptop was removed — it
 can no longer open a chat here, and it needs a new pairing code to come back.` Removing
 several answers `2 devices called laptop were removed — each needs a new pairing code to come

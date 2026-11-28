@@ -68,7 +68,7 @@ Chats start moving between your computers when you pair a second computer with `
 Remove it from any one of your paired computers:
 
 - **On the screen:** open `/devices`, move to the phone, press `r`, then `y`. It asks `remove <name>? it must pair again to come back  ·  y removes  ·  any other key keeps it`, and then says `<name> was removed — it can no longer reach your chats.`
-- **From a terminal:** `codeaf devices revoke <name>`.
+- **From a terminal:** `codeaf devices revoke <name>`. Two phones often share one name, because each arrives under the name its app gave it. `codeaf devices revoke "<name>" --all` removes every phone of that name, or `codeaf devices revoke "<name> #<suffix>"` removes one, the suffix being the one `codeaf devices` prints.
 
 Every one of your computers stops serving it, whatever was waiting for it is cleared, and your computers remember the removal, so an old copy of the device list cannot let it back in.
 

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -139,6 +140,124 @@ func TestU2DevicesCLIPhoneListPermitRenameAndRevoke(t *testing.T) {
 	listing, err := dir.List(devicesCtx)
 	if err != nil || !listing.Devices[phoneID].Revoked {
 		t.Fatalf("phone not marked revoked in directory: %+v (%v)", listing.Devices[phoneID], err)
+	}
+}
+
+// testManyPhonesDir marks every device in phones as a phone in what List reads,
+// as the live relay's records do for a device that arrived through a phone link.
+type testManyPhonesDir struct {
+	directory.Client
+	phones map[string]bool
+}
+
+func (d testManyPhonesDir) List(ctx context.Context) (directory.Listing, error) {
+	l, err := d.Client.List(ctx)
+	if err != nil {
+		return l, err
+	}
+	for id := range d.phones {
+		if dev, ok := l.Devices[id]; ok {
+			dev.Kind = clientproto.ClientLinkClass
+			l.Devices[id] = dev
+		}
+	}
+	return l, nil
+}
+
+// D6: every phone arrives called by the name its app gave it, so two phones
+// commonly share one. `codeaf devices revoke <name>` refuses them with the choices,
+// and `--all`, which the manual says removes every device answering to the name,
+// must remove both phones, say so for each, unpair each at the running runner, and
+// leave every other device alone. Naming this computer with `--all` removes nothing.
+func TestD6DevicesRevokeAllRemovesEveryPhoneSharingAName(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("DO_NOT_TRACK", "1")
+
+	chats, rawDir := chatsWith(t, "laptop")
+	cellKey := bytes.Repeat([]byte{7}, 32)
+	const (
+		phoneOne = "dev_cccccccccccccccccccccccccccccccc"
+		phoneTwo = "dev_dddddddddddddddddddddddddddddddd"
+		phoneOld = "dev_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	)
+	for id, name := range map[string]string{phoneOne: "WorkAF phone", phoneTwo: "WorkAF phone", phoneOld: "other phone"} {
+		sealed, err := directory.SealName(directory.MetadataKey(cellKey), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rawDir.PutDevice(devicesCtx, id, directory.Device{V: 1, Name: sealed, Kind: clientproto.ClientLinkClass}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := testManyPhonesDir{Client: rawDir, phones: map[string]bool{phoneOne: true, phoneTwo: true, phoneOld: true}}
+	chats.dir = dir
+	unpairer := &recordingPhoneUnpairer{}
+	chats.unpair = unpairer
+	kinds := []deviceKind{chats}
+	revoked := func() map[string]bool {
+		l, err := dir.List(devicesCtx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for id, d := range l.Devices {
+			got[id] = d.Revoked
+		}
+		return got
+	}
+
+	// 1. The plain form still refuses two phones of one name, and removes neither.
+	if _, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"WorkAF phone"}) }); err == nil || !strings.Contains(err.Error(), "more than one device is called") {
+		t.Fatalf("revoke without --all on two phones of one name: %v, want the refusal with the choices", err)
+	}
+	if got := revoked(); got[phoneOne] || got[phoneTwo] {
+		t.Fatalf("the refused plain form removed a phone: %v", got)
+	}
+
+	// 2. --all, before or after the name, removes both and only both.
+	said, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"WorkAF phone", "--all"}) })
+	if err != nil {
+		t.Fatalf("revoke \"WorkAF phone\" --all: %v", err)
+	}
+	got := revoked()
+	if !got[phoneOne] || !got[phoneTwo] {
+		t.Fatalf("--all left a phone of that name in place: %v", got)
+	}
+	if got[phoneOld] || got[otherComputer] || got[thisComputer] {
+		t.Fatalf("--all removed a device of another name: %v", got)
+	}
+	if lines := strings.Split(strings.TrimSpace(said), "\n"); len(lines) != 2 {
+		t.Fatalf("--all said %d lines for two phones: %q", len(lines), said)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(said), "\n") {
+		if !strings.HasSuffix(line, " was removed \u2014 it can no longer reach your chats.") || !strings.HasPrefix(line, "WorkAF phone #") {
+			t.Errorf("--all said %q, want each phone removed by its own selector", line)
+		}
+	}
+	slices.Sort(unpairer.unpaired)
+	if !slices.Equal(unpairer.unpaired, []string{phoneOne, phoneTwo}) {
+		t.Fatalf("the runner unpaired %v, want both phones", unpairer.unpaired)
+	}
+
+	// 3. Said again, it says they are already gone and removes nothing more.
+	again, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"--all", "WorkAF phone"}) })
+	if err != nil || strings.Count(again, "is already removed.") != 2 {
+		t.Fatalf("--all a second time: %q (%v), want both phones already removed", again, err)
+	}
+	if len(unpairer.unpaired) != 2 {
+		t.Fatalf("a second --all unpaired again: %v", unpairer.unpaired)
+	}
+
+	// 4. A name that this computer answers to removes nothing at all, even when
+	// another computer answers to it too.
+	twin, _ := chatsWith(t, "desk")
+	if _, err := captureStdout(t, func() error { return stopDevice([]deviceKind{twin}, []string{"desk", "--all"}) }); err == nil || !strings.Contains(err.Error(), "this device") {
+		t.Fatalf("revoke desk --all on this computer's own name: %v, want the this-device refusal", err)
+	}
+	if l, _ := twin.dir.List(devicesCtx); l.Devices[otherComputer].Revoked || l.Devices[thisComputer].Revoked {
+		t.Fatalf("the refused --all still removed a computer: %+v", l.Devices)
 	}
 }
 

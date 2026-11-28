@@ -53,8 +53,10 @@ type deviceKind interface {
 	stop(name string) (string, error)
 }
 
-// allStopper is a kind that can stop every device answering to one name. Only
-// the remote-access kind can: two laptops with one host name are common there,
+// allStopper is a kind that can stop every device answering to one name. The
+// remote-access kind can, since two laptops with one host name are common there,
+// and so can the computers that sync the chats, which hold phones too: every
+// phone is first called by the name its maker gave it, so two phones share one,
 // and each is a key the person can tell apart no other way.
 type allStopper interface {
 	stopAll(name string) (string, error)
@@ -317,10 +319,13 @@ func stopAllByName(kinds []deviceKind, name string) (string, error) {
 			stop = many.stopAll
 		}
 		line, err := stop(name)
+		// What a kind did stop before it failed is still said.
+		if line != "" {
+			said = append(said, line)
+		}
 		if err != nil {
 			return strings.Join(said, "\n"), err
 		}
-		said = append(said, line)
 	}
 	if len(said) == 0 {
 		return "", cmp.Or(failed, unknownDevice(name))
@@ -642,6 +647,42 @@ func (c chatsKind) stop(name string) (string, error) {
 		return rows[0].Name + " is already removed.", nil
 	}
 	return c.revoke(rows[0])
+}
+
+// stopAll removes every device of this kind that answers to name, computers
+// and phones alike, each in the sentence its own removal says. Two phones that
+// both arrived as "WorkAF phone" are the ordinary case, and the plain form
+// refuses them with the choices, so this is the road that takes them all.
+//
+// THIS COMPUTER IS NEVER REMOVED, AND NOTHING IS REMOVED BEFORE THAT IS KNOWN:
+// a name this computer answers to refuses the whole call at once, rather than
+// removing the others first and then failing on the one it cannot.
+func (c chatsKind) stopAll(name string) (string, error) {
+	rows, err := c.called(name)
+	switch {
+	case err != nil:
+		return "", err
+	case len(rows) == 0:
+		return "", unknownDevice(name)
+	}
+	for _, row := range rows {
+		if row.This {
+			return "", errors.New(chatlist.RemoveSelf)
+		}
+	}
+	var said []string
+	for _, row := range rows {
+		if row.Stopped {
+			said = append(said, row.Name+" is already removed.")
+			continue
+		}
+		line, err := c.revoke(row)
+		if err != nil {
+			return strings.Join(said, "\n"), err
+		}
+		said = append(said, line)
+	}
+	return strings.Join(said, "\n"), nil
 }
 
 func (c chatsKind) revoke(row chatsRow) (string, error) {
