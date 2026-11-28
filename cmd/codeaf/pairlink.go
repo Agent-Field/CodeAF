@@ -202,14 +202,21 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string, check ...str
 		return err
 	}
 	asking, err := who.Look(ctx, ref)
-	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
-			return err
+	if errors.Is(err, pair.ErrLinkDecided) {
+		if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+			// An approval whose reply was lost: a computer shares the identity,
+			// while a phone opens only the phone gate (contract P13).
+			if isClient {
+				if err := syncsetup.NotePhoneApproved(d.joining(false).Home, devID); err != nil {
+					return err
+				}
+			} else if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
+				return err
+			}
+			d.recordOwnDeviceOrSay(ctx, route)
+			d.term.say(tui3.ErrAlreadyPaired.Error())
+			return nil
 		}
-		d.recordOwnDeviceOrSay(ctx, route)
-		d.term.say(tui3.ErrAlreadyPaired.Error())
-		return nil
 	}
 	if err != nil {
 		return err
@@ -270,7 +277,7 @@ func (d pairDoor) approvePhone(ctx context.Context, route pair.Mailbox, who pair
 			return err
 		}
 	}
-	if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
+	if err := syncsetup.NotePhoneApproved(d.joining(false).Home, asking.DeviceID()); err != nil {
 		return err
 	}
 	d.recordOwnDeviceOrSay(ctx, route)

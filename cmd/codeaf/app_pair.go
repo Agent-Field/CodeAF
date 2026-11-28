@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -394,14 +395,21 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return nil
 		}
 		asking, err := who.Look(o.ctx, ref)
-		if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-			// An approval whose reply was lost: the device is in, so this computer is shared.
-			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
-				return err, false
+		if errors.Is(err, pair.ErrLinkDecided) {
+			if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+				// An approval whose reply was lost: a computer shares the identity,
+				// while a phone opens only the phone gate (contract P13).
+				if isClient {
+					if err := syncsetup.NotePhoneApproved(dir, devID); err != nil {
+						return err, false
+					}
+				} else if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
+					return err, false
+				}
+				record()
+				o.line(tui3.ErrAlreadyPaired.Error())
+				return nil, false
 			}
-			record()
-			o.line(tui3.ErrAlreadyPaired.Error())
-			return nil, false
 		}
 		if err != nil {
 			return err, false
@@ -423,7 +431,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 					return err, false
 				}
 			}
-			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
+			if err := syncsetup.NotePhoneApproved(dir, asking.DeviceID()); err != nil {
 				return err, false
 			}
 			record()

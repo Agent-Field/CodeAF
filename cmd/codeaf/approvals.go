@@ -114,13 +114,20 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 		return tui3.PendingDevice{}, err
 	}
 	as, err := who.Look(ctx, ref)
-	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
-		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
-			return tui3.PendingDevice{}, err
+	if errors.Is(err, pair.ErrLinkDecided) {
+		if outcome, devID, isClient := approvedDeviceHere(who, ref.Code, ""); outcome == requestApprovedHere {
+			// An approval whose reply was lost: a computer shares the identity,
+			// while a phone opens only the phone gate (contract P13).
+			if isClient {
+				if err := syncsetup.NotePhoneApproved(d.dir, devID); err != nil {
+					return tui3.PendingDevice{}, err
+				}
+			} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
+				return tui3.PendingDevice{}, err
+			}
+			notePaired(d.dir, route)
+			return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 		}
-		notePaired(d.dir, route)
-		return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 	}
 	if err != nil {
 		return tui3.PendingDevice{}, told(err)
@@ -159,7 +166,11 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 				return err
 			}
 		}
-		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
+		if as.Client {
+			if err := syncsetup.NotePhoneApproved(d.dir, as.DeviceID()); err != nil {
+				return err
+			}
+		} else if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return err
 		}
 		if route, err := d.mailbox(""); err == nil {
@@ -206,22 +217,29 @@ const (
 // fleet, so a link some other fleet answered never counts as this one sharing.
 // An empty device is whichever device the request names.
 func approvedHere(who pair.Approver, code, device string) requestOutcome {
+	outcome, _, _ := approvedDeviceHere(who, code, device)
+	return outcome
+}
+
+func approvedDeviceHere(who pair.Approver, code, device string) (requestOutcome, string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), approveStep)
 	defer cancel()
 	r, err := who.Requests.GetRequest(ctx, code, 0)
 	switch {
 	case err != nil:
-		return requestUnknown
+		return requestUnknown, "", false
 	case r.State == directory.RequestPending:
-		return requestWaiting
+		return requestWaiting, "", false
 	case r.State != directory.RequestApproved || device != "" && r.Device != device:
-		return requestUnknown
+		return requestUnknown, "", false
 	}
 	listing, err := who.Dir.List(ctx)
-	if dev, ok := listing.Devices[r.Device]; err != nil || !ok || dev.Revoked {
-		return requestUnknown
+	dev, ok := listing.Devices[r.Device]
+	if err != nil || !ok || dev.Revoked {
+		return requestUnknown, "", false
 	}
-	return requestApprovedHere
+	isClient := r.Class == clientproto.ClientLinkClass || dev.Kind == clientproto.ClientLinkClass
+	return requestApprovedHere, r.Device, isClient
 }
 
 func (d *approvalsDoor) Deny(ctx context.Context, p tui3.PendingDevice) error {
@@ -392,6 +410,9 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	}
 	if err := client.Revoke(ctx, id); err != nil {
 		return told(err)
+	}
+	if err := syncsetup.ForgetPhone(d.dir, id); err != nil {
+		return err
 	}
 	if u := d.phoneUnpairer(); u != nil {
 		_ = u.Unpair(ctx, id)
