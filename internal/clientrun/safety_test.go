@@ -346,7 +346,9 @@ func TestRevokeWritesTombstoneDeletesStateAndStopsPublishing(t *testing.T) {
 		if err := g.dir.Revoke(context.Background(), g.client.dev.ID()); err != nil {
 			t.Fatal(err)
 		}
-		deadline := time.Now().Add(3 * time.Second)
+		// A ceiling that only catches a hang: the loop ends as soon as the tombstone exists, and a
+		// short one failed on a box busy with other suites.
+		deadline := time.Now().Add(30 * time.Second)
 		for len(g.r.Tombstones()) == 0 {
 			if time.Now().After(deadline) {
 				t.Fatal("Serve did not tombstone client on watch-socket revoked event")

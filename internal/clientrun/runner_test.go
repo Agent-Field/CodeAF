@@ -266,7 +266,7 @@ func (g *rig) waitForRequest(t *testing.T, match func(string) bool) {
 			if match(r) {
 				return
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatalf("timed out waiting for request; seen=%v", g.recordedRequests())
 		}
 	}

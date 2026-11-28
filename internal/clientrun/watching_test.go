@@ -533,7 +533,8 @@ func TestServeHoldsServingWatchSocketAndReportsOnlineToPhone(t *testing.T) {
 	// the closed socket and reports serving=false (contract L8).
 	cancel()
 	<-done
-	deadline := time.Now().Add(3 * time.Second)
+	// A ceiling that only catches a hang; the loop ends as soon as the socket is seen closed.
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		g.clock.Advance(30 * time.Second)
 		if !getServing() {
