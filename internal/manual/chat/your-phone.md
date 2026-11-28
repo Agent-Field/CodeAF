@@ -53,6 +53,8 @@ A computer answers your phone only while codeaf is running on it: the app, or `c
 
 For a computer with no window open, such as a workstation or a server you keep awake, run `codeaf phone serve`. It says `serving your phone on this computer. ctrl+c stops it.` and keeps going until you stop it. If the app is already open on that computer it says `codeaf app is open on this computer and is already serving your phone.` and does nothing more.
 
+If you run `codeaf phone serve` on a computer that has never been paired with a phone or another computer, it says `no phone is paired with this computer yet. Approve one first, then run this again.` and stops without sending anything.
+
 While a computer is offline, a new chat for it waits up to one hour, as above.
 
 ## Does adding a phone share my chats between my computers?
@@ -82,4 +84,4 @@ That is deliberate: a computer that cannot recognise a phone's link cannot mista
 
 The phone makes its own keys and keeps them. When you approve it, this computer gives it only a certificate for those keys, your identity's public key and this computer's signed card, sealed so that only the phone can read it. Your identity's secret, your sync keys and your provider keys are never sent to the phone, and the sync service cannot read what passes between the phone and your computers.
 
-If phone serving stops with a message that the device list on this sync address is older than one this computer saw, the sync service was probably reset. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. A phone paired before the reset must then pair again.
+If phone serving pauses with a message that the device list on this sync address is older than one this computer saw, the sync service was probably reset. Chats and sync are untouched; only the phone is paused. Look at `/devices`, and if that is what happened, run `codeaf phone serve --accept-older-list`. It says `accepted the older device list. Phones paired before the reset must pair again.` and keeps serving.
