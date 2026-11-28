@@ -74,7 +74,7 @@ elect a leader and restore the third anchor. Healthy fallback targets about
 65 seconds; delays and partitions can take longer. Returning computers remain learners
 and cannot be chosen to lead by hand in this release. Losing the personal leader
 and either voting anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
-Saved local chats remain. There is no phone app yet, so a phone cannot lead yet.
+Saved local chats remain. A phone is a scoped client without persistent coordination storage, so a phone cannot lead.
 
 ## Storage layout and capacity
 

@@ -18,7 +18,8 @@ its public key with the existing certificate format. **Register before releasing
 the certificate to the client**: legacy certificates carry no cryptographic scope.
 The pairing grant contains only the certificate, identity public key and public
 connection information; never cell keys, dedup secrets, identity private keys or
-vault data. The relay accepts no grant or secret fields on this route.
+vault data. The relay accepts no grant or secret fields on this route. (A phone's grant is the
+client-class link flow below, sealed under the link key; this route stays what it is.)
 
 Registration returns 204 and creates a directory device record with `kind: client`
 and `methods`. At most 64 distinct method names, each 1–128 ASCII letters, digits,
@@ -144,6 +145,37 @@ full-device approve body (`device`, `cert`, `grant`) for a client-class request 
 400 `bad_request` and leaves it pending, so a phone can never be handed the
 identity; a client body for a computer's request is also 400.
 
+### The grant, and who can make one
+
+A phone's grant is `nonce(24) || secretbox(plaintext)` under
+`k_grant = sha256("codeaf/phone-grant/v1\n" || link_key)`, base64url without
+padding, at most 4096 bytes. `link_key` is the 16 bytes behind the token's
+22-character key, which only the phone and the approving computer hold, so the
+relay (which sees the phone's public box key and stores the grant) can neither
+read it nor make a grant of its own. The plaintext has exactly the keys `v` (2),
+`device`, `code`, `cert`, `identity_pub`, `relay`, `executors`: the phone's
+device id and the request code it answers, its own certificate, the identity's
+public key, the address the approving computer syncs through, and that
+computer's signed card. There is no seed, dedup secret or cell key in it. The
+phone refuses a grant that does not open, names another request or phone, has a
+certificate that does not verify under `identity_pub`, or carries no card that
+verifies. Known answers: the `grant` vectors, and `clientproto.OpenGrant`.
+
+A computer approves a phone in three idempotent steps, in this order: store the
+identity-signed enrollment (`PUT /v1/clients/{device}/enroll`), register the
+client (`PUT /v1/clients/{device}`, where an `exists` that is this same client is
+success), then approve the request with the grant. A crash after any step leaves
+nothing a phone can use, and running the approval again completes it.
+
+### The setup link
+
+What a computer shows when the owner adds a phone is
+`workaf://setup?v=1&sync=<percent-encoded sync address>`. The phone confirms the
+host with the person and then makes its pairing request at that address instead
+of its built-in default. Exactly the keys `v` (1) and `sync` are accepted; `sync`
+must be an absolute http or https URL with a host and no user info, query or
+fragment. The address is not secret. A computer-to-computer link is unchanged.
+
 ## Computers, serving and watching
 
 `GET /v1/clients/{device}/computers`, by that client, answers
@@ -206,6 +238,57 @@ measure. Treat each figure as a model until staging counters replace it.
   million `PUT`s; four a second for a day on one chat is about $1.24 with no guard,
   against about $0.01 with the 30-second not-watching guard. The guard, not the
   transport, is what keeps the bill bounded.
+
+## What a computer does with a phone's call, and what it says back
+
+A phone queues each call to one computer: `target` is that computer's device id
+(never `any`), and `sealed` is the call, anonymously sealed to that computer's
+card key. The sealed plaintext repeats the outer `number`, `at`, `method` and
+`target`, adds `client`, `not_after` and `params`, and the computer refuses the
+call unless every repeated field equals the signed outer one and the phone is the
+one whose queue it came from (a second phone cannot re-wrap the first one's
+bytes). `not_after` is one hour after `at` for a create and a day for everything
+else, and never more than a day. Params per method: `agents.create` takes only
+`{"client_id"}`; `agents.send` `{id, text, client_id}`; `asks.answer`
+`{agent, id, option, text}`; `agents.stop` `{id}`.
+
+The computer keeps, per phone, the highest queue number it has finished and runs
+only numbers above it, so a number the relay allocated to another computer (a gap)
+never stops a later one. A call is first written down as claiming (with a random
+claim token the computer saves before it claims), then started, then done, so a
+call that has started is never dispatched twice, whatever crashes. A create is also
+keyed by its `client_id`: the same one from the same phone is the same chat.
+
+Every call the computer acknowledges gets one entry in the phone's
+`outcomes.<computer>` slot (the newest 32): `done` with the chat, or `refused` or
+`expired` with a reason (`not_holder`, `needs_face_id`, `expired`,
+`method_denied`, `bad_target`, `bad_call`, `failed`). Deterministic refusals are
+acknowledged and recorded, and the next call still runs. A transient failure (a
+failed directory read, an unreachable sync service, a claim conflict, an engine
+error while checking the call) is never acknowledged: the call stays queued and is
+tried again until its `not_after`, when it becomes `expired`. An error from the
+call itself, once it has started, ends it as `refused` with the reason `failed`,
+because it may have taken effect. A call whose signature does not verify was not
+written by the phone: it is dropped with no outcome.
+
+## A computer that has never shared its identity
+
+A computer whose identity was made there and never given to another computer is
+quiet: it sends nothing to a sync service, because nothing else would read it.
+Approving a phone does not end that. A phone receives only a certificate for its
+own keys, so no other computer gains a key and nothing about the computer's chats
+is published for one. Instead the runner has its own, narrower gate: while the
+computer is solo and has an approved, unrevoked phone, it may send only the
+directory list, the `serving=1` watch socket, its own device record, the
+enrollment read, and the queue, claim, delete and slot routes of a phone's client
+id. It never sends cell records, leases, transcripts, the vault, the cluster
+routes or the enrollment writes. Revoking the last phone makes the computer fully
+quiet again; approving another computer ends solo for good.
+
+With no other computer there is no one to arbitrate which computer holds a chat, so
+a solo runner treats the chats the computer itself has as the chats it holds, and a
+created chat is not leased. The moment a second computer is approved the runner
+reads holders from the directory again.
 
 ## Refusals, persistence and implementations
 
