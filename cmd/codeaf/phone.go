@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -205,6 +206,12 @@ func runPhoneContext(parent context.Context, args []string, out io.Writer) error
 		fmt.Fprintln(out, phoneAcceptedOlderListLine)
 	}
 	fmt.Fprintln(out, phoneServeStartLine)
+
+	gateTicker := time.NewTicker(phoneGatePollEvery)
+	guard.Go("phone/gate", func() {
+		defer gateTicker.Stop()
+		watchPhoneGate(runCtx, s.Home, gateTicker.C, r.Wake)
+	})
 
 	guard.Go("phone/clients", func() {
 		defer close(done)

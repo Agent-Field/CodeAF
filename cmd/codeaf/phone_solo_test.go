@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
@@ -25,6 +26,20 @@ func makeHomeSolo(t *testing.T, home string) {
 	}
 	if !identity.Solo(home) {
 		t.Fatalf("home %s is not solo", home)
+	}
+}
+
+// assertNoOtherComputer fails when a home that only ever approved a phone has been
+// told that another computer is paired: a phone is not one, and the home would start
+// behaving as if it shared its chats (contract P13).
+func assertNoOtherComputer(t *testing.T, home, when string) {
+	t.Helper()
+	s, ok, err := syncsetup.Open(home)
+	if err != nil || !ok {
+		t.Fatalf("%s: syncsetup.Open = %v, %v", when, ok, err)
+	}
+	if s.OthersPaired() {
+		t.Fatalf("%s: a phone approval told the home that another computer is paired", when)
 	}
 }
 
@@ -63,6 +78,7 @@ func TestP13PhoneApprovalKeepsSoloWhileComputerEndsSoloAndRevokeForgetsPhone(t *
 	if syncsetup.MayTalk(rig.homeA) {
 		t.Fatal("MayTalk became true on a solo home after CLI phone approval")
 	}
+	assertNoOtherComputer(t, rig.homeA, "after CLI phone approval")
 
 	// Reopening the already-decided phone link in CLI after clearing phones.json
 	// (lost-reply recovery path) records the phone and still leaves solo true.
@@ -108,6 +124,7 @@ func TestP13PhoneApprovalKeepsSoloWhileComputerEndsSoloAndRevokeForgetsPhone(t *
 		t.Fatalf("after door.Approve phone2: Solo=%v PhonesApproved=%v, want true/true",
 			identity.Solo(rig.homeA), syncsetup.PhonesApproved(rig.homeA))
 	}
+	assertNoOtherComputer(t, rig.homeA, "after the approvals door approved a phone")
 
 	if err := syncsetup.ForgetPhone(rig.homeA, phoneID2); err != nil {
 		t.Fatal(err)
@@ -138,6 +155,7 @@ func TestP13PhoneApprovalKeepsSoloWhileComputerEndsSoloAndRevokeForgetsPhone(t *
 		t.Fatalf("after appApprove phone3: Solo=%v PhonesApproved=%v, want true/true",
 			identity.Solo(rig.homeA), syncsetup.PhonesApproved(rig.homeA))
 	}
+	assertNoOtherComputer(t, rig.homeA, "after the app approved a phone")
 	if err := syncsetup.ForgetPhone(rig.homeA, phoneID3); err != nil {
 		t.Fatal(err)
 	}
@@ -260,4 +278,53 @@ func TestP13SoloComputerWithAPhoneListsIt(t *testing.T) {
 	if _, ok := openChatsKind(); ok {
 		t.Fatal("after removing the last phone a solo computer still offered the devices kind")
 	}
+}
+
+// TestP13WatchPhoneGateTellsTheHostWhenAPhoneIsApprovedElsewhere verifies that a host
+// is told once each time the phone gate goes from closed to open, so a phone approved
+// by another process (a terminal's `codeaf pair approve`) wakes a runner that had gone
+// quiet, and that a gate that stays open or closes again tells it nothing.
+func TestP13WatchPhoneGateTellsTheHostWhenAPhoneIsApprovedElsewhere(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("DO_NOT_TRACK", "1")
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeA)
+	t.Setenv(syncsetup.URLVar, rig.url)
+	makeHomeSolo(t, rig.homeA)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ticks := make(chan time.Time) // unbuffered: sending the next tick proves the last one was handled
+	told := make(chan struct{}, 8)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watchPhoneGate(ctx, rig.homeA, ticks, func() { told <- struct{}{} })
+	}()
+	tick := func() { ticks <- time.Time{} }
+	expect := func(want int, when string) {
+		t.Helper()
+		tick() // handled before this returns the next time one is sent; flush with a no-op tick
+		tick()
+		if got := len(told); got != want {
+			t.Fatalf("%s: host was told %d times, want %d", when, got, want)
+		}
+	}
+
+	expect(0, "no phone approved")
+	if err := syncsetup.NotePhoneApproved(rig.homeA, "dev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); err != nil {
+		t.Fatal(err)
+	}
+	expect(1, "a phone was approved")
+	expect(1, "the gate stayed open")
+	if err := syncsetup.ForgetPhone(rig.homeA, "dev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); err != nil {
+		t.Fatal(err)
+	}
+	expect(1, "the last phone was removed")
+	if err := syncsetup.NotePhoneApproved(rig.homeA, "dev_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"); err != nil {
+		t.Fatal(err)
+	}
+	expect(2, "a new phone was approved after the gate had closed")
+	cancel()
+	<-done
 }

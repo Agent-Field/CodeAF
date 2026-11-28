@@ -164,20 +164,59 @@ func (b *appBackend) ensurePhoneApprovalWatch() {
 		return
 	default:
 	}
-	b.clientPhonesStop = syncsetup.OnPhonesChange(func(changedHome string) {
+	stopListener := syncsetup.OnPhonesChange(func(changedHome string) {
 		if changedHome != b.relayHome() {
 			return
 		}
 		if syncsetup.PhoneMayTalk(changedHome) {
 			b.startPhoneRunner()
 			if r := b.clientRunner.Load(); r != nil {
-				r.Changed()
+				r.Wake()
 			}
 		} else if r := b.clientRunner.Load(); r != nil {
 			r.Changed()
 		}
 	})
+	// A PHONE APPROVED BY ANOTHER PROCESS, such as `codeaf pair approve` in a terminal
+	// while this app is open, is recorded on disk and no listener here hears it, so the
+	// gate is looked at on a slow timer as well.
+	ctx, cancel := context.WithCancel(context.Background())
+	ticker := time.NewTicker(phoneGatePollEvery)
+	guard.Go("app/phone-gate", func() {
+		defer ticker.Stop()
+		watchPhoneGate(ctx, b.relayHome(), ticker.C, func() {
+			b.startPhoneRunner()
+			if r := b.clientRunner.Load(); r != nil {
+				r.Wake()
+			}
+		})
+	})
+	b.clientPhonesStop = func() { stopListener(); cancel() }
 	b.clientInit.Unlock()
+}
+
+// phoneGatePollEvery is how often a host looks at the phone gate for a change another
+// process made, because the gate lives on disk and a listener hears only this process.
+const phoneGatePollEvery = 5 * time.Second
+
+// watchPhoneGate calls changed each time the phone gate for home goes from closed to
+// open, on each tick, until ctx ends. The gate opens when a phone is approved on a
+// computer that had gone quiet, and the runner must not wait out a long backoff to
+// serve it.
+func watchPhoneGate(ctx context.Context, home string, ticks <-chan time.Time, changed func()) {
+	open := syncsetup.PhoneMayTalk(home)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			now := syncsetup.PhoneMayTalk(home)
+			if now && !open {
+				changed()
+			}
+			open = now
+		}
+	}
 }
 
 func (b *appBackend) clientRunnerConfig(s *syncsetup.Sync, dir directory.Client, onPaused func(string)) clientrun.Config {
@@ -466,12 +505,16 @@ func (b *appBackend) UnpairClient(id string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), appClientOperationTimeout)
 	defer cancel()
-	if err := r.Unpair(ctx, id); err != nil {
-		return err
+	err := r.Unpair(ctx, id)
+	if err == nil || errors.Is(err, clientrun.ErrClientNotFound) {
+		// The runner has revoked and forgotten the phone, or never knew or already forgot
+		// it; either way a solo computer stops serving phones, and goes quiet, once the
+		// last recorded one is gone (contract P13).
+		if forgetErr := syncsetup.ForgetPhone(b.relayHome(), id); forgetErr != nil && err == nil {
+			return forgetErr
+		}
 	}
-	// The runner has revoked and forgotten the phone; a solo computer stops serving
-	// phones, and goes quiet, once the last recorded one is gone (contract P13).
-	return syncsetup.ForgetPhone(b.relayHome(), id)
+	return err
 }
 
 // stopClients joins the executor before any engine it may call is closed.
