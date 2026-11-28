@@ -174,12 +174,9 @@ func (b *appBackend) keepAppEntriesWith(a *appAgent, entries []appwire.Entry, af
 	if err := fsreplace.Rename(temp.Name(), path); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	// The one door that flushes a directory entry, because Windows refuses a plain Sync on
+	// the read-only handle os.Open returns and would fail every footer write there.
+	return fsreplace.SyncDir(filepath.Dir(path))
 }
 
 func (b *appBackend) emitAppFooter(a *appAgent, key string) {
