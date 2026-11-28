@@ -19,7 +19,19 @@ package automation
 //
 //   - THE LADDER IS COUNTED, NEVER GUESSED. Asks first until the first go,
 //     earning trust for the next ones, trusted alone after [TrustAfter] runs
-//     the person said go to. One not right resets it.
+//     the person said go to. One not right resets it. "Go, and stop asking"
+//     ([ReplyAlways]) is a go that also climbs the whole ladder at once.
+//
+//   - ONE RUN WAITS PER ORDER. The clock passes over a slot that comes while a
+//     run of the order is waiting, and [Store.AskRun] is the store's own
+//     guard behind it: a second run that comes to wait beside one already
+//     waiting is folded into it ([LineFolded]) rather than asked about. Five
+//     asks for the same work would be five go's to give and the same work run
+//     five times.
+//
+//   - TRUSTING AN ORDER RELEASES THE RUN WAITING ON IT. Nobody is left being
+//     asked about an order that no longer asks: [Store.SetTrust] to trusted
+//     starts the waiting run, and a go that says "always" starts it too.
 
 import (
 	"database/sql"
@@ -58,15 +70,22 @@ const (
 type Reply string
 
 const (
-	ReplyGo       Reply = "go"
+	ReplyGo Reply = "go"
+	// ReplyAlways is "Go, and stop asking": this run goes, as a go does and
+	// counted as one, and the order is trusted from now on, so its next runs
+	// start alone.
+	ReplyAlways   Reply = "always"
 	ReplySkip     Reply = "skip"
 	ReplyNotRight Reply = "not_right"
 )
 
-// LineSkipped and LineNotRight are what a passed-over run's row says.
+// LineSkipped and LineNotRight are what a passed-over run's row says;
+// LineFolded is what a run says that came to wait beside one already waiting
+// for the person, and was folded into it.
 const (
 	LineSkipped  = "skipped by you"
 	LineNotRight = "you said it was not right"
+	LineFolded   = "folded into the run already waiting for you"
 )
 
 // Trusted reads the ladder, with empty as trusted.
@@ -80,6 +99,12 @@ func (a Automation) NeedsAsk() bool { return !a.Trusted() && a.Action.Do != "" }
 // it as the person's change: a new revision, so a clock holding an older copy
 // is refused rather than written over.
 func (s *Store) rewrite(id string, change func(a *Automation) error) (Automation, error) {
+	return s.rewriteIn(id, func(_ *sql.Tx, _ int64, a *Automation) error { return change(a) })
+}
+
+// rewriteIn is [Store.rewrite] for a change that must write runs in the same
+// transaction as the automation, so no reader sees one without the other.
+func (s *Store) rewriteIn(id string, change func(tx *sql.Tx, seq int64, a *Automation) error) (Automation, error) {
 	now := s.now()
 	var saved Automation
 	err := s.write(func(tx *sql.Tx, seq int64) error {
@@ -90,7 +115,7 @@ func (s *Store) rewrite(id string, change func(a *Automation) error) (Automation
 		if err != nil {
 			return err
 		}
-		if err := change(&a); err != nil {
+		if err := change(tx, seq, &a); err != nil {
 			return err
 		}
 		a.Revision++
@@ -161,13 +186,21 @@ func (s *Store) Stop(id string) (Automation, error) {
 
 // SetTrust puts the ladder where the person says: trusted at once, or back to
 // asking first.
+//
+// TRUSTING RELEASES THE RUN WAITING ON THE ORDER. An order that no longer asks
+// must not leave a question open about it, so the run that was waiting for the
+// person's go is queued as a go would queue it, in the same write as the
+// trust. It is the person's trust and not a go: the ladder's count of go's
+// does not move. A paused order keeps its waiting run waiting, because the
+// person's pause said not to run it.
 func (s *Store) SetTrust(id string, trust Trust) (Automation, error) {
-	return s.rewrite(id, func(a *Automation) error {
+	return s.rewriteIn(id, func(tx *sql.Tx, seq int64, a *Automation) error {
 		switch trust {
 		case TrustAsksFirst:
 			a.Trust, a.Approved = TrustAsksFirst, 0
 		case TrustTrusted:
 			a.Trust = TrustTrusted
+			return s.releaseWaiting(tx, seq, a)
 		default:
 			return fmt.Errorf("trust cannot be set to %q", trust)
 		}
@@ -175,10 +208,56 @@ func (s *Store) SetTrust(id string, trust Trust) (Automation, error) {
 	})
 }
 
+// releaseWaiting queues the oldest run of a trusted, active order that is
+// waiting for the person's go, and folds any other into it.
+func (s *Store) releaseWaiting(tx *sql.Tx, seq int64, a *Automation) error {
+	if a.Status != StatusActive {
+		return nil
+	}
+	var first int64
+	err := tx.QueryRow(`SELECT id FROM runs WHERE automation_id = ? AND phase = ? ORDER BY id LIMIT 1`, a.ID, string(PhaseAsking)).Scan(&first)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	a.Granted = first
+	if _, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseQueued), seq, first, string(PhaseAsking)); err != nil {
+		return err
+	}
+	return s.foldWaiting(tx, seq, a.ID, first)
+}
+
+// foldWaiting ends every run of the order that is waiting for the person's go,
+// except keep, as folded into that one.
+func (s *Store) foldWaiting(tx *sql.Tx, seq int64, automationID string, keep int64) error {
+	_, err := tx.Exec(`UPDATE runs SET phase = ?, finished_ms = ?, outcome = ?, line = ?, seq = ? WHERE automation_id = ? AND phase = ? AND id != ?`,
+		string(PhaseOver), ms(s.now()), string(OutcomeSkipped), LineFolded, seq, automationID, string(PhaseAsking), keep)
+	return err
+}
+
 // AskRun parks a queued run until the person says go, and keeps when.
+//
+// ONE RUN WAITS PER ORDER. The clock already passes over a slot that comes
+// while a run is waiting; this is the guard in the store itself, for the run
+// that got past it (a "run now" that landed in the same moment as a slot, or
+// an older build's). A run that would wait beside one already waiting is not
+// parked: it ends at once as [LineFolded], and the run waiting keeps its id and
+// the time it began to wait, so an answer on its way to it still lands.
 func (s *Store) AskRun(id int64) error {
 	now := s.now()
 	return s.write(func(tx *sql.Tx, seq int64) error {
+		var beside int
+		if err := tx.QueryRow(`SELECT count(*) FROM runs WHERE phase = ? AND id != ? AND automation_id = (SELECT automation_id FROM runs WHERE id = ?)`,
+			string(PhaseAsking), id, id).Scan(&beside); err != nil {
+			return err
+		}
+		if beside > 0 {
+			_, err := tx.Exec(`UPDATE runs SET phase = ?, finished_ms = ?, outcome = ?, line = ?, seq = ? WHERE id = ? AND phase = ?`,
+				string(PhaseOver), ms(now), string(OutcomeSkipped), LineFolded, seq, id, string(PhaseQueued))
+			return err
+		}
 		res, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseAsking), seq, id, string(PhaseQueued))
 		if err != nil {
 			return err
@@ -198,8 +277,13 @@ func (s *Store) Asking() ([]Run, error) {
 
 // Answer is the person's word on a run that asked first. Go queues it again
 // with the person's grant, so the clock starts it on its next look, and counts
-// one more step up the ladder; skip passes it over; not right passes it over
-// and resets the ladder.
+// one more step up the ladder; always is a go that also trusts the order, so
+// it never asks again; skip passes it over; not right passes it over and
+// resets the ladder.
+//
+// A GO RUNS THE WORK ONCE. Any other run of the same order still waiting (an
+// older build could leave several) is folded into the one that was answered,
+// so the same work is never asked about, or run, twice.
 func (s *Store) Answer(runID int64, reply Reply) (Automation, error) {
 	run, err := s.Run(runID)
 	if err != nil {
@@ -209,12 +293,12 @@ func (s *Store) Answer(runID int64, reply Reply) (Automation, error) {
 		return Automation{}, errors.New("that run is not waiting for you")
 	}
 	switch reply {
-	case ReplyGo:
+	case ReplyGo, ReplyAlways:
 		saved, err := s.rewrite(run.AutomationID, func(a *Automation) error {
 			a.Granted = runID
 			a.Approved++
 			switch {
-			case a.Approved >= TrustAfter:
+			case reply == ReplyAlways || a.Approved >= TrustAfter:
 				a.Trust = TrustTrusted
 			default:
 				a.Trust = TrustEarning
@@ -225,8 +309,10 @@ func (s *Store) Answer(runID int64, reply Reply) (Automation, error) {
 			return saved, err
 		}
 		return saved, s.write(func(tx *sql.Tx, seq int64) error {
-			_, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseQueued), seq, runID, string(PhaseAsking))
-			return err
+			if _, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseQueued), seq, runID, string(PhaseAsking)); err != nil {
+				return err
+			}
+			return s.foldWaiting(tx, seq, run.AutomationID, runID)
 		})
 	case ReplySkip:
 		if err := s.passOver(run, LineSkipped); err != nil {

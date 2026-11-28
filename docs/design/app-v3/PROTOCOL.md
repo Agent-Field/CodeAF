@@ -3059,6 +3059,41 @@ its organisation's server, raises none.
 | `orders.runs` | `{id, limit}` | `RunsResult` |
 | `orders.stop` | `in.orderAt` | `OrderResult` |
 
+### Orders that ask first: one waiting run, "Go, and stop asking", trust
+
+A work order that is not yet trusted (`trust` `asks_first` or `earning`) parks each run
+it starts as the Ask `order:<run>` "Run … now?" (`subkind` `order_run`) and starts it
+only on the person's word. A reminder, and a watch that only looks, never ask.
+
+**One run waits per order.** A slot that comes while a run of the order is waiting is
+passed over with nothing queued, and the store itself refuses a second waiting run: one
+that would wait beside another ends at once, `outcome` `skipped`, `result` `skipped`,
+`line` "folded into the run already waiting for you", and the run that was waiting keeps
+its id and the time it began to wait, so an answer already on its way to it still lands.
+`asks.list` and the order's `asking` show exactly that one run, and a go runs the work
+once: any other run of the order still waiting (an older engine could leave several) is
+folded into the one answered. A run that was granted and is queued or running is not
+waiting. A go given late works on what is true when it is given: the work, and a watch's
+look, begin after the go.
+
+**`orders.always`.** An engine whose hello carries `orders.always` also takes the verdict
+`always`, "Go, and stop asking", on `orders.run {id, run?, verdict: "always"}` and as the
+option `always` of `asks.answer` on `order:<run>`. It runs that run once, counts it as one
+go, and sets the order `trusted`, so its next slots start without asking. The Ask's options
+are then, in order, `go` "Go", `always` "Go, and stop asking", `skip` "Skip this one",
+`not_right` "Not right". Against an engine without the feature the verdict is `bad_params`
+("verdict is go, skip or not_right"); a surface draws the button only when hello names it.
+Once the run has left, an answer given at another door reads `always` where the order is
+now trusted with fewer than `trust_after` go's.
+
+**Trust releases the waiting run.** When an order becomes `trusted` (`orders.change` or
+`orders.ratify` with `edits {trust: "trusted"}`, or `always`) while a run of it is waiting,
+that run starts as a go would start it, in the same write, without counting a go; no
+trusted order is left with an open Ask. A paused order keeps its waiting run waiting.
+`orders.ratify` with `edits {trust: "trusted"}` on a proposed work order saves it active
+and trusted, and its first run starts with no Ask; `asks_first`, or no `trust`, keeps the
+default, which asks first. `trust` `earning` is never set by an edit.
+
 ## ping methods
 
 | method | params | result |

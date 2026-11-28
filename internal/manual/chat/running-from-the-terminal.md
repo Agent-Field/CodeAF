@@ -711,12 +711,17 @@ save or Not now takes it away; a card left unanswered keeps it proposed. These
 are the same automations `/automations` lists in the terminal.
 
 Scheduled work proposed this way asks before each run: when it comes due it
-waits for your Go, Skip or Not right (showing its budget per run), and later
-times are passed over while it waits. Five Go's make it trusted, and it runs
-alone after that; one Not right puts it back to asking first. Run now counts as
-a Go. Reminders and watches never ask. Pause keeps the trust; Stop ends it for
-good and keeps its history. Each order says where its results go: this chat,
-the crew, everywhere, or not here.
+waits for your answer: Go, "Go, and stop asking", Skip this one or Not right
+(showing its budget per run). Only one run of an order waits for you at a time: a time that
+comes while one is waiting is passed over, and a run that would wait beside it
+is folded into it ("folded into the run already waiting for you"), so you are
+never asked about the same work twice and a Go runs it once. A Go given hours
+late works on how things stand when you give it, not when the run came due: the
+work starts then, and a watch with work looks then. Five Go's make it trusted,
+and it runs alone after that; one Not right puts it back to asking first. Run
+now counts as a Go. Reminders and watches that only look never ask. Pause keeps
+the trust; Stop ends it for good and keeps its history. Each order says where
+its results go: this chat, the crew, everywhere, or not here.
 
 The app keeps the clock running while it is open. Nothing runs while it is
 closed or the Mac sleeps; a time missed then runs once, late, and the app says
@@ -724,6 +729,27 @@ it was missed. A run waiting for your Go shows as queued in the terminal's
 list, and only the desktop app can answer it.
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
 by default on Linux and macOS on every build. Native Windows is supported too; a compatible furrow engine is required. Its verbs are described under "The cell verbs" below.
+
+## Stop an automation asking before every run — Go and stop asking, trust an order when you agree to it, trust it later
+
+Scheduled work asks for your Go before each run until it is trusted, and there
+are three ways to trust it sooner than five Go's. The question on a waiting run
+offers **Go, and stop asking** beside Go: that run goes ahead, counts as one Go,
+and the order is trusted from then on, so its next times run without asking.
+Agreeing to an order with its trust set to trusted saves it active and trusted,
+and its first run starts at its time with no question; leave the trust alone, or
+set it to asks first, and the first run asks, as every new order's does. Setting
+an order's trust to trusted later does the same from then on, and if a run is
+waiting for your Go at that moment it starts at once and its question goes away,
+because nobody is left being asked about an order that no longer asks. Trusting
+costs no Go: the count of Go's stays where it was. A paused order keeps its
+waiting run waiting until you answer it.
+
+To undo it, set the order's trust back to asks first, or say Not right on a run:
+it asks before every run again and counts its Go's from nothing. A reminder, or
+a watch that only looks, never asks, so there is nothing to stop. These answers
+are the desktop app's, and an engine too old to know "Go, and stop asking" offers
+only Go, Skip this one and Not right.
 
 ## codeaf pair — show a code, or use one, from the terminal
 
