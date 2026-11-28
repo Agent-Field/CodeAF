@@ -4,9 +4,11 @@
 package clientrun
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -27,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
@@ -242,11 +245,16 @@ func Open(cfg Config) (*Runner, error) {
 	}()
 	r.state.LastAt = map[string]int64{}
 	r.state.Paused = map[string]bool{}
-	r.state.Outcomes = map[string][]Outcome{}
+	r.state.Outcomes = map[string][]clientproto.Outcome{}
 	r.state.Receipts = map[string]Receipt{}
+	r.state.Watermarks = map[string]int64{}
+	r.state.Creates = map[string][]createdChat{}
 	r.pins.Enrollments = map[string]enrollmentPin{}
 	r.pins.Directories = map[string]uint64{}
 	if err := r.load(); err != nil {
+		return nil, err
+	}
+	if err := r.ensureBoxKey(); err != nil {
 		return nil, err
 	}
 	opened = true
@@ -473,7 +481,7 @@ func (r *Runner) Serve(ctx context.Context) {
 		var roundErr error
 		if runStep {
 			roundErr, _ = r.stepRound(ctx)
-			if roundErr == nil && applyWatch() {
+			if applyWatch() && roundErr == nil {
 				roundErr, _ = r.stepRound(ctx)
 			}
 		}
@@ -481,12 +489,22 @@ func (r *Runner) Serve(ctx context.Context) {
 
 		if roundErr != nil {
 			delay = min(delay*2, maxBackoff)
-			// Change notifications cannot defeat network backoff during an outage.
-			select {
-			case <-ctx.Done():
-				return
-			case <-r.cfg.After(delay):
-				runStep = true
+			var watchCh <-chan struct{}
+			if follower != nil {
+				watchCh = follower.Changes()
+			}
+			timerCh := r.cfg.After(delay)
+			// Change notifications cannot defeat network backoff during an outage,
+			// while watch-socket revocation events still tombstone immediately.
+			for !runStep {
+				select {
+				case <-ctx.Done():
+					return
+				case <-watchCh:
+					applyWatch()
+				case <-timerCh:
+					runStep = true
+				}
 			}
 			continue
 		}
@@ -563,13 +581,23 @@ func (r *Runner) stepRound(ctx context.Context) (roundErr error, slotErr error) 
 	if err := r.ensureBoxKey(); err != nil {
 		return err, nil
 	}
-	var errs []error
+	var drainErrs []error
+	var slotErrs []error
 	for _, c := range served {
+		if !r.clientStillServed(listing, c.ID) {
+			continue
+		}
+		if err := r.drain(ctx, c, &listing); err != nil {
+			drainErrs = append(drainErrs, err)
+		}
+		if !r.clientStillServed(listing, c.ID) {
+			continue
+		}
 		if err := r.publish(ctx, c, listing); err != nil {
-			errs = append(errs, err)
+			slotErrs = append(slotErrs, err)
 		}
 	}
-	return nil, errors.Join(errs...)
+	return errors.Join(drainErrs...), errors.Join(slotErrs...)
 }
 
 func (r *Runner) checkDirectoryListing(listing directory.Listing) error {
@@ -888,7 +916,7 @@ func (r *Runner) isWatching(device string) bool {
 
 // RecordOutcome appends an execution outcome for client, keeps at most the
 // newest MaxOutcomes (32) entries, persists runner.json, and wakes the runner.
-func (r *Runner) RecordOutcome(client string, o Outcome) error {
+func (r *Runner) RecordOutcome(client string, o clientproto.Outcome) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.lock == nil {
@@ -896,6 +924,9 @@ func (r *Runner) RecordOutcome(client string, o Outcome) error {
 	}
 	if r.isTombstonedLocked(client) {
 		return errors.New("client is revoked")
+	}
+	if !o.Valid() {
+		return clientproto.ErrOutcome
 	}
 	list := append(slices.Clone(r.state.Outcomes[client]), o)
 	if len(list) > clientproto.MaxOutcomes {
@@ -912,12 +943,12 @@ func (r *Runner) RecordOutcome(client string, o Outcome) error {
 }
 
 // Outcomes returns a copy of the persisted outcomes for client.
-func (r *Runner) Outcomes(client string) []Outcome {
+func (r *Runner) Outcomes(client string) []clientproto.Outcome {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := slices.Clone(r.state.Outcomes[client])
 	if out == nil {
-		return []Outcome{}
+		return []clientproto.Outcome{}
 	}
 	return out
 }
@@ -933,4 +964,118 @@ func (r *Runner) Tombstones() []Tombstone {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Client < out[j].Client })
 	return out
+}
+
+// ErrNotReady reports that a live runner holds runner.json.lock on home before
+// any executor encryption key has been written to runner.json.
+var ErrNotReady = errors.New("this computer is not ready to serve a phone yet")
+
+// ExecutorCard returns this computer's signed executor card for a phone's
+// pairing grant without fighting a running runner (Step 3). When the runner
+// lock is free, it takes the lock, creates the executor X25519 key in
+// <home>/clients/runner.json using the same atomic writer as Open when the file
+// has none, and releases the lock; when the lock is held by a live runner, it
+// only reads the key from runner.json and writes nothing.
+func ExecutorCard(home string, deviceKey ed25519.PrivateKey, cert identity.Cert, name string, now time.Time) (clientproto.Card, error) {
+	if !clientproto.ValidCardName(name) {
+		return clientproto.Card{}, fmt.Errorf("invalid executor card name %q", name)
+	}
+	if len(deviceKey) != ed25519.PrivateKeySize {
+		return clientproto.Card{}, errors.New("invalid device signing key")
+	}
+	writer := cert.DeviceID()
+	if writer == "" {
+		return clientproto.Card{}, errors.New("invalid device certificate")
+	}
+	secret, err := executorSecret(home)
+	if err != nil {
+		return clientproto.Card{}, err
+	}
+	pub, err := curve25519.X25519(secret, curve25519.Basepoint)
+	if err != nil {
+		return clientproto.Card{}, err
+	}
+	card := clientproto.Card{
+		V:      clientproto.SlotVersion,
+		Writer: writer,
+		Cert:   cert,
+		BoxPub: pub,
+		Name:   name,
+		At:     now.UnixMilli(),
+	}
+	return card.Sign(deviceKey), nil
+}
+
+func executorSecret(home string) ([]byte, error) {
+	path := StatePath(home)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, true); err != nil {
+		if filelock.IsBusy(err) {
+			secret, ok, readErr := readExecutorSecret(path)
+			if readErr != nil {
+				return nil, readErr
+			}
+			if !ok {
+				return nil, ErrNotReady
+			}
+			return secret, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
+	secret, ok, err := readExecutorSecret(path)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return secret, nil
+	}
+	_, priv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	doc := map[string]json.RawMessage{}
+	if raw, err := os.ReadFile(path); err == nil && len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, err
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	secretJSON, err := json.Marshal(priv[:])
+	if err != nil {
+		return nil, err
+	}
+	doc["secret"] = secretJSON
+	if err := writeAtomic(path, ".runner-*", doc); err != nil {
+		return nil, err
+	}
+	return priv[:], nil
+}
+
+func readExecutorSecret(path string) ([]byte, bool, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	var loaded struct {
+		Secret []byte `json:"secret"`
+	}
+	if err := json.Unmarshal(raw, &loaded); err != nil {
+		return nil, false, err
+	}
+	if len(loaded.Secret) != boxKeyBytes {
+		return nil, false, nil
+	}
+	return loaded.Secret, true, nil
 }

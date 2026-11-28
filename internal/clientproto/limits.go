@@ -16,6 +16,15 @@ const (
 	MaxComputerReads = 10
 	MaxComputerSlots = 12
 	MaxOutcomes      = 32
+	// MaxOutcomeAgent bounds the chat identifier echoed on an Outcome so
+	// thirty-two outcomes always fit well within one MaxSlotBytes outcome slot.
+	MaxOutcomeAgent = 128
+	// MaxClientCreates bounds the durable per-phone (client_id, agent) map so
+	// repeated or retried phone creates stay idempotent without unbounded disk growth.
+	MaxClientCreates = 256
+	// ClaimTokenBytes is the random ownership token length (encoded as hex) sent
+	// with POST /v1/clients/{id}/queue/{n}/claim so a lost reply is recoverable.
+	ClaimTokenBytes  = 32
 	MaxQueueBytes    = 4 << 10
 	MaxClientQueue   = 128
 	MaxFabricBody    = 96 << 10

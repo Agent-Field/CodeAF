@@ -269,7 +269,7 @@ func TestRevokeWritesTombstoneDeletesStateAndStopsPublishing(t *testing.T) {
 			t.Fatal(err)
 		}
 		seedReceiptOnDisk(t, g, g.client.dev.ID())
-		if err := g.r.RecordOutcome(g.client.dev.ID(), Outcome{Number: 1, Status: "done", Agent: chat}); err != nil {
+		if err := g.r.RecordOutcome(g.client.dev.ID(), clientproto.Outcome{Number: 1, Status: clientproto.OutcomeDone, Agent: chat}); err != nil {
 			t.Fatal(err)
 		}
 		if len(g.r.Outcomes(g.client.dev.ID())) != 1 {
@@ -320,7 +320,7 @@ func TestRevokeWritesTombstoneDeletesStateAndStopsPublishing(t *testing.T) {
 			t.Fatal(err)
 		}
 		seedReceiptOnDisk(t, g, g.client.dev.ID())
-		if err := g.r.RecordOutcome(g.client.dev.ID(), Outcome{Number: 1, Status: "done", Agent: chat}); err != nil {
+		if err := g.r.RecordOutcome(g.client.dev.ID(), clientproto.Outcome{Number: 1, Status: clientproto.OutcomeDone, Agent: chat}); err != nil {
 			t.Fatal(err)
 		}
 

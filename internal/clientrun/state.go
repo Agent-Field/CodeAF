@@ -18,11 +18,19 @@ import (
 )
 
 type state struct {
-	Secret   []byte               `json:"secret,omitempty"`
-	LastAt   map[string]int64     `json:"last_at,omitempty"`
-	Paused   map[string]bool      `json:"paused,omitempty"`
-	Outcomes map[string][]Outcome `json:"outcomes,omitempty"`
-	Receipts map[string]Receipt   `json:"receipts,omitempty"`
+	Secret     []byte                           `json:"secret,omitempty"`
+	LastAt     map[string]int64                 `json:"last_at,omitempty"`
+	Paused     map[string]bool                  `json:"paused,omitempty"`
+	Outcomes   map[string][]clientproto.Outcome `json:"outcomes,omitempty"`
+	Receipts   map[string]Receipt               `json:"receipts,omitempty"`
+	Watermarks map[string]int64                 `json:"watermarks,omitempty"`
+	Creates    map[string][]createdChat         `json:"creates,omitempty"`
+}
+
+type createdChat struct {
+	ClientID   string `json:"client_id"`
+	Agent      string `json:"agent"`
+	Transcript string `json:"transcript,omitempty"`
 }
 
 type pinsState struct {
@@ -43,29 +51,19 @@ type Tombstone struct {
 	DirectoryVersion uint64 `json:"directory_version"`
 }
 
-// Outcome is one entry in the outcomes.<writer> slot (design 3.6).
-type Outcome struct {
-	Number int64  `json:"number"`
-	Status string `json:"status"`
-	Agent  string `json:"agent,omitempty"`
-	Reason string `json:"reason,omitempty"`
-}
-
 // Receipt is durable before dispatch and finished afterward. A begun call is
 // never dispatched again after a crash: its effect may already have happened.
 type Receipt struct {
-	Transcript     string `json:"transcript,omitempty"`
-	ClaimToken     string `json:"claim_token,omitempty"`
-	SkippedFrom    int64  `json:"skipped_from,omitempty"`
-	SkippedThrough int64  `json:"skipped_through,omitempty"`
-	Digest         string `json:"digest"`
-	Client         string `json:"client"`
-	Number         int64  `json:"number"`
-	Agent          string `json:"agent"`
-	Method         string `json:"method"`
-	At             string `json:"at"`
-	Status         string `json:"status"`
-	Reason         string `json:"reason,omitempty"`
+	Transcript string `json:"transcript,omitempty"`
+	ClaimToken string `json:"claim_token,omitempty"`
+	Digest     string `json:"digest"`
+	Client     string `json:"client"`
+	Number     int64  `json:"number"`
+	Agent      string `json:"agent"`
+	Method     string `json:"method"`
+	At         string `json:"at"`
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 // writeAtomic replaces path atomically with fsync of both the temporary file
@@ -172,6 +170,12 @@ func (r *Runner) hasClientStateLocked(id string) bool {
 	if _, ok := r.state.Outcomes[id]; ok {
 		return true
 	}
+	if _, ok := r.state.Watermarks[id]; ok {
+		return true
+	}
+	if _, ok := r.state.Creates[id]; ok {
+		return true
+	}
 	for _, rec := range r.state.Receipts {
 		if rec.Client == id {
 			return true
@@ -224,6 +228,14 @@ func (r *Runner) tombstoneClientLocked(id string, dirVersion uint64) error {
 	}
 	if _, ok := r.state.Outcomes[id]; ok {
 		delete(r.state.Outcomes, id)
+		stateChanged = true
+	}
+	if _, ok := r.state.Watermarks[id]; ok {
+		delete(r.state.Watermarks, id)
+		stateChanged = true
+	}
+	if _, ok := r.state.Creates[id]; ok {
+		delete(r.state.Creates, id)
 		stateChanged = true
 	}
 	for key, receipt := range r.state.Receipts {
@@ -361,6 +373,10 @@ func (r *Runner) loadRunnerState() error {
 			err = dec.Decode(&r.state.Paused)
 		case "outcomes":
 			err = dec.Decode(&r.state.Outcomes)
+		case "watermarks":
+			err = dec.Decode(&r.state.Watermarks)
+		case "creates":
+			err = dec.Decode(&r.state.Creates)
 		case "clients":
 			var legacy map[string]struct {
 				Paused bool `json:"paused"`
@@ -395,11 +411,26 @@ func (r *Runner) loadRunnerState() error {
 		r.state.Paused = map[string]bool{}
 	}
 	if r.state.Outcomes == nil {
-		r.state.Outcomes = map[string][]Outcome{}
+		r.state.Outcomes = map[string][]clientproto.Outcome{}
+	}
+	if r.state.Watermarks == nil {
+		r.state.Watermarks = map[string]int64{}
+	}
+	if r.state.Creates == nil {
+		r.state.Creates = map[string][]createdChat{}
+	}
+	for _, receipt := range r.state.Receipts {
+		if receipt.Status != "claiming" && receipt.Status != "started" {
+			if receipt.Number > r.state.Watermarks[receipt.Client] {
+				r.state.Watermarks[receipt.Client] = receipt.Number
+			}
+		}
 	}
 	for id := range r.tombs {
 		delete(r.state.Paused, id)
 		delete(r.state.Outcomes, id)
+		delete(r.state.Watermarks, id)
+		delete(r.state.Creates, id)
 	}
 	for key, receipt := range r.state.Receipts {
 		if r.isTombstonedLocked(receipt.Client) {
@@ -409,6 +440,11 @@ func (r *Runner) loadRunnerState() error {
 	for id, list := range r.state.Outcomes {
 		if len(list) > clientproto.MaxOutcomes {
 			r.state.Outcomes[id] = slices.Clone(list[len(list)-clientproto.MaxOutcomes:])
+		}
+	}
+	for id, list := range r.state.Creates {
+		if len(list) > clientproto.MaxClientCreates {
+			r.state.Creates[id] = slices.Clone(list[len(list)-clientproto.MaxClientCreates:])
 		}
 	}
 	// Only a logger may compact an installation's old on-disk history. Read-
@@ -490,7 +526,7 @@ func receiptKey(client string, number int64) string {
 
 func (r *Runner) log(receipt Receipt) error {
 	if r.cfg.Log == nil {
-		return errors.New("queued calls need a chat logger")
+		return nil
 	}
 	return r.cfg.Log(receipt)
 }

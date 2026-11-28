@@ -5,6 +5,8 @@ import (
 	"errors"
 	"maps"
 	"slices"
+
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 )
 
 // Client is the Settings view of an enrolled phone derived from the relay and
@@ -19,14 +21,16 @@ type Client struct {
 	Paused  bool     `json:"paused"`
 }
 
-// PhoneReads is the default phone snapshot read list (excluding deferred crews).
+// PhoneReads returns the shared phone snapshot read list from clientproto so
+// the enrollment and the runner share one source of truth.
 func PhoneReads() []string {
-	return []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today"}
+	return clientproto.PhoneReads()
 }
 
-// PhoneMethods is the default phone queued-call method list (excluding deferred crews).
+// PhoneMethods returns the shared phone queued-call method list from
+// clientproto so the enrollment and the runner share one source of truth.
 func PhoneMethods() []string {
-	return []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start"}
+	return clientproto.PhoneMethods()
 }
 
 // Clients lists derived enrolled phone records sorted by device ID. Each slice
@@ -45,11 +49,10 @@ func (r *Runner) Clients() []Client {
 	return out
 }
 
-// Pause updates the local pause flag for an enrolled phone after any round in
-// flight, without revoking the phone at the relay.
+// Pause updates the local pause flag for an enrolled phone without revoking the
+// phone at the relay. It takes mu rather than the round lock so a pause issued
+// while a round is in flight is observed by the post-claim check.
 func (r *Runner) Pause(id string, paused bool) error {
-	r.run.Lock()
-	defer r.run.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.enrolled[id]; !ok || r.isTombstonedLocked(id) {
@@ -74,10 +77,9 @@ func (r *Runner) Pause(id string, paused bool) error {
 }
 
 // Unpair revokes the phone at the relay (POST /v1/dir/devices/{id}/revoke) and
-// writes a local tombstone, deleting its keys, receipts, and outcomes.
+// writes a local tombstone, deleting its keys, receipts,outcomes, watermark,
+// and create map even if a dispatch is currently in flight.
 func (r *Runner) Unpair(ctx context.Context, id string) error {
-	r.run.Lock()
-	defer r.run.Unlock()
 	r.mu.Lock()
 	if _, ok := r.enrolled[id]; !ok || r.isTombstonedLocked(id) {
 		r.mu.Unlock()

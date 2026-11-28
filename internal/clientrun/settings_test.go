@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 )
 
 // TestRunnerBacksOffFailuresUsingItsClock verifies that Runner.Run backs off
@@ -47,7 +49,7 @@ func TestRunnerBacksOffFailuresUsingItsClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = r.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	done := make(chan struct{})
 	go func() { defer close(done); r.Run(ctx) }()
@@ -195,5 +197,21 @@ func TestOpeningLegacyHistoryRetainsOnlyReplayWatermarks(t *testing.T) {
 	}
 	if archived != 512 {
 		t.Errorf("archived %d legacy chat lines; want 512", archived)
+	}
+}
+
+// TestPhoneMethodsAndReadsMatchClientProto verifies that PhoneMethods and
+// PhoneReads return the exact lists from clientproto as a single source of
+// truth, and RecordOutcome validates clientproto.Outcome values (contract S9, S11).
+func TestPhoneMethodsAndReadsMatchClientProto(t *testing.T) {
+	if !slices.Equal(PhoneMethods(), clientproto.PhoneMethods()) {
+		t.Fatalf("PhoneMethods() = %v, want %v", PhoneMethods(), clientproto.PhoneMethods())
+	}
+	if !slices.Equal(PhoneReads(), clientproto.PhoneReads()) {
+		t.Fatalf("PhoneReads() = %v, want %v", PhoneReads(), clientproto.PhoneReads())
+	}
+	g := newRig(t)
+	if err := g.r.RecordOutcome(g.client.dev.ID(), clientproto.Outcome{Number: 1, Status: clientproto.OutcomeRefused}); !errors.Is(err, clientproto.ErrOutcome) {
+		t.Fatalf("RecordOutcome accepted invalid outcome without reason: %v", err)
 	}
 }

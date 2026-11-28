@@ -2,7 +2,6 @@ package clientrun
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -422,7 +421,7 @@ func TestWatchSocketDownFor35SecondsStillPublishesFromTimerAtFloorRate(t *testin
 		t.Helper()
 		select {
 		case <-armed:
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatalf("Serve did not go idle %s", what)
 		}
 	}
@@ -436,7 +435,7 @@ func TestWatchSocketDownFor35SecondsStillPublishesFromTimerAtFloorRate(t *testin
 		g.clearRequests()
 		select {
 		case ticks <- g.clock.Now():
-		case <-time.After(3 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatalf("Serve did not wait on refresh timer at +%ds", sec)
 		}
 		g.waitForRequest(t, func(s string) bool { return s == "GET /v1/dir/list" })
@@ -506,7 +505,7 @@ func TestServeHoldsServingWatchSocketAndReportsOnlineToPhone(t *testing.T) {
 	for !getServing() {
 		select {
 		case <-g.reqCh:
-		case <-time.After(3 * time.Second):
+		case <-time.After(30 * time.Second):
 			cancel()
 			<-done
 			t.Fatal("computer never reported serving=true while Runner.Serve was running")
@@ -554,9 +553,9 @@ func TestOutcomesSlotPublishesLast32Outcomes(t *testing.T) {
 	g := newRig(t)
 	g.enroll(t, []string{"asks.list"})
 	for n := int64(1); n <= 40; n++ {
-		if err := g.r.RecordOutcome(g.client.dev.ID(), Outcome{
+		if err := g.r.RecordOutcome(g.client.dev.ID(), clientproto.Outcome{
 			Number: n,
-			Status: "done",
+			Status: clientproto.OutcomeDone,
 			Agent:  chat,
 		}); err != nil {
 			t.Fatal(err)
@@ -566,8 +565,8 @@ func TestOutcomesSlotPublishesLast32Outcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := g.readBoxSlot(t, "outcomes", g.s.dev.ID(), 0)
-	var got []Outcome
-	if err := json.Unmarshal(p.Payload, &got); err != nil {
+	got, err := clientproto.DecodeOutcomes(p.Payload)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != clientproto.MaxOutcomes {

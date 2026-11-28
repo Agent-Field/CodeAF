@@ -274,27 +274,53 @@ func (r *Runner) publishCard(ctx context.Context, c Client) error {
 }
 
 func (r *Runner) publishOutcomes(ctx context.Context, c Client) error {
-	if r.cfg.Signer == nil {
-		return errors.New("runner has no device signer")
-	}
 	key := c.ID + "/outcomes"
 	if r.withinWatchingFloor(c.ID, key) {
 		return nil
 	}
+	return r.flushOutcomesWithMode(ctx, c, true)
+}
+
+// flushOutcomes publishes the outcome slot immediately when its encoded payload
+// differs from the last published hash, so every finished queue entry has its
+// outcome uploaded before DELETE acknowledges the entry (Step 2 item 11, contract S11).
+func (r *Runner) flushOutcomes(ctx context.Context, c Client) error {
+	return r.flushOutcomesWithMode(ctx, c, false)
+}
+
+func (r *Runner) flushOutcomesWithMode(ctx context.Context, c Client, respectSchedule bool) error {
+	if r.cfg.Signer == nil {
+		return errors.New("runner has no device signer")
+	}
+	key := c.ID + "/outcomes"
 	self := r.cfg.Signer.Cert().DeviceID()
 	outcomes := r.Outcomes(c.ID)
-	plain, err := json.Marshal(outcomes)
+	plain, err := clientproto.EncodeOutcomes(outcomes)
 	if err != nil {
-		return r.recordSlotError(key, err)
+		if respectSchedule {
+			return r.recordSlotError(key, err)
+		}
+		return err
 	}
 	hash := sha256.Sum256(plain)
-	if !r.shouldPublishSlot(c.ID, key, hash) {
-		return nil
+	if respectSchedule {
+		if !r.shouldPublishSlot(c.ID, key, hash) {
+			return nil
+		}
+	} else {
+		now := r.cfg.Now()
+		previous, hadPrev := r.getHash(key)
+		if hadPrev && previous.hash == hash && now.Sub(previous.at) < clientproto.MaxAge/2 {
+			return nil
+		}
 	}
 	issued := r.cfg.Now()
 	slotName := SlotName("outcomes", self)
 	if err := r.sealAndPutBoxSlot(ctx, c, self, slotName, plain); err != nil {
-		return r.recordSlotError(key, err)
+		if respectSchedule {
+			return r.recordSlotError(key, err)
+		}
+		return err
 	}
 	r.setHash(key, publication{hash: hash, at: issued})
 	return nil
