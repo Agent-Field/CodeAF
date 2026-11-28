@@ -146,6 +146,11 @@ type Config struct {
 	// second computer ends solo mode immediately and the runner must switch to
 	// directory arbitration without a restart (contract P13).
 	LocalChats func() ([]string, bool)
+	// OnPausedChange, when set, is told the new pause reason (empty when serving
+	// resumed) each time it changes, after the runner's own lock is released. The
+	// host prints the sentence once from it, so a reason is never missed by a read
+	// that races the round that sets it.
+	OnPausedChange func(reason string)
 }
 
 // Runner serializes discovery and publication rounds while keeping derived
@@ -610,7 +615,17 @@ func (r *Runner) stepRound(ctx context.Context) (roundErr error, slotErr error) 
 
 func (r *Runner) checkDirectoryListing(listing directory.Listing) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	before := r.pausedReason
+	err := r.checkDirectoryListingLocked(listing)
+	after := r.pausedReason
+	r.mu.Unlock()
+	if after != before && r.cfg.OnPausedChange != nil {
+		r.cfg.OnPausedChange(after)
+	}
+	return err
+}
+
+func (r *Runner) checkDirectoryListingLocked(listing directory.Listing) error {
 	if key := r.dirPinKeyLocked(); key != "" {
 		pinned := r.pins.Directories[key]
 		if listing.Version < pinned {
