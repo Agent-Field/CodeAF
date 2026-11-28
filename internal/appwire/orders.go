@@ -63,14 +63,23 @@ const (
 )
 
 // The answers to a run that asks first; not right is [VerdictNotRight], the
-// same word a task's verdict uses.
+// same word a task's verdict uses. VerdictAlways is "Go, and stop asking": the
+// run goes and the order is trusted from then on. An engine that takes it
+// says so in hello as [FeatureOrdersAlways].
 const (
-	VerdictGo   = "go"
-	VerdictSkip = "skip"
+	VerdictGo     = "go"
+	VerdictAlways = "always"
+	VerdictSkip   = "skip"
 )
 
+// FeatureOrdersAlways is the hello feature of an engine whose orders.run and
+// whose ask "order:<run>" take the verdict always. A surface draws "Go, and
+// stop asking" only against an engine that names it: an older engine would
+// refuse the word.
+const FeatureOrdersAlways = "orders.always"
+
 // OrderAskPrefix starts the id of a run's ask, "order:<run>", which asks.answer
-// also takes with the option go, skip or not_right.
+// also takes with the option go, always, skip or not_right.
 const OrderAskPrefix = "order:"
 
 // Order is one standing order or reminder.
@@ -162,6 +171,21 @@ type OrderRemoved struct {
 type OrderFired struct {
 	Order Order    `json:"order"`
 	Run   OrderRun `json:"run"`
+}
+
+// OrderAlwaysTaker is an engine whose [Orderer.OrderVerdict] takes
+// [VerdictAlways]. It is asserted apart from [Orderer], so an engine that only
+// keeps orders still serves them, and it is what hello's
+// [FeatureOrdersAlways] says.
+type OrderAlwaysTaker interface {
+	TakesOrderAlways()
+}
+
+func withOrdersAlwaysFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(OrderAlwaysTaker); ok {
+		return withFeature(hello, FeatureOrdersAlways)
+	}
+	return hello
 }
 
 // Orderer is an engine that keeps standing orders. It is asserted, as Crewer
@@ -284,6 +308,14 @@ var orderMethods = map[string]method{
 			return orderResult(o.RunOrderNow(p.ID))
 		case VerdictGo, VerdictSkip, VerdictNotRight:
 			return orderResult(o.OrderVerdict(p.ID, p.Run, p.Verdict))
+		case VerdictAlways:
+			if _, ok := o.(OrderAlwaysTaker); ok {
+				return orderResult(o.OrderVerdict(p.ID, p.Run, p.Verdict))
+			}
+			return nil, Errorf(CodeBadParams, "verdict is go, skip or not_right")
+		}
+		if _, ok := o.(OrderAlwaysTaker); ok {
+			return nil, Errorf(CodeBadParams, "verdict is go, always, skip or not_right")
 		}
 		return nil, Errorf(CodeBadParams, "verdict is go, skip or not_right")
 	}),
