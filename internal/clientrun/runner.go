@@ -164,8 +164,10 @@ type Runner struct {
 	pins    pinsState
 	tombs   map[string]Tombstone
 	changed chan struct{}
-	hashes  map[string]publication
-	stream  *Stream
+	// wake ends a backoff wait early; see [Runner.Wake].
+	wake   chan struct{}
+	hashes map[string]publication
+	stream *Stream
 
 	enrolled       map[string]clientproto.Enrollment
 	watching       map[string]watchState
@@ -226,6 +228,7 @@ func Open(cfg Config) (*Runner, error) {
 	r := &Runner{
 		cfg:          cfg,
 		changed:      make(chan struct{}, 1),
+		wake:         make(chan struct{}, 1),
 		hashes:       map[string]publication{},
 		tombs:        map[string]Tombstone{},
 		enrolled:     map[string]clientproto.Enrollment{},
@@ -393,6 +396,17 @@ func (r *Runner) Changed() {
 	r.notifyChanged()
 }
 
+// Wake ends a backoff wait now and runs the next round at once. A computer that had
+// gone quiet because its last phone was removed backs off up to the longest wait, and
+// a new phone approved on it should not wait that long to be served. It never starts a
+// round that is already running, and a call with nothing waiting is dropped.
+func (r *Runner) Wake() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (r *Runner) notifyChanged() {
 	select {
 	case r.changed <- struct{}{}:
@@ -516,6 +530,11 @@ func (r *Runner) Serve(ctx context.Context) {
 				case <-watchCh:
 					applyWatch()
 				case <-timerCh:
+					runStep = true
+				case <-r.wake:
+					// The host knows something that makes the next round worth trying
+					// now, such as a phone approved on a computer that had gone quiet.
+					delay = refreshEvery
 					runStep = true
 				}
 			}

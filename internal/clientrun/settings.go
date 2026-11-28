@@ -49,6 +49,11 @@ func (r *Runner) Clients() []Client {
 	return out
 }
 
+// ErrClientNotFound is what pausing or unpairing a phone answers for one this runner has
+// no enrolled record of, or has already forgotten. The host still forgets the phone on its
+// side when it hears it, so a solo computer cannot stay awake for a phone that is gone.
+var ErrClientNotFound = errors.New("paired client not found")
+
 // Pause updates the local pause flag for an enrolled phone without revoking the
 // phone at the relay. It takes mu rather than the round lock so a pause issued
 // while a round is in flight is observed by the post-claim check.
@@ -56,7 +61,7 @@ func (r *Runner) Pause(id string, paused bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.enrolled[id]; !ok || r.isTombstonedLocked(id) {
-		return errors.New("paired client not found")
+		return ErrClientNotFound
 	}
 	was := r.state.Paused[id]
 	if paused {
@@ -83,7 +88,7 @@ func (r *Runner) Unpair(ctx context.Context, id string) error {
 	r.mu.Lock()
 	if _, ok := r.enrolled[id]; !ok || r.isTombstonedLocked(id) {
 		r.mu.Unlock()
-		return errors.New("paired client not found")
+		return ErrClientNotFound
 	}
 	r.mu.Unlock()
 	if r.cfg.Directory == nil {

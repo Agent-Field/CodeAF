@@ -215,3 +215,59 @@ func TestPhoneMethodsAndReadsMatchClientProto(t *testing.T) {
 		t.Fatalf("RecordOutcome accepted invalid outcome without reason: %v", err)
 	}
 }
+
+// TestWakeEndsABackoffWaitAtOnce verifies that a failed round's backoff wait ends the
+// moment the host wakes the runner, without the clock moving, so a phone approved on a
+// computer that had gone quiet is served now and not after the longest wait.
+func TestWakeEndsABackoffWaitAtOnce(t *testing.T) {
+	g := newRig(t)
+	g.enroll(t, []string{"asks.list"}, "asks.answer")
+	durations := make(chan time.Duration, 8)
+	ticks := make(chan time.Time) // never fires: only Wake may end the wait
+	if err := g.r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(Config{
+		Home:      g.state,
+		Relay:     g.url,
+		Name:      "desk",
+		Identity:  g.id.PublicKey(),
+		Signer:    g.s,
+		Directory: g.dir,
+		Engine:    g.e,
+		Log:       noopLog,
+		Now:       g.clock.Now,
+		HTTP: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("offline")
+		})},
+		After: func(d time.Duration) <-chan time.Time {
+			durations <- d
+			return ticks
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); r.Run(ctx) }()
+	wait := func(what string) time.Duration {
+		select {
+		case d := <-durations:
+			return d
+		case <-ctx.Done():
+			t.Fatalf("the runner never scheduled %s", what)
+			return 0
+		}
+	}
+	first := wait("its first backoff wait")
+	r.Wake()
+	second := wait("a round after the wake")
+	if first != 10*time.Second || second != 10*time.Second {
+		t.Fatalf("waits = %v then %v, want 10s both: a wake runs a round at once and starts the backoff over", first, second)
+	}
+	cancel()
+	<-done
+}

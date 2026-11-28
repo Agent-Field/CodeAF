@@ -422,11 +422,38 @@ func (r *Runner) putSlot(ctx context.Context, clientID, slotName string, sealed 
 	return nil
 }
 
+// localChats is the chats this computer holds when it is the only computer of its
+// identity, and false when the directory decides. Besides what the host lists it
+// includes every chat a phone created through this runner whose folder still exists: a
+// chat made from a phone has no words until its first message arrives, so the host's own
+// listing may not know it yet, and without this the phone's first message to it would be
+// refused as held elsewhere.
 func (r *Runner) localChats() ([]string, bool) {
 	if r.cfg.LocalChats == nil {
 		return nil, false
 	}
-	return r.cfg.LocalChats()
+	ids, ok := r.cfg.LocalChats()
+	if !ok {
+		return nil, false
+	}
+	ids = slices.Clone(ids)
+	type candidate struct{ agent, transcript string }
+	var made []candidate
+	r.mu.Lock()
+	for _, list := range r.state.Creates {
+		for _, c := range list {
+			if c.Agent != "" && !slices.Contains(ids, c.Agent) {
+				made = append(made, candidate{c.Agent, c.Transcript})
+			}
+		}
+	}
+	r.mu.Unlock()
+	for _, c := range made {
+		if chatFolderExists(c.transcript) && !slices.Contains(ids, c.agent) {
+			ids = append(ids, c.agent)
+		}
+	}
+	return ids, true
 }
 
 func (r *Runner) held(l directory.Listing) []string {

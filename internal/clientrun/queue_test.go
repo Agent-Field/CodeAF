@@ -3232,6 +3232,49 @@ func TestP13SoloCreateSkipsLeaseCreatedWhileNonSoloCallsItOnce(t *testing.T) {
 	}
 }
 
+// TestP13SoloChatMadeByAPhoneIsReachableBeforeTheHostKnowsIt verifies that a chat a
+// phone created on a solo computer takes the phone's first message even though the
+// host's own listing does not list the chat yet (it has no words until that message),
+// and that a chat the phone did not create and the host does not list is still refused.
+func TestP13SoloChatMadeByAPhoneIsReachableBeforeTheHostKnowsIt(t *testing.T) {
+	g := newSoloRig(t, func() ([]string, bool) { return nil, true }, nil)
+	se := g.useScriptedEngine(t)
+	g.enroll(t, []string{"agents.list"}, clientproto.MethodCreate, clientproto.MethodSend)
+
+	g.queueCall(t, 1, clientproto.MethodCreate, g.s.dev.ID(), map[string]string{
+		"client_id": "cid-first-chat",
+	}, false, clientproto.CreateLifetime)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(se.createdIDs) != 1 {
+		t.Fatalf("creates = %d, want 1", len(se.createdIDs))
+	}
+	made := se.createdIDs[0]
+
+	g.queueCall(t, 2, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": made, "text": "the first message", "client_id": "m1",
+	}, false, time.Hour)
+	g.queueCall(t, 3, clientproto.MethodSend, g.s.dev.ID(), map[string]string{
+		"id": "01JNOTMADEBYTHEPHONE000000", "text": "must not run", "client_id": "m2",
+	}, false, time.Hour)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(se.sends) != 1 || se.sends[0].ID != made {
+		t.Fatalf("engine sends = %+v, want exactly the one to the chat the phone made", se.sends)
+	}
+	got := g.readOutcomesSlot(t, g.s.dev.ID())
+	want := []clientproto.Outcome{
+		{Number: 1, Status: clientproto.OutcomeDone, Agent: made},
+		{Number: 2, Status: clientproto.OutcomeDone, Agent: made},
+		{Number: 3, Status: clientproto.OutcomeRefused, Reason: clientproto.ReasonNotHolder},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("outcomes = %+v, want %+v", got, want)
+	}
+}
+
 // TestP13SwitchingFromSoloToDirectoryBetweenRoundsWithoutRestart verifies that
 // when LocalChats flips from ok to not ok between rounds on the same running
 // runner (a computer that just paired a second computer), the runner uses the
