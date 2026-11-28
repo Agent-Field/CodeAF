@@ -200,7 +200,7 @@ func hostedTestBackend(t *testing.T, base, token string) (*actionWire, *appRecor
 			}
 		}
 	})
-	b.mint = func(string) (string, error) {
+	b.mint = func(string, ...func(string) error) (string, error) {
 		t.Error("hosted chat reached the local mint")
 		return "", errors.New("unexpected local mint")
 	}

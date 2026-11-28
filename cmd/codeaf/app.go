@@ -805,7 +805,7 @@ type appBackend struct {
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
 	// the one piece of agents.create that happens before the answer.
-	mint func(workspace string) (string, error)
+	mint func(workspace string, before ...func(string) error) (string, error)
 	// unmint takes back a folder mint made when what it was made for was
 	// refused (appteamstart.go); nil is [appUnmint].
 	unmint func(transcript string)
@@ -1259,8 +1259,8 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 // host's new conversation is minted as, with the workspace stamped as where the
 // person stood. It is a directory and a small file, so agents.create can answer
 // with the agent's lasting id before anything slow happens.
-func appMint(workspace string) (string, error) {
-	place, err := v3NextSessionFrom(session.Place{}, workspace, workspace)
+func appMint(workspace string, before ...func(string) error) (string, error) {
+	place, err := v3NextSessionFrom(session.Place{}, workspace, workspace, before...)
 	if err != nil {
 		return "", err
 	}
@@ -1577,9 +1577,29 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	if err != nil {
 		return appwire.Agent{}, err
 	}
-	view, launch, err := b.createAgentHeld(prep, "")
+	minted := ""
+	if ask.BeforeMint != nil {
+		minted, err = b.mint(prep.resolved, ask.BeforeMint)
+		if err != nil {
+			return appwire.Agent{}, err
+		}
+	}
+	view, launch, err := b.createAgentHeld(prep, minted)
 	if err != nil {
 		return appwire.Agent{}, err
+	}
+	if ask.BeforeStart != nil {
+		if err := ask.BeforeStart(view); err != nil {
+			a := b.agent(view.ID)
+			b.locked(func() {
+				a.opening, a.starting, a.boot = false, false, nil
+				if a.openDone != nil {
+					close(a.openDone)
+					a.openDone = nil
+				}
+			})
+			return view, err
+		}
 	}
 	launch()
 	return view, nil

@@ -153,7 +153,7 @@ func TestAppQuitKeepsCollectionHeldBlanksAndUnreadableCollections(t *testing.T) 
 			})
 			t.Cleanup(func() { _ = b.Close() })
 			b.profileDir = config.ProfileDir()
-			b.mint = func(where string) (string, error) {
+			b.mint = func(where string, _ ...func(string) error) (string, error) {
 				id := session.NewSessionID()
 				dir := writeV3Session(t, bucket, id, "", time.Time{})
 				if err := session.SaveMeta(dir, session.Meta{ID: id, Workspace: where, Created: time.Now()}); err != nil {

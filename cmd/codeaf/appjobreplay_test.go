@@ -53,7 +53,7 @@ func TestAppKeptJobReplayOpenListAndHistoryAgree(t *testing.T) {
 			backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
 				return &appConn{Conv: conv, Transcript: transcript, Workspace: ask.Workspace, Release: func() {}}, nil
 			})
-			backend.mint = func(string) (string, error) { return transcript, nil }
+			backend.mint = func(string, ...func(string) error) (string, error) { return transcript, nil }
 			t.Cleanup(func() { backend.Close() })
 			agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 			if err != nil {

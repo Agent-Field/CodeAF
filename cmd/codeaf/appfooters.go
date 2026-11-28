@@ -164,10 +164,22 @@ func (b *appBackend) keepAppEntriesWith(a *appAgent, entries []appwire.Entry, af
 		_ = temp.Close()
 		return err
 	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return err
+	}
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return fsreplace.Rename(temp.Name(), path)
+	if err := fsreplace.Rename(temp.Name(), path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func (b *appBackend) emitAppFooter(a *appAgent, key string) {

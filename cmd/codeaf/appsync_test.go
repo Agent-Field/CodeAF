@@ -446,7 +446,7 @@ func TestC2AppSyncStartupFactsWaitForTheOpenedChat(t *testing.T) {
 	line := chatlist.Superseded("laptop")
 	b.drives.notices.viewer(c, syncsetup.Viewer{ID: "other", Name: "laptop", Line: line})
 	b.drives.notices.say(c, line)
-	b.mint = func(string) (string, error) { return transcript, nil }
+	b.mint = func(string, ...func(string) error) (string, error) { return transcript, nil }
 	agent, err := mustCreate(t, b, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatal(err)

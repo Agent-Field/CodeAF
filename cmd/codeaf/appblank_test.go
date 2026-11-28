@@ -252,7 +252,7 @@ func TestAppQuitTakesAwayOnlyBlankConversationsNobodyHolds(t *testing.T) {
 	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	})
-	backend.mint = func(workspace string) (string, error) {
+	backend.mint = func(workspace string, _ ...func(string) error) (string, error) {
 		bucket, err := v3ProjectDir(workspace)
 		if err != nil {
 			return "", err

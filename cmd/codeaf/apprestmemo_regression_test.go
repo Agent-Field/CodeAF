@@ -317,7 +317,7 @@ func testAppRestRealIdleOpen(t *testing.T, savedTasks bool) {
 		c := &restConversation{readTasks: engine.AppTasks}
 		return &appConn{Conv: c, Workspace: ask.Workspace, Transcript: path, Assembled: true, Release: func() { _ = engine.Close() }}, nil
 	})
-	b.mint = func(string) (string, error) { return path, nil }
+	b.mint = func(string, ...func(string) error) (string, error) { return path, nil }
 	b.now = func() time.Time { return time.Now().Add(time.Hour) }
 	t.Cleanup(func() { b.locked(func() { b.crewRun = nil }); b.Close() })
 	view, err := mustCreate(t, b, appwire.CreateAsk{Workspace: t.TempDir()})

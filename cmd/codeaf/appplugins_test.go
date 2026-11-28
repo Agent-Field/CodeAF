@@ -391,7 +391,9 @@ func TestAppPluginsAskIDsAreUniqueAcrossAgents(t *testing.T) {
 	})
 	defer b.Close()
 	b.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
-	b.mint = func(work string) (string, error) { return filepath.Join(work, "transcript.jsonl"), nil }
+	b.mint = func(work string, _ ...func(string) error) (string, error) {
+		return filepath.Join(work, "transcript.jsonl"), nil
+	}
 	first, err := mustCreate(t, b, appwire.CreateAsk{Workspace: work1})
 	if err != nil {
 		t.Fatal(err)

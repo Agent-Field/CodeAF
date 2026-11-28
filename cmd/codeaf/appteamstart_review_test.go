@@ -64,9 +64,9 @@ func TestReviewR1ReplayTreatsAReadFailureAsNew(t *testing.T) {
 	// the time anything would be minted (a transient read failure).
 	restore := teamstest.Break(t, h.b.profileDir, []byte("{not a database"))
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, before ...func(string) error) (string, error) {
 		restore()
-		return mint(w)
+		return mint(w, before...)
 	}
 	second, err2 := h.b.CrewStart(ask)
 	if err2 == nil && !second.Start.Replayed {
@@ -253,9 +253,9 @@ func TestReviewR6AttachmentVanishingAfterValidationFailsAfterCommit(t *testing.T
 		t.Fatal(err)
 	}
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, before ...func(string) error) (string, error) {
 		_ = os.Remove(file)
-		return mint(w)
+		return mint(w, before...)
 	}
 	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "Gone", StartManager: true, ManagerStartsMembers: true, RequestID: "r-6", Goal: "read it",
 		Workspace: dir, Attachments: []appwire.AttachSource{{Kind: appwire.AttachFile, Path: file}}})
